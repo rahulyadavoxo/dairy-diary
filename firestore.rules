@@ -1,0 +1,194 @@
+rules_version = '2';
+
+// =====================================================================================
+//  Dairy Diary — device authorization rules (Firebase Spark plan, no Cloud Functions)
+//
+//  ►►  BEFORE PUBLISHING: replace OWNER_EMAIL below with the farm owner's login email,
+//      exactly as created in Authentication → Users, in lower case.  ◄◄
+//
+//  Model
+//    farms/{farmId}                 { ownerUid, name, createdAt,
+//                                     devices: { [uid]: { name, addedAt, addedBy, code? } } }
+//      farmId == ownerUid (the owner's email/password account uid).
+//    farms/{farmId}/{customers|days|payments|settings}/...   the dairy data
+//    pairingCodes/{6-digit code}    { farmId, createdBy, createdAt, used, usedBy?, usedAt? }
+//      A code is valid for 10 minutes after createdAt (server time) and can be used once.
+//
+//  Who can do what
+//    * Only a device whose auth uid is a key of farms/{farmId}.devices can read or write
+//      anything in the farm (checked on EVERY request, so removing a device cuts it off
+//      immediately).
+//    * Only the OWNER_EMAIL email/password account can create the farm, and only once.
+//    * A new phone (anonymous auth) can add ONLY ITSELF to devices, and only in the same
+//      atomic write that consumes a valid, unexpired, unused pairing code of that farm.
+//    * Only the owner can remove other devices; any non-owner device may remove itself;
+//      the owner device can never be removed. A device may rename only its own entry.
+//    * Everything else is denied.
+// =====================================================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function ownerEmail() {
+      return 'OWNER_EMAIL';
+    }
+
+    function codeTtl() {
+      return duration.value(10, 'm');
+    }
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function farmPath(farmId) {
+      return /databases/$(database)/documents/farms/$(farmId);
+    }
+
+    function codePath(code) {
+      return /databases/$(database)/documents/pairingCodes/$(code);
+    }
+
+    function isMember(farmId) {
+      return signedIn() && exists(farmPath(farmId))
+        && request.auth.uid in get(farmPath(farmId)).data.devices;
+    }
+
+    function validName(n) {
+      return n is string && n.size() >= 1 && n.size() <= 40;
+    }
+
+    // ---------------------------------------------------------------- farm document
+    match /farms/{farmId} {
+
+      function isOwnerAccount() {
+        return signedIn()
+          && request.auth.token.firebase.sign_in_provider == 'password'
+          && request.auth.token.email is string
+          && request.auth.token.email.lower() == ownerEmail().lower();
+      }
+
+      function devDiff() {
+        return request.resource.data.devices.diff(resource.data.devices);
+      }
+
+      function onlyDevicesChange() {
+        return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['devices']);
+      }
+
+      // Bootstrap: the owner's email/password account creates its own farm (farmId == uid).
+      function isCreate() {
+        let d = request.resource.data;
+        let uid = request.auth.uid;
+        return isOwnerAccount()
+          && farmId == uid
+          && d.keys().hasOnly(['ownerUid', 'name', 'createdAt', 'devices'])
+          && d.ownerUid == uid
+          && d.createdAt == request.time
+          && (!('name' in d) || d.name is string && d.name.size() <= 60)
+          && d.devices is map
+          && d.devices.keys().hasOnly([uid]) && d.devices.size() == 1
+          && d.devices[uid].keys().hasOnly(['name', 'addedAt', 'addedBy'])
+          && validName(d.devices[uid].name)
+          && d.devices[uid].addedAt == request.time
+          && d.devices[uid].addedBy == uid;
+      }
+
+      // A new phone adds itself, in the same batch that consumes a pairing code.
+      function isJoin() {
+        let uid = request.auth.uid;
+        let after = request.resource.data.devices;
+        let dd = devDiff();
+        let entry = after[uid];
+        let code = entry.code;
+        let pc = get(codePath(code)).data;
+        let pcAfter = getAfter(codePath(code)).data;
+        return signedIn()
+          && onlyDevicesChange()
+          && dd.addedKeys().hasOnly([uid]) && dd.addedKeys().size() == 1
+          && dd.changedKeys().size() == 0 && dd.removedKeys().size() == 0
+          && entry.keys().hasOnly(['name', 'addedAt', 'addedBy', 'code'])
+          && validName(entry.name)
+          && entry.addedAt == request.time
+          && code is string && code.matches('^[0-9]{6}$')
+          && pc.farmId == farmId
+          && pc.used == false
+          && request.time < pc.createdAt + codeTtl()
+          && entry.addedBy == pc.createdBy
+          && pcAfter.used == true
+          && pcAfter.usedBy == uid;
+      }
+
+      // Owner removes any non-owner device; a non-owner device may remove itself.
+      function isRemoval() {
+        let dd = devDiff();
+        return isMember(farmId)
+          && onlyDevicesChange()
+          && dd.addedKeys().size() == 0 && dd.changedKeys().size() == 0
+          && dd.removedKeys().size() >= 1
+          && !(resource.data.ownerUid in dd.removedKeys())
+          && (request.auth.uid == resource.data.ownerUid
+              || dd.removedKeys().hasOnly([request.auth.uid]));
+      }
+
+      // A device renames itself (only its own `name`).
+      function isRename() {
+        let uid = request.auth.uid;
+        let dd = devDiff();
+        return isMember(farmId)
+          && onlyDevicesChange()
+          && dd.addedKeys().size() == 0 && dd.removedKeys().size() == 0
+          && dd.changedKeys().hasOnly([uid])
+          && request.resource.data.devices[uid].diff(resource.data.devices[uid])
+               .affectedKeys().hasOnly(['name'])
+          && validName(request.resource.data.devices[uid].name);
+      }
+
+      // The owner account may also read its own (not yet created) farm doc so the app can
+      // tell "farm does not exist yet" apart from "not allowed".
+      allow get: if isMember(farmId) || (signedIn() && farmId == request.auth.uid);
+      allow list: if false;
+      allow create: if isCreate();
+      allow update: if isJoin() || isRemoval() || isRename();
+      allow delete: if false;
+
+      // ------------------------------------------------------------ farm data
+      match /{coll}/{rest=**} {
+        allow read, write: if coll in ['customers', 'days', 'payments', 'settings']
+          && isMember(farmId);
+      }
+    }
+
+    // ---------------------------------------------------------------- pairing codes
+    match /pairingCodes/{code} {
+      // Any signed-in phone may look up ONE code it was told (no listing/enumeration).
+      allow get: if signedIn();
+      allow list: if false;
+
+      // An authorized device creates a fresh code for its own farm.
+      allow create: if code.matches('^[0-9]{6}$')
+        && request.resource.data.keys().hasOnly(['farmId', 'createdBy', 'createdAt', 'used'])
+        && request.resource.data.farmId is string
+        && isMember(request.resource.data.farmId)
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.used == false;
+
+      // The joining phone consumes the code — only together with adding itself to the farm.
+      allow update: if signedIn()
+        && resource.data.used == false
+        && request.time < resource.data.createdAt + codeTtl()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['used', 'usedBy', 'usedAt'])
+        && request.resource.data.used == true
+        && request.resource.data.usedBy == request.auth.uid
+        && request.resource.data.usedAt == request.time
+        && !(request.auth.uid in get(farmPath(resource.data.farmId)).data.devices)
+        && getAfter(farmPath(resource.data.farmId)).data.devices[request.auth.uid].code == code;
+
+      // A device of the farm may cancel / clean up that farm's codes.
+      allow delete: if isMember(resource.data.farmId);
+    }
+
+    // Everything else (including the old top-level collections) is closed.
+  }
+}

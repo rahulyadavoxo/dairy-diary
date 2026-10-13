@@ -1,0 +1,6 @@
+{
+  "appId": "in.dairydiary.app",
+  "appName": "Dairy Diary",
+  "webDir": "dist",
+  "android": { "allowMixedContent": false }
+}
