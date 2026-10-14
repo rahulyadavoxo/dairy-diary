@@ -8,6 +8,7 @@ import ImportCustomers from './ImportCustomers.jsx';
 import { usualMorning, usualEvening } from '../entry.js';
 import { useScrollKeep } from '../scrollKeep.js';
 import { saveFeedback } from '../feedback.js';
+import { getPinHash, verifyPin, pinWaitSeconds } from '../pinLock.js';
 
 // The customer saved last stays lightly green in the list (on this phone) until another is saved.
 const LAST_EDITED_KEY = 'dd_last_edited_customer';
@@ -26,7 +27,7 @@ function storeLastEdited(id) {
   }
 }
 
-const EMPTY = { name: '', phone: '', area: '', usualMorningL: 0.5, usualEveningL: 0.5, customRate: false, rateOverride: '', openingDue: '', pauseFrom: '', pauseTo: '', active: true, isSupplier: false };
+const EMPTY = { name: '', phone: '', area: '', usualMorningL: 0.5, usualEveningL: 0.5, customRate: false, rateOverride: '', customPaneerRate: false, paneerRateOverride: '', openingDue: '', pauseFrom: '', pauseTo: '', active: true, isSupplier: false };
 
 const round3 = (n) => Math.max(0, Math.round(Number(n || 0) * 1000) / 1000);
 
@@ -185,6 +186,7 @@ export default function Customers({ fb, customers, settings, openCustomer }) {
               <span className="small">
                 {fmtQty(c.usualL || 0)} {t('litre')}
                 {c.rateOverridePaise ? ` · ${rupees(c.rateOverridePaise)}/${t('litre')}` : ''}
+                {c.paneerRateOverridePaise ? ` · 🧀 ${rupees(c.paneerRateOverridePaise)}/${t('kg')}` : ''}
                 {pauseLabel(c, todayISO(), t, lang) ? ` · ${pauseLabel(c, todayISO(), t, lang)}` : ''}
               </span>
             </button>
@@ -231,6 +233,8 @@ export function CustomerForm({ fb, initial, nextOrder, onDone }) {
           usualEveningL: initial.usualEveningL ?? round3((Number(initial.usualL) || 0) / 2),
           customRate: Number.isInteger(initial.rateOverridePaise) && initial.rateOverridePaise > 0,
           rateOverride: paiseToInput(initial.rateOverridePaise),
+          customPaneerRate: Number.isInteger(initial.paneerRateOverridePaise) && initial.paneerRateOverridePaise > 0,
+          paneerRateOverride: paiseToInput(initial.paneerRateOverridePaise),
           openingDue: paiseToInput(initial.openingDuePaise || ''),
           pauseFrom: initial.pauseFrom || '',
           pauseTo: initial.pauseTo || '',
@@ -240,6 +244,46 @@ export function CustomerForm({ fb, initial, nextOrder, onDone }) {
       : EMPTY,
   );
   const [err, setErr] = useState('');
+  // Deactivating a customer (the Deactivate button or turning Active off) asks for the PIN when
+  // one is set. pinAsk = 'button' | 'toggle' | null.
+  const [pinAsk, setPinAsk] = useState(null);
+  const [pinInput, setPinInput] = useState('');
+  const [pinErr, setPinErr] = useState('');
+  useEffect(() => (pinAsk ? pushBackHandler(() => setPinAsk(null)) : undefined), [pinAsk]);
+  const deactivateNow = () => {
+    saveCustomer(fb, initial.id, { active: false });
+    saveFeedback(true);
+    onDone(null);
+  };
+  const askDeactivate = (kind) => {
+    if (getPinHash()) {
+      setPinInput('');
+      setPinErr('');
+      setPinAsk(kind);
+      return;
+    }
+    // no PIN set on this phone: the old confirm
+    if (kind === 'button') {
+      if (window.confirm(t('confirmDeactivate'))) deactivateNow();
+    } else {
+      setF((p) => ({ ...p, active: false }));
+    }
+  };
+  const submitPin = async () => {
+    const w0 = pinWaitSeconds();
+    if (w0 > 0) return setPinErr(t('pinWait').replace('{s}', w0));
+    const ok = await verifyPin(pinInput.trim());
+    if (!ok) {
+      saveFeedback(false);
+      const w = pinWaitSeconds();
+      setPinErr(w > 0 ? t('pinWait').replace('{s}', w) : t('pinWrong'));
+      return;
+    }
+    const kind = pinAsk;
+    setPinAsk(null);
+    if (kind === 'button') deactivateNow();
+    else setF((p) => ({ ...p, active: false }));
+  };
   const set = (k) => (e) => setF({ ...f, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value });
 
   const submit = (e) => {
@@ -254,6 +298,8 @@ export function CustomerForm({ fb, initial, nextOrder, onDone }) {
     if (badQty(f.usualMorningL) || badQty(f.usualEveningL)) return fail(t('qtyInvalid'));
     const rate = toPaise(f.rateOverride);
     if (f.customRate && !(rate > 0)) return fail(t('rateRequired'));
+    const pRate = toPaise(f.paneerRateOverride);
+    if (f.customPaneerRate && !(pRate > 0)) return fail(t('paneerRateRequired'));
     const due = toPaise(f.openingDue);
     if (f.openingDue !== '' && due === null) return fail(t('amountInvalid'));
     const data = {
@@ -264,6 +310,7 @@ export function CustomerForm({ fb, initial, nextOrder, onDone }) {
       usualEveningL: round3(f.usualEveningL),
       usualL: round3(round3(f.usualMorningL) + round3(f.usualEveningL)),
       rateOverridePaise: f.customRate ? rate : null,
+      paneerRateOverridePaise: f.customPaneerRate ? pRate : null,
       openingDuePaise: due || 0,
       pauseFrom: f.pauseFrom || '',
       pauseTo: f.pauseTo || '',
@@ -282,9 +329,6 @@ export function CustomerForm({ fb, initial, nextOrder, onDone }) {
     // noValidate: the WebView's tiny validation bubbles were the only feedback; show our own errors.
     <form className="screen form" onSubmit={submit} noValidate>
       <header className="screen-head">
-        <button type="button" className="btn small ghost" onClick={() => onDone(null)}>
-          ← {t('back')}
-        </button>
         <h1>{initial ? t('editCustomer') : t('addCustomer')}</h1>
       </header>
       <label>
@@ -328,14 +372,17 @@ export function CustomerForm({ fb, initial, nextOrder, onDone }) {
           </div>
         </label>
       </div>
-      <label className="check">
+      <div className="switch-row">
+        <span>🥛 {t('customRateToggle')}</span>
         <input
           type="checkbox"
+          role="switch"
+          className="switch"
+          aria-label={t('customRateToggle')}
           checked={f.customRate}
           onChange={(e) => setF({ ...f, customRate: e.target.checked })}
-        />{' '}
-        {t('customRateToggle')}
-      </label>
+        />
+      </div>
       {f.customRate ? (
         <label>
           {t('customRateLabel')}
@@ -343,6 +390,25 @@ export function CustomerForm({ fb, initial, nextOrder, onDone }) {
         </label>
       ) : (
         <p className="muted small">{t('usesDefaultRate')}</p>
+      )}
+      <div className="switch-row">
+        <span>🧀 {t('paneerRateToggle')}</span>
+        <input
+          type="checkbox"
+          role="switch"
+          className="switch"
+          aria-label={t('paneerRateToggle')}
+          checked={f.customPaneerRate}
+          onChange={(e) => setF({ ...f, customPaneerRate: e.target.checked })}
+        />
+      </div>
+      {f.customPaneerRate ? (
+        <label>
+          {t('paneerRateLabel')}
+          <input type="number" inputMode="decimal" min="0" step="any" value={f.paneerRateOverride} onChange={set('paneerRateOverride')} />
+        </label>
+      ) : (
+        <p className="muted small">{t('usesDefaultPaneerRate')}</p>
       )}
       <label>
         {t('openingDue')}
@@ -358,9 +424,51 @@ export function CustomerForm({ fb, initial, nextOrder, onDone }) {
           <input type="date" value={f.pauseTo} onChange={set('pauseTo')} />
         </label>
       </div>
-      <label className="check">
-        <input type="checkbox" checked={f.active} onChange={set('active')} /> {t('active')}
-      </label>
+      {/* Only the box itself toggles Active (a div, not a label: tapping the text does nothing). */}
+      <div className="check box-only">
+        <input
+          type="checkbox"
+          aria-label={t('active')}
+          checked={f.active}
+          onChange={(e) => {
+            if (e.target.checked) setF((p) => ({ ...p, active: true }));
+            else if (initial && initial.active !== false) askDeactivate('toggle');
+            else setF((p) => ({ ...p, active: false }));
+          }}
+        />
+        <span>{t('active')}</span>
+      </div>
+      {pinAsk && (
+        <div className="card pin-card" data-testid="deactivate-pin">
+          <p className="small">
+            <b>🔒 {t('pinToDeactivate')}</b>
+          </p>
+          <div className="form-inline">
+            <input
+              type="password"
+              inputMode="numeric"
+              placeholder={t('pinEnter')}
+              value={pinInput}
+              onChange={(e) => setPinInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  submitPin();
+                }
+              }}
+              maxLength={12}
+              autoFocus
+            />
+            <button type="button" className="btn small danger" onClick={submitPin}>
+              {t('deactivate')}
+            </button>
+            <button type="button" className="btn small ghost" onClick={() => setPinAsk(null)} aria-label={t('cancel')}>
+              ✕
+            </button>
+          </div>
+          {pinErr && <p className="error small">{pinErr}</p>}
+        </div>
+      )}
       {err && <p className="error">{err}</p>}
       <div className="form-actions">
         <button type="button" className="btn big" onClick={() => onDone(null)}>
@@ -374,11 +482,7 @@ export function CustomerForm({ fb, initial, nextOrder, onDone }) {
         <button
           type="button"
           className="btn danger"
-          onClick={() => {
-            if (!window.confirm(t('confirmDeactivate'))) return;
-            saveCustomer(fb, initial.id, { active: false });
-            onDone(null);
-          }}
+          onClick={() => askDeactivate('button')}
         >
           {t('deactivate')}
         </button>

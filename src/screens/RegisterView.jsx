@@ -170,6 +170,8 @@ export default function RegisterView({ fb, customers, days, pendingDays, setting
         displayName={displayName}
         date={editing.date}
         customerId={editing.customerId}
+        lockDate={!editing.oldRecords}
+        minDate={minDate}
         onClose={() => setEditing(null)}
       />
     );
@@ -210,9 +212,22 @@ export default function RegisterView({ fb, customers, days, pendingDays, setting
           {pendingDays[date] ? ` · ${t('pendingSync')}` : day ? ` · ${t('synced')}` : ''}
         </p>
         <input className="search" type="search" placeholder={t('search')} value={query} onChange={(e) => setQuery(e.target.value)} />
-        <p className="day-total">
-          {t('dayTotal')}: <b>{fmtQty(totalMl / 1000)} {t('litre')}</b>
-        </p>
+        <div className="day-total-row">
+          <p className="day-total">
+            {t('dayTotal')}: <b>{fmtQty(totalMl / 1000)} {t('litre')}</b>
+          </p>
+          {/* Any other day: the editor opens on the day before, with ◀ ▶ to move between days. */}
+          <button
+            type="button"
+            className="btn small"
+            onClick={() => {
+              const prev = addDays(date, -1);
+              setEditing({ date: prev >= minDate ? prev : date, oldRecords: true });
+            }}
+          >
+            🗂️ {t('editOldRecords')}
+          </button>
+        </div>
         {onDelivery && (
           <button type="button" className="btn primary big delivery-cta" onClick={onDelivery}>
             🚚 {t('delivery')}

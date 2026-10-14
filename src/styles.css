@@ -307,3 +307,25 @@ hr.sep { border: 0; border-top: 1px solid var(--line); margin: 1rem 0; }
 /* long dates ("30 September 2026") stay on one line in the date box */
 .date-pick { min-width: 0; }
 .date-pick span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 0.35rem; font-size: clamp(0.85rem, 3.9vw, 1.05rem); }
+
+/* --- 1.10.11: toggle switches, box-only checkbox, PIN card, day-total row --- */
+.switch-row { display: flex; align-items: center; justify-content: space-between; gap: 0.8rem; min-height: 48px; margin: 0.3rem 0; font-weight: 700; }
+input.switch {
+  appearance: none; -webkit-appearance: none; flex: 0 0 auto; position: relative;
+  width: 52px; height: 30px; min-height: 30px; margin: 0; padding: 0; border-radius: 999px;
+  background: #c9c9c4; border: none; cursor: pointer; transition: background 0.18s ease;
+}
+input.switch::before {
+  content: ''; position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3); transition: transform 0.18s ease;
+}
+input.switch:checked { background: var(--green); }
+input.switch:checked::before { transform: translateX(22px); }
+input.switch:focus-visible { outline: 3px solid #9fd3b2; outline-offset: 2px; }
+.check.box-only { display: flex; gap: 0.6rem; align-items: center; margin: 0.4rem 0; font-weight: 700; }
+.check.box-only input { width: 24px; height: 24px; min-height: 24px; margin: 0; flex: 0 0 auto; }
+.check.box-only span { pointer-events: none; }
+.pin-card { margin: 0.4rem 0; }
+.day-total-row { display: flex; align-items: stretch; gap: 0.5rem; }
+.day-total-row .day-total { flex: 1; margin: 0; display: flex; align-items: center; }
+.day-total-row .btn { flex: 0 0 auto; white-space: nowrap; font-size: 0.85rem; padding: 0.3rem 0.6rem; }

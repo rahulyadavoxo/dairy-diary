@@ -51,7 +51,8 @@ export function defaultSession() {
 
 const AUTOSAVE_MS = 1200;
 
-export default function DayEditor({ fb, customers, days, pendingDays = {}, settings, displayName, date: initialDate, customerId, onClose }) {
+/** lockDate: "Edit this day" edits only that day (no ◀ ▶). "Edit old records" passes lockDate=false. */
+export default function DayEditor({ fb, customers, days, pendingDays = {}, settings, displayName, date: initialDate, customerId, lockDate = false, minDate, onClose }) {
   const { t, lang } = useLang();
   const [date, setDate] = useState(() => (initialDate && initialDate <= todayISO() ? initialDate : todayISO()));
   const [drafts, setDrafts] = useState({});
@@ -191,34 +192,45 @@ export default function DayEditor({ fb, customers, days, pendingDays = {}, setti
           <h1>
             ✏️ {only ? only.name : t('editDayTitle')} · {dmy(date, lang)}
           </h1>
-          <div className="date-nav">
-            <button className="btn icon" onClick={() => changeDate(addDays(date, -1))} aria-label={t('prevDay')}>
-              ◀
-            </button>
-            <label className="date-pick">
-              <span>{dmy(date, lang)}</span>
-              <input
-                type="date"
-                value={date}
-                max={todayISO()}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  if (v) changeDate(v > todayISO() ? todayISO() : v);
+          {!lockDate && (
+            <div className="date-nav">
+              <button
+                className="btn icon"
+                disabled={!!minDate && date <= minDate}
+                onClick={() => {
+                  const p = addDays(date, -1);
+                  if (!minDate || p >= minDate) changeDate(p);
                 }}
-              />
-            </label>
-            <button
-              className="btn icon"
-              disabled={date >= todayISO()}
-              onClick={() => {
-                const n = addDays(date, 1);
-                if (n <= todayISO()) changeDate(n);
-              }}
-              aria-label={t('nextDay')}
-            >
-              ▶
-            </button>
-          </div>
+                aria-label={t('prevDay')}
+              >
+                ◀
+              </button>
+              <label className="date-pick">
+                <span>{dmy(date, lang)}</span>
+                <input
+                  type="date"
+                  value={date}
+                  min={minDate || undefined}
+                  max={todayISO()}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    if (v) changeDate(v > todayISO() ? todayISO() : minDate && v < minDate ? minDate : v);
+                  }}
+                />
+              </label>
+              <button
+                className="btn icon"
+                disabled={date >= todayISO()}
+                onClick={() => {
+                  const n = addDays(date, 1);
+                  if (n <= todayISO()) changeDate(n);
+                }}
+                aria-label={t('nextDay')}
+              >
+                ▶
+              </button>
+            </div>
+          )}
           <p className="muted small">
             {day && day.lastEditedBy ? `${t('lastEdited')}: ${day.lastEditedBy}, ${timeHM(day.lastEditedAt)}` : t('nobodyYet')}
             {pendingDays[date] ? ` · ${t('pendingSync')}` : day ? ` · ${t('synced')}` : ''}

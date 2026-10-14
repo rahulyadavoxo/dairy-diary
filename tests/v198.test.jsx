@@ -2,7 +2,7 @@ import { dmy } from '../src/format.js';
 // Regression tests for the 1.9.8 UI-audit fixes (one block per audit item that has logic).
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { render, screen, fireEvent, cleanup, act, within } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, act, within, waitFor } from '@testing-library/react';
 
 // Bill photo rendering needs a real canvas; sharing needs the system share sheet.
 const share = vi.hoisted(() => ({ impl: null }));
@@ -272,7 +272,9 @@ describe('#16 Absent; empty list says so', () => {
 
 // ---- 5 ----
 describe('#5 any past day can be edited from Register', () => {
-  const regProps = (fb, extra = {}) => ({ fb, customers: [c1, c2], days: {}, pendingDays: {}, settings, displayName: 'x', onDelivery: () => {}, ...extra });
+  // a delivery 40 days ago, so the ◀ arrows (which stop at the first delivery month) can go back
+  const oldDays = () => ({ [addDays(todayISO(), -40)]: { entries: { c1: { milkL: 1 } } } });
+  const regProps = (fb, extra = {}) => ({ fb, customers: [c1, c2], days: oldDays(), pendingDays: {}, settings, displayName: 'x', onDelivery: () => {}, ...extra });
   it('"Edit this day" opens the editor for that date and saves through saveEntries', () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true);
     const fb = mkFb();
@@ -625,5 +627,125 @@ describe('#27 device rename', () => {
     });
     expect(screen.queryByText(en.errInvalidName)).toBeNull();
     expect(fb.writes.some((w) => w.data['devices.u1.name'] === 'Papa 2')).toBe(true);
+  });
+});
+
+// ---- 1.10.11 ----
+describe('1.10.11 customer form, special paneer rate, day editor', () => {
+  const regProps = (fb) => ({
+    fb,
+    customers: [c1, c2],
+    days: { [addDays(todayISO(), -40)]: { entries: { c1: { milkL: 1 } } } },
+    pendingDays: {},
+    settings,
+    displayName: 'x',
+    onDelivery: () => {},
+  });
+  afterEach(() => {
+    localStorage.removeItem('dd_totals_pin_hash');
+    localStorage.removeItem('dd_pin_fails');
+  });
+  const setPin = async (pin) => {
+    const { hashPin, savePinHash } = await import('../src/pinLock.js');
+    savePinHash(await hashPin(pin));
+  };
+
+  it('edit customer has no Back button at the top', () => {
+    render(wrap(<CustomerForm fb={mkFb()} initial={{ ...c1 }} nextOrder={10} onDone={() => {}} />));
+    expect(screen.queryByText(new RegExp(`← ${en.back}`))).toBeNull();
+  });
+
+  it('special rates are switches; the paneer rate is saved and used by billing', async () => {
+    const fb = mkFb();
+    render(wrap(<CustomerForm fb={fb} initial={null} nextOrder={10} onDone={() => {}} />));
+    fireEvent.change(screen.getByLabelText(`${en.name} *`), { target: { value: 'Ram' } });
+    expect(screen.getByLabelText(en.paneerRateToggle).getAttribute('role')).toBe('switch');
+    expect(screen.getByLabelText(en.customRateToggle).getAttribute('role')).toBe('switch');
+    expect(screen.getByText(en.usesDefaultPaneerRate)).toBeTruthy();
+    fireEvent.click(screen.getByLabelText(en.paneerRateToggle));
+    fireEvent.click(screen.getByText(en.save));
+    expect(screen.getByText(en.paneerRateRequired)).toBeTruthy();
+    expect(fb.writes).toHaveLength(0);
+    fireEvent.change(screen.getByLabelText(en.paneerRateLabel), { target: { value: '400' } });
+    fireEvent.click(screen.getByText(en.save));
+    expect(fb.writes[0].data.paneerRateOverridePaise).toBe(40000);
+    expect(fb.writes[0].data.rateOverridePaise).toBe(null);
+    const { paneerRateFor } = await import('../src/billing.js');
+    const st = { paneerRatePaise: 36000 };
+    expect(paneerRateFor(st, null, { paneerRateOverridePaise: 40000 })).toBe(40000);
+    expect(paneerRateFor(st, null, {})).toBe(36000); // no special rate -> default
+    expect(paneerRateFor(st, { paneerRatePaise: 35000 }, { paneerRateOverridePaise: 40000 })).toBe(35000); // saved entry keeps its rate
+  });
+
+  it('turning a special paneer rate off saves null (default rate again)', () => {
+    const fb = mkFb();
+    render(wrap(<CustomerForm fb={fb} initial={{ ...c1, paneerRateOverridePaise: 40000 }} nextOrder={10} onDone={() => {}} />));
+    expect(screen.getByLabelText(en.paneerRateToggle).checked).toBe(true);
+    fireEvent.click(screen.getByLabelText(en.paneerRateToggle));
+    fireEvent.click(screen.getByText(en.save));
+    expect(fb.writes[0].data.paneerRateOverridePaise).toBe(null);
+  });
+
+  it('Active: tapping the word does nothing, only the box toggles', () => {
+    render(wrap(<CustomerForm fb={mkFb()} initial={null} nextOrder={10} onDone={() => {}} />));
+    const box = screen.getByLabelText(en.active);
+    expect(box.closest('label')).toBeNull();
+    fireEvent.click(screen.getByText(en.active));
+    expect(box.checked).toBe(true);
+    fireEvent.click(box);
+    expect(box.checked).toBe(false);
+  });
+
+  it('Deactivate asks for the PIN: wrong PIN keeps the customer, right PIN deactivates', async () => {
+    await setPin('4321');
+    const fb = mkFb();
+    const done = vi.fn();
+    const conf = vi.spyOn(window, 'confirm');
+    render(wrap(<CustomerForm fb={fb} initial={{ ...c1 }} nextOrder={10} onDone={done} />));
+    fireEvent.click(screen.getByText(en.deactivate, { selector: '.btn.danger:not(.small)' }));
+    const card = screen.getByTestId('deactivate-pin');
+    fireEvent.change(within(card).getByPlaceholderText(en.pinEnter), { target: { value: '1111' } });
+    fireEvent.click(within(card).getByText(en.deactivate));
+    expect(await within(card).findByText(en.pinWrong)).toBeTruthy();
+    expect(fb.writes).toHaveLength(0);
+    fireEvent.change(within(card).getByPlaceholderText(en.pinEnter), { target: { value: '4321' } });
+    fireEvent.click(within(card).getByText(en.deactivate));
+    await waitFor(() => expect(fb.writes).toHaveLength(1));
+    expect(fb.writes[0].data.active).toBe(false);
+    expect(done).toHaveBeenCalledWith(null);
+    expect(conf).not.toHaveBeenCalled();
+  });
+
+  it('unticking Active also asks for the PIN', async () => {
+    await setPin('4321');
+    render(wrap(<CustomerForm fb={mkFb()} initial={{ ...c1 }} nextOrder={10} onDone={() => {}} />));
+    const box = screen.getByLabelText(en.active);
+    fireEvent.click(box);
+    expect(box.checked).toBe(true);
+    const card = screen.getByTestId('deactivate-pin');
+    fireEvent.change(within(card).getByPlaceholderText(en.pinEnter), { target: { value: '4321' } });
+    fireEvent.click(within(card).getByText(en.deactivate));
+    await waitFor(() => expect(screen.getByLabelText(en.active).checked).toBe(false));
+  });
+
+  it('"Edit this day" edits only that day (no ◀ ▶ in the editor)', () => {
+    render(wrap(<RegisterView {...regProps(mkFb())} />));
+    fireEvent.click(screen.getByText(new RegExp(en.editDay)));
+    const ed = screen.getByTestId('day-editor');
+    expect(within(ed).queryByLabelText(en.prevDay)).toBeNull();
+    expect(within(ed).queryByLabelText(en.nextDay)).toBeNull();
+  });
+
+  it('"Edit old records" next to Day total opens the day before, with ◀ ▶', () => {
+    render(wrap(<RegisterView {...regProps(mkFb())} />));
+    const btn = screen.getByText(new RegExp(en.editOldRecords));
+    expect(btn.closest('.day-total-row')).toBeTruthy();
+    fireEvent.click(btn);
+    const ed = screen.getByTestId('day-editor');
+    const y = addDays(todayISO(), -1);
+    expect(within(ed).getByRole('heading', { level: 1 }).textContent).toContain(dmy(y));
+    expect(within(ed).getByLabelText(en.prevDay)).toBeTruthy();
+    fireEvent.click(within(ed).getByLabelText(en.prevDay));
+    expect(within(ed).getByRole('heading', { level: 1 }).textContent).toContain(dmy(addDays(todayISO(), -2)));
   });
 });

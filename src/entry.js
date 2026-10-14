@@ -17,7 +17,7 @@ export function normaliseEntry(customer, raw, settings) {
   // Snapshot a rate only when one is actually set (> 0). null = "no rate yet": billing then uses
   // the customer / settings rate, so milk delivered before the rate was entered is not ₹0 forever.
   const mr = milkRateFor(customer, settings, null);
-  const pr = paneerRateFor(settings, null);
+  const pr = paneerRateFor(settings, null, customer);
   return {
     milkL: total,
     milkMorningL: morn,

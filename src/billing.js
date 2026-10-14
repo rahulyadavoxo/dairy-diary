@@ -2,7 +2,7 @@
 // millilitres (milk) and grams (paneer). No floating-point money anywhere.
 //
 // Inputs
-//   customers: [{ id, openingDuePaise?, rateOverridePaise? }]
+//   customers: [{ id, openingDuePaise?, rateOverridePaise?, paneerRateOverridePaise? }]
 //   days:      { 'yyyy-mm-dd': { entries: { [customerId]: Entry } } }
 //              Entry = { milkL, paneerKg, skip, milkRatePaise?, paneerRatePaise? }
 //              (rates are snapshotted on the entry when it is saved, so changing
@@ -34,8 +34,9 @@ export function milkRateFor(customer, settings, entry) {
   return settings && validRate(settings.milkRatePaise) ? settings.milkRatePaise : 0;
 }
 
-export function paneerRateFor(settings, entry) {
+export function paneerRateFor(settings, entry, customer) {
   if (entry && validRate(entry.paneerRatePaise)) return entry.paneerRatePaise;
+  if (customer && validRate(customer.paneerRateOverridePaise)) return customer.paneerRateOverridePaise;
   return settings && validRate(settings.paneerRatePaise) ? settings.paneerRatePaise : 0;
 }
 
@@ -45,7 +46,7 @@ export function entryCharge(entry, customer, settings) {
   const milkMl = entry.skip ? 0 : toMilli(entry.milkL);
   const paneerG = toMilli(entry.paneerKg);
   const mr = milkRateFor(customer, settings, entry);
-  const pr = paneerRateFor(settings, entry);
+  const pr = paneerRateFor(settings, entry, customer);
   const milkPaise = amountPaise(milkMl, mr);
   const paneerPaise = amountPaise(paneerG, pr);
   return { milkMl, milkPaise, paneerG, paneerPaise, totalPaise: milkPaise + paneerPaise, milkRatePaise: mr, paneerRatePaise: pr };
