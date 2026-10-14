@@ -4,6 +4,7 @@ import { computeMonth, fullPaymentPaise } from '../billing.js';
 import { addPayment, deletePayment } from '../db.js';
 import { renderBillImage, billFileName, billFingerprint } from '../billImage.js';
 import { validWaNumber, sendBillToWhatsApp } from '../waShare.js';
+import WaDirectHelp from '../components/WaDirectHelp.jsx';
 import { getCachedPhoto, putCachedPhoto } from '../billCache.js';
 import { dmy, fmtQty, mondayOffset, monthDates, paiseToInput, rupees, toPaise, todayISO, weekdaysMonFirst } from '../format.js';
 import { MonthNav } from './Hisaab.jsx';
@@ -141,7 +142,7 @@ export default function CustomerDetail({ fb, customers, days, payments, settings
             <button className="btn ghost" onClick={() => share(true)} disabled={sharing}>{t('waPickManually')}</button>
           </>
         ) : validWaNumber(customer.phone) ? (
-          <p className="muted small">{t('waDirectHint')}: +{validWaNumber(customer.phone)}</p>
+          <WaDirectHelp phone={validWaNumber(customer.phone)} />
         ) : (
           <p className="muted small">{t('waNoNumber')}</p>
         )}

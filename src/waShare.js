@@ -43,3 +43,14 @@ export async function sendBillToWhatsApp({ blob, fileName, phone }) {
   }
   return shareImage(blob, fileName);
 }
+
+/**
+ * Open the customer's WhatsApp chat (no text, no photo). WhatsApp only honours the direct-chat
+ * "jid" on a photo share when a chat with that number already exists, so for a new customer the
+ * photo share lands on "Send to…". Opening the chat once (and sending any message) fixes it.
+ */
+export async function openWhatsAppChat(phone) {
+  if (!phone) return;
+  if (Capacitor.isNativePlatform()) return WhatsAppShare.openChat({ phone });
+  window.open(`https://wa.me/${phone}`, '_blank', 'noopener');
+}

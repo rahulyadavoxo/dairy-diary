@@ -249,3 +249,5 @@ hr.sep { border: 0; border-top: 1px solid var(--line); margin: 1rem 0; }
 .tool-row .btn { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 0.85rem; padding: 0.3rem 0.4rem; }
 .tool-row .btn.on { background: var(--green); color: #fff; border-color: var(--green); }
 .filter-chips .btn { min-height: 40px; font-size: 0.9rem; }
+.wa-help { margin-top: 0.4rem; }
+.wa-help .btn { margin-top: 0.3rem; }

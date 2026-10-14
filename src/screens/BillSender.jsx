@@ -8,6 +8,7 @@ import { useLang } from '../i18n.js';
 import { computeMonth } from '../billing.js';
 import { renderBillImage, billFileName, billFingerprint } from '../billImage.js';
 import { validWaNumber, sendBillToWhatsApp, isShareCancel } from '../waShare.js';
+import WaDirectHelp from '../components/WaDirectHelp.jsx';
 import { getCachedPhoto, putCachedPhoto } from '../billCache.js';
 import { saveSettings } from '../db.js';
 import { addMonths, monthOf, todayISO, monthName, rupees } from '../format.js';
@@ -211,7 +212,7 @@ export default function BillSender({ fb, customers, days, payments, settings, on
                 </button>
               </>
             ) : validWaNumber(row.customer.phone) ? (
-              <p className="muted small" style={{ marginTop: '0.5rem' }}>{t('waDirectHint')}: +{validWaNumber(row.customer.phone)}</p>
+              <WaDirectHelp phone={validWaNumber(row.customer.phone)} />
             ) : (
               <p className="muted small" style={{ marginTop: '0.5rem' }}>{t('waNoNumber')}</p>
             )}

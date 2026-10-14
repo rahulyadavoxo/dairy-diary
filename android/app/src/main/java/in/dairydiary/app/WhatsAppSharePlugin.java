@@ -69,4 +69,22 @@ public class WhatsAppSharePlugin extends Plugin {
             call.reject("Share failed: " + e.getMessage(), "SHARE_FAILED", e);
         }
     }
+
+    /** Opens the customer's WhatsApp chat (works for any number, even with no earlier chat). No text is sent. */
+    @PluginMethod
+    public void openChat(PluginCall call) {
+        String phone = call.getString("phone");
+        if (phone == null || !phone.matches("\\d{11,15}")) { call.reject("Bad number", "BAD_NUMBER"); return; }
+        String pkg = installedPkg();
+        if (pkg == null) { call.reject("WhatsApp not installed", "NOT_INSTALLED"); return; }
+        try {
+            Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/" + phone));
+            i.setPackage(pkg);
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getActivity().startActivity(i);
+            call.resolve();
+        } catch (ActivityNotFoundException e) {
+            call.reject("WhatsApp not installed", "NOT_INSTALLED", e);
+        }
+    }
 }
