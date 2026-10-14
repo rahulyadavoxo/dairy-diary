@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useLang } from '../i18n.js';
 import { saveSettings } from '../db.js';
 import { paiseToInput, toPaise } from '../format.js';
-import { getPinHash, hashPin, savePinHash } from '../pinLock.js';
+import { getPinHash, hashPin, savePinHash, verifyPin } from '../pinLock.js';
 import DevicesCard from '../components/DevicesCard.jsx';
 
 // Single source of truth for the version (package.json, injected by vite.config.js).
@@ -17,6 +17,20 @@ export default function Settings({ fb, user, settings, displayName, setDisplayNa
   const [pin, setPin] = useState('');
   const [pinMsg, setPinMsg] = useState('');
   const [hasPin, setHasPin] = useState(() => !!getPinHash());
+  const [pinVerified, setPinVerified] = useState(false);
+
+  const verifyCurrentPin = async (e) => {
+    e.preventDefault();
+    const ok = await verifyPin(pin.trim());
+    if (ok) {
+      setPinVerified(true);
+      setPin('');
+      setPinMsg('');
+    } else {
+      setPinMsg(t('pinWrong'));
+      setTimeout(() => setPinMsg(''), 2500);
+    }
+  };
 
   const savePin = async (e) => {
     e.preventDefault();
@@ -29,6 +43,7 @@ export default function Settings({ fb, user, settings, displayName, setDisplayNa
       const h = await hashPin(p);
       savePinHash(h);
       setHasPin(true);
+      setPinVerified(false);
       setPin('');
       setPinMsg(t('pinSaved'));
     } catch (err) {
@@ -43,6 +58,8 @@ export default function Settings({ fb, user, settings, displayName, setDisplayNa
     if (!window.confirm(t('pinRemoveConfirm'))) return;
     savePinHash('');
     setHasPin(false);
+    setPinVerified(false);
+    setPin('');
     setPinMsg(t('pinRemoved'));
     setTimeout(() => setPinMsg(''), 2500);
   };
@@ -128,26 +145,44 @@ export default function Settings({ fb, user, settings, displayName, setDisplayNa
           <b>🔒 {t('totalsLock')}</b>
         </p>
         <p className="muted small">{t('totalsLockHint')}</p>
-        {hasPin ? (
-          <div className="chips">
-            <button type="button" className="btn small danger" onClick={removePin}>
-              {t('pinRemove')}
+        {hasPin && !pinVerified ? (
+          <form onSubmit={verifyCurrentPin} className="form-inline">
+            <input
+              type="password"
+              inputMode="numeric"
+              placeholder={t('pinCurrent')}
+              value={pin}
+              onChange={(e) => setPin(e.target.value)}
+              maxLength={12}
+            />
+            <button type="submit" className="btn small primary">
+              {t('pinUnlock')}
             </button>
-          </div>
-        ) : null}
-        <form onSubmit={savePin} className="form-inline">
-          <input
-            type="password"
-            inputMode="numeric"
-            placeholder={hasPin ? t('pinNew') : t('pinSet')}
-            value={pin}
-            onChange={(e) => setPin(e.target.value)}
-            maxLength={12}
-          />
-          <button type="submit" className="btn small">
-            {hasPin ? t('pinChange') : t('pinSetBtn')}
-          </button>
-        </form>
+          </form>
+        ) : (
+          <>
+            {hasPin && (
+              <div className="chips" style={{ marginBottom: '0.5rem' }}>
+                <button type="button" className="btn small danger" onClick={removePin}>
+                  {t('pinRemove')}
+                </button>
+              </div>
+            )}
+            <form onSubmit={savePin} className="form-inline">
+              <input
+                type="password"
+                inputMode="numeric"
+                placeholder={hasPin ? t('pinNew') : t('pinSet')}
+                value={pin}
+                onChange={(e) => setPin(e.target.value)}
+                maxLength={12}
+              />
+              <button type="submit" className="btn small">
+                {hasPin ? t('pinChange') : t('pinSetBtn')}
+              </button>
+            </form>
+          </>
+        )}
         {pinMsg && <p className="ok small">{pinMsg}</p>}
       </div>
 
