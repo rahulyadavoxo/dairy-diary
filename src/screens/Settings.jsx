@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useLang } from '../i18n.js';
 import { saveSettings } from '../db.js';
 import { paiseToInput, toPaise } from '../format.js';
+import { validUpiId } from '../upi.js';
 import { getPinHash, hashPin, savePinHash, verifyPin, pinWaitSeconds } from '../pinLock.js';
 import DevicesCard from '../components/DevicesCard.jsx';
 import { signOutAndWipe } from '../devices.js';
@@ -13,7 +14,7 @@ const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '
 
 export default function Settings({ fb, user, settings, displayName, setDisplayName, online, farm, farmId }) {
   const { t, lang, setLang } = useLang();
-  const [f, setF] = useState({ milkRate: '', paneerRate: '', farmName: '', phone: '' });
+  const [f, setF] = useState({ milkRate: '', paneerRate: '', farmName: '', phone: '', upiId: '' });
   const [name, setName] = useState(displayName || '');
   const [msg, setMsg] = useState('');
   const [pin, setPin] = useState('');
@@ -79,15 +80,22 @@ export default function Settings({ fb, user, settings, displayName, setDisplayNa
       paneerRate: paiseToInput(settings.paneerRatePaise),
       farmName: settings.farmName || '',
       phone: settings.phone || '',
+      upiId: settings.upiId || '',
     });
-  }, [settings.milkRatePaise, settings.paneerRatePaise, settings.farmName, settings.phone]);
+  }, [settings.milkRatePaise, settings.paneerRatePaise, settings.farmName, settings.phone, settings.upiId]);
 
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
 
   const save = (e) => {
     e.preventDefault();
     // A blank (or invalid) rate box keeps the old rate instead of silently saving ₹0.
-    const data = { farmName: f.farmName.trim(), phone: f.phone.trim() };
+    const upiRaw = f.upiId.trim();
+    if (upiRaw && !validUpiId(upiRaw)) {
+      setMsg(t('upiInvalid'));
+      setTimeout(() => setMsg(''), 2500);
+      return;
+    }
+    const data = { farmName: f.farmName.trim(), phone: f.phone.trim(), upiId: upiRaw };
     const mr = toPaise(f.milkRate);
     const pr = toPaise(f.paneerRate);
     if (mr !== null && mr > 0) data.milkRatePaise = mr;
@@ -133,6 +141,11 @@ export default function Settings({ fb, user, settings, displayName, setDisplayNa
         {t('farmPhone')}
         <input type="tel" inputMode="tel" value={f.phone} onChange={set('phone')} />
       </label>
+      <label>
+        {t('upiId')}
+        <input value={f.upiId} onChange={set('upiId')} placeholder="name@okaxis" autoCapitalize="none" autoCorrect="off" spellCheck={false} />
+      </label>
+      <p className="muted small">{t('upiIdHint')}</p>
       <label>
         {t('myName')}
         <input value={name} onChange={(e) => setName(e.target.value)} />

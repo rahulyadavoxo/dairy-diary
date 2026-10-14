@@ -7,6 +7,7 @@ import { validWaNumber, sendBillToWhatsApp } from '../waShare.js';
 import { getCachedPhoto, putCachedPhoto } from '../billCache.js';
 import { dmy, fmtQty, mondayOffset, monthDates, paiseToInput, rupees, toPaise, todayISO, weekdaysMonFirst } from '../format.js';
 import { MonthNav } from './Hisaab.jsx';
+import { validUpiId, upiLink, qrDataUrl } from '../upi.js';
 
 /** The user closed the share sheet: not an error, and not a reason to open WhatsApp anyway. */
 export const isShareCancel = (e) => !!e && (e.name === 'AbortError' || /cancel/i.test(String(e.message || '')));
@@ -75,6 +76,14 @@ export default function CustomerDetail({ fb, customers, days, payments, settings
       setSharing(false);
     }
   };
+
+  // UPI QR for the amount typed above (shown at the bottom of the payment card)
+  const upiId = validUpiId(settings.upiId);
+  const qrAmount = toPaise(amount);
+  const qrLink = mode === 'upi' && upiId && qrAmount > 0
+    ? upiLink({ upiId, payeeName: settings.farmName || 'Dairy', amountPaise: qrAmount, note: `${settings.farmName || 'Dairy'} - ${customer.name}` })
+    : null;
+  const qrSrc = qrLink ? qrDataUrl(qrLink) : null;
 
   const dates = monthDates(month);
   const blanks = Array.from({ length: mondayOffset(month) }); // Monday-first, like the other calendars
@@ -189,6 +198,23 @@ export default function CustomerDetail({ fb, customers, days, payments, settings
         <button className="btn primary big" type="submit">
           {t('addPayment')}
         </button>
+        {mode === 'upi' && (
+          <div className="upi-qr" data-testid="upi-qr-box">
+            {!upiId ? (
+              <p className="muted small">{t('upiNotSet')}</p>
+            ) : !qrSrc ? (
+              <p className="muted small">{t('upiEnterAmount')}</p>
+            ) : (
+              <>
+                <p className="small"><b>{t('upiScanToPay')}</b></p>
+                <img src={qrSrc} alt="UPI QR" data-testid="upi-qr" style={{ width: '100%', maxWidth: 280, imageRendering: 'pixelated', background: '#fff', borderRadius: 12 }} />
+                <p className="kv big"><span>{t('amount')}</span><b>{rupees(qrAmount)}</b></p>
+                <p className="muted small">{upiId}</p>
+                <p className="muted small">{t('upiAfterPaid')}</p>
+              </>
+            )}
+          </div>
+        )}
       </form>
 
       <h2>{t('payments')}</h2>
