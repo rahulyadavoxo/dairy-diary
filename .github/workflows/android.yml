@@ -30,7 +30,15 @@ jobs:
           else
             echo "::warning::DD_KEYSTORE_B64 secret not set - APK will not install over the farm app"
           fi
-      - run: cd android && chmod +x gradlew && ./gradlew assembleDebug
+      - name: Gradle assembleDebug
+        run: |
+          cd android && chmod +x gradlew
+          set -o pipefail
+          if ! ./gradlew assembleDebug --stacktrace 2>&1 | tee "$RUNNER_TEMP/gradle.log"; then
+            # Surface the real error as annotations (readable without log access)
+            grep -E "FAILURE|What went wrong|Caused by|error:|Exception|Keystore|keystore|password" "$RUNNER_TEMP/gradle.log" | head -15 | while IFS= read -r l; do echo "::error::$l"; done
+            exit 1
+          fi
         env:
           DD_KEY_PASS: ${{ secrets.DD_KEY_PASS }}
       - uses: actions/upload-artifact@v7
