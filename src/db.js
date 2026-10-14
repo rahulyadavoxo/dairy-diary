@@ -1,4 +1,5 @@
 // Firestore data layer.
+import { deleteCachedPhoto } from './billCache.js';
 //
 // All data lives under farms/{farmId}/ (see src/devices.js and firestore.rules); fb.farmId is
 // set once this phone is an authorized device of the farm. Paths below are relative to it:
@@ -98,6 +99,9 @@ export function saveEntries(fb, date, rows, editorName) {
   for (const [cid, e] of Object.entries(rows)) {
     entries[cid] = { ...e, updatedBy: editorName, updatedAt: now };
   }
+  // Invalidate cached bill photos for this month (they'll regenerate)
+  const month = date.slice(0, 7);
+  for (const cid of Object.keys(rows)) deleteCachedPhoto(cid, month);
   return log(
     fsMod.setDoc(
       fdoc(fb, 'days', date),
@@ -110,6 +114,7 @@ export function saveEntries(fb, date, rows, editorName) {
 export function addPayment(fb, p) {
   const { fsMod } = fb;
   const ref = fsMod.doc(fcol(fb, 'payments'));
+  if (p.customerId && p.date) deleteCachedPhoto(p.customerId, p.date.slice(0, 7));
   log(fsMod.setDoc(ref, { ...p, createdAt: Date.now() }));
   return ref.id;
 }
@@ -123,6 +128,7 @@ export function deletePayment(fb, id) {
 export async function deleteEntry(fb, date, customerId, editorName) {
   const { fsMod } = fb;
   const now = Date.now();
+  deleteCachedPhoto(customerId, date.slice(0, 7));
   // updateDoc (not setDoc+merge) is the reliable way to delete a nested field
   await fsMod.updateDoc(fdoc(fb, 'days', date), {
     [`entries.${customerId}`]: fsMod.deleteField(),

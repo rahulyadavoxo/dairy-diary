@@ -4,6 +4,7 @@ import { computeMonth, fullPaymentPaise } from '../billing.js';
 import { addPayment, deletePayment } from '../db.js';
 import { billText, waLink } from '../bill.js';
 import { renderBillImage, shareImage, billFileName } from '../billImage.js';
+import { getCachedPhoto, putCachedPhoto, deleteCachedPhoto } from '../billCache.js';
 import { dmy, firstWeekday, fmtQty, monthDates, paiseToInput, rupees, toPaise, todayISO } from '../format.js';
 import { MonthNav } from './Hisaab.jsx';
 
@@ -48,7 +49,13 @@ export default function CustomerDetail({ fb, customers, days, payments, settings
     setSharing(true);
     setShareErr('');
     try {
-      const blob = await renderBillImage(row, month, settings);
+      // 1) Use the pre-generated saved photo if available (instant, reliable)
+      let blob = await getCachedPhoto(customerId, month);
+      // 2) Otherwise render on demand and cache it
+      if (!blob) {
+        blob = await renderBillImage(row, month, settings);
+        putCachedPhoto(customerId, month, blob);
+      }
       await shareImage(blob, billFileName(customer.name, month));
     } catch (e) {
       console.error('[share-bill] photo failed, falling back to text', e);
@@ -187,7 +194,10 @@ export default function CustomerDetail({ fb, customers, days, payments, settings
             <button
               className="btn small ghost"
               onClick={() => {
-                if (window.confirm(t('confirmDelete'))) deletePayment(fb, p.id);
+                if (window.confirm(t('confirmDelete'))) {
+                  deleteCachedPhoto(p.customerId, p.date.slice(0, 7));
+                  deletePayment(fb, p.id);
+                }
               }}
             >
               {t('deletePayment')}

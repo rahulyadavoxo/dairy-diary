@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { useLang } from '../i18n.js';
 import { computeMonth } from '../billing.js';
 import { renderBillImage, shareImage, billFileName } from '../billImage.js';
+import { putCachedPhoto } from '../billCache.js';
 import { monthName, rupees } from '../format.js';
 
 export default function BillPhotos({ customers, days, payments, settings, month, onClose }) {
@@ -27,6 +28,8 @@ export default function BillPhotos({ customers, days, payments, settings, month,
     for (const r of targets) {
       // eslint-disable-next-line no-await-in-loop
       const blob = await renderBillImage(r, month, settings);
+      // eslint-disable-next-line no-await-in-loop
+      await putCachedPhoto(r.customerId, month, blob);
       out.push({ id: r.customerId, name: r.customer.name, url: URL.createObjectURL(blob), blob });
       setPhotos([...out]);
     }

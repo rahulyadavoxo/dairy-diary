@@ -1,6 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useLang } from '../i18n.js';
 import { computeMonth, sortByDue } from '../billing.js';
+import { getPinHash, verifyPin } from '../pinLock.js';
+import { preGenerateBillPhotos } from '../billPreGen.js';
 import { addMonths, fmtQty, monthDates, monthName, rupees, todayISO, monthOf } from '../format.js';
 import BillSender, { shouldPromptBills } from './BillSender.jsx';
 import BillPhotos from './BillPhotos.jsx';
@@ -44,17 +46,50 @@ export default function Hisaab({ fb, customers, days, payments, settings, month,
       return true;
     }
   });
+  const [pinOpen, setPinOpen] = useState(false);
+  const [pinInput, setPinInput] = useState('');
+  const [pinErr, setPinErr] = useState('');
+  const pinLocked = !!getPinHash(settings);
+
+  const doHideShow = (v) => {
+    setShowTotals(v);
+    try {
+      localStorage.setItem('dd_show_totals', v ? '1' : '0');
+    } catch {}
+  };
+
   const toggleTotals = () => {
-    setShowTotals((v) => {
-      const nv = !v;
-      try {
-        localStorage.setItem('dd_show_totals', nv ? '1' : '0');
-      } catch {}
-      return nv;
-    });
+    if (showTotals) {
+      // Hiding never needs PIN
+      doHideShow(false);
+    } else if (pinLocked) {
+      // Showing needs PIN
+      setPinInput('');
+      setPinErr('');
+      setPinOpen(true);
+    } else {
+      doHideShow(true);
+    }
+  };
+
+  const submitPin = async (e) => {
+    e.preventDefault();
+    const ok = await verifyPin(settings, pinInput.trim());
+    if (ok) {
+      setPinOpen(false);
+      doHideShow(true);
+    } else {
+      setPinErr(t('pinWrong'));
+    }
   };
   const res = useMemo(() => computeMonth({ customers, days, payments, settings, month }), [customers, days, payments, settings, month]);
   const allRows = res.rows.filter((r) => r.customer.active !== false || r.hasActivity || r.balancePaise !== 0);
+
+  // Pre-generate bill photos in the background so sharing is instant later.
+  useEffect(() => {
+    preGenerateBillPhotos(allRows, month, settings);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [month]);
   const rows = sortByDue(allRows);
   const sTotals = res.supplierTotals || { billedPaise: 0, collectedPaise: 0, pendingPaise: 0, advancePaise: 0 };
   const hasSuppliers = allRows.some((r) => r.customer.isSupplier);
@@ -92,9 +127,31 @@ export default function Hisaab({ fb, customers, days, payments, settings, month,
         </div>
         <div className="totals-head">
           <button type="button" className="btn small ghost" onClick={toggleTotals}>
-            {showTotals ? '👁️' : '👁️‍🗨️'} {showTotals ? t('hide') : t('show')}
+            {showTotals ? '👁️' : pinLocked ? '🔒' : '👁️‍🗨️'} {showTotals ? t('hide') : t('show')}
           </button>
         </div>
+        {pinOpen && (
+          <div className="card" style={{ marginBottom: '0.6rem' }}>
+            <form onSubmit={submitPin} className="form-inline">
+              <input
+                type="password"
+                inputMode="numeric"
+                placeholder={t('pinEnter')}
+                value={pinInput}
+                onChange={(e) => setPinInput(e.target.value)}
+                maxLength={12}
+                autoFocus
+              />
+              <button type="submit" className="btn small primary">
+                {t('pinUnlock')}
+              </button>
+              <button type="button" className="btn small ghost" onClick={() => setPinOpen(false)}>
+                ✕
+              </button>
+            </form>
+            {pinErr && <p className="err small">{pinErr}</p>}
+          </div>
+        )}
         {showTotals && (
           <div className="totals">
             <div className="total">
