@@ -25,9 +25,9 @@ android {
         if (fixedKey.exists()) {
             debug {
                 storeFile fixedKey
-                storePassword 'android'
-                keyAlias 'androiddebugkey'
-                keyPassword 'android'
+                storePassword 'yFEKsZ2nAQ7aa7fyAWnWAK9W'
+                keyAlias 'dairydiary'
+                keyPassword 'yFEKsZ2nAQ7aa7fyAWnWAK9W'
             }
         }
     }
