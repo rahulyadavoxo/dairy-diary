@@ -118,3 +118,15 @@ export function deletePayment(fb, id) {
   const { fsMod } = fb;
   return log(fsMod.deleteDoc(fdoc(fb, 'payments', id)));
 }
+
+/** Delete one customer's entry for a date (removes it from the day's entries map). */
+export async function deleteEntry(fb, date, customerId, editorName) {
+  const { fsMod } = fb;
+  const now = Date.now();
+  // updateDoc (not setDoc+merge) is the reliable way to delete a nested field
+  await fsMod.updateDoc(fdoc(fb, 'days', date), {
+    [`entries.${customerId}`]: fsMod.deleteField(),
+    lastEditedBy: editorName,
+    lastEditedAt: now,
+  });
+}

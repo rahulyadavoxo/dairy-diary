@@ -109,18 +109,30 @@ export function computeMonth({ customers = [], days = {}, payments = [], setting
   }
 
   let billed = 0, collected = 0, pending = 0, advance = 0;
+  let sBilled = 0, sPaid = 0, sPending = 0, sAdvance = 0;
   const list = [];
   for (const row of rows.values()) {
     row.billedPaise = row.milkPaise + row.paneerPaise;
     row.balancePaise = row.previousDuePaise + row.billedPaise - row.paidPaise;
     row.payments.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
-    billed += row.billedPaise;
-    collected += row.paidPaise;
-    if (row.balancePaise > 0) pending += row.balancePaise;
-    else advance += -row.balancePaise;
+    if (row.customer && row.customer.isSupplier) {
+      sBilled += row.billedPaise;
+      sPaid += row.paidPaise;
+      if (row.balancePaise > 0) sPending += row.balancePaise;
+      else sAdvance += -row.balancePaise;
+    } else {
+      billed += row.billedPaise;
+      collected += row.paidPaise;
+      if (row.balancePaise > 0) pending += row.balancePaise;
+      else advance += -row.balancePaise;
+    }
     list.push(row);
   }
-  return { rows: list, totals: { billedPaise: billed, collectedPaise: collected, pendingPaise: pending, advancePaise: advance } };
+  return {
+    rows: list,
+    totals: { billedPaise: billed, collectedPaise: collected, pendingPaise: pending, advancePaise: advance },
+    supplierTotals: { billedPaise: sBilled, collectedPaise: sPaid, pendingPaise: sPending, advancePaise: sAdvance },
+  };
 }
 
 /** Sort rows by highest balance due first, then by name. */

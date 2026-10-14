@@ -5,6 +5,36 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1" />
     <meta name="theme-color" content="#1f6f43" />
     <title>Dairy Diary</title>
+    <script>
+    /* Dairy Diary OTA bootstrap: registers the update service worker and asks it
+       to check for updates at most once a day. Everything is fail-safe — if any
+       step throws, the app below loads normally from the APK's bundled files. */
+    (function () {
+      try {
+        if (!('serviceWorker' in navigator)) return;
+        var DAILY_MS = 24 * 3600 * 1000;
+        function poke(reg) {
+          try {
+            var last = parseInt(localStorage.getItem('dd_ota_check') || '0', 10);
+            if (Date.now() - last > DAILY_MS) {
+              localStorage.setItem('dd_ota_check', String(Date.now()));
+              var send = function () {
+                try {
+                  var c = reg.active;
+                  if (c) c.postMessage({ type: 'dd-check-update' });
+                } catch (e) {}
+              };
+              if (reg.active) send();
+              else if (navigator.serviceWorker && navigator.serviceWorker.ready) {
+                navigator.serviceWorker.ready.then(send).catch(function () {});
+              }
+            }
+          } catch (e) {}
+        }
+        navigator.serviceWorker.register('./sw.js').then(poke).catch(function () {});
+      } catch (e) {}
+    })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

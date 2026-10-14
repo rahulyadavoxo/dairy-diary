@@ -3,6 +3,7 @@ import { useLang } from '../i18n.js';
 import { computeMonth, fullPaymentPaise } from '../billing.js';
 import { addPayment, deletePayment } from '../db.js';
 import { billText, waLink } from '../bill.js';
+import { renderBillImage, shareImage, billFileName } from '../billImage.js';
 import { dmy, firstWeekday, fmtQty, monthDates, paiseToInput, rupees, toPaise, todayISO } from '../format.js';
 import { MonthNav } from './Hisaab.jsx';
 
@@ -40,10 +41,27 @@ export default function CustomerDetail({ fb, customers, days, payments, settings
     setAmount('');
   };
 
-  const share = () => {
-    const url = waLink(customer.phone, billText(row, month, settings));
-    // Capacitor hands external https links to Android (opens WhatsApp); in a browser it opens wa.me.
-    window.location.href = url;
+  const [sharing, setSharing] = useState(false);
+  const [shareErr, setShareErr] = useState('');
+  const share = async () => {
+    if (sharing) return;
+    setSharing(true);
+    setShareErr('');
+    try {
+      const blob = await renderBillImage(row, month, settings);
+      await shareImage(blob, billFileName(customer.name, month));
+    } catch (e) {
+      console.error('[share-bill] photo failed, falling back to text', e);
+      // Fallback: share as text via WhatsApp link
+      try {
+        const url = waLink(customer.phone, billText(row, month, settings));
+        window.location.href = url;
+      } catch (e2) {
+        setShareErr(t('shareFailed'));
+      }
+    } finally {
+      setSharing(false);
+    }
   };
 
   const dates = monthDates(month);
@@ -90,10 +108,11 @@ export default function CustomerDetail({ fb, customers, days, payments, settings
           <span>{row.balancePaise >= 0 ? t('balanceDue') : t('advance')}</span>
           <b className={row.balancePaise > 0 ? 'due' : 'clear'}>{rupees(Math.abs(row.balancePaise))}</b>
         </div>
-        <button className="btn whatsapp big" onClick={share}>
-          {t('shareWhatsApp')}
+        <button className="btn whatsapp big" onClick={share} disabled={sharing}>
+          {sharing ? t('loading') : t('shareWhatsApp')}
         </button>
-        {!customer.phone && <p className="muted small">{t('noPhone')}</p>}
+        {shareErr && <p className="err small">{shareErr}</p>}
+        <p className="muted small">{t('waSharePhotoHint')}</p>
       </div>
 
       <h2>{t('calendar')}</h2>

@@ -5,16 +5,20 @@ import { listenAll } from './db.js';
 import { todayISO, monthOf } from './format.js';
 import NotConfigured from './screens/NotConfigured.jsx';
 import Login from './screens/Login.jsx';
-import Register from './screens/Register.jsx';
+import Register from './screens/RegisterView.jsx';
+import ImportReview from './screens/ImportReview.jsx';
 import Customers from './screens/Customers.jsx';
 import Hisaab from './screens/Hisaab.jsx';
 import CustomerDetail from './screens/CustomerDetail.jsx';
+import Delivery from './screens/Delivery.jsx';
 import Settings from './screens/Settings.jsx';
 import Welcome from './screens/Welcome.jsx';
 import JoinFarm from './screens/JoinFarm.jsx';
 import SetupFarm from './screens/SetupFarm.jsx';
 import Removed from './screens/Removed.jsx';
 import { listenFarm, deviceStatus, loadFarmId, wipeLocalData } from './devices.js';
+import { App as CapApp } from '@capacitor/app';
+import { handleBack, pushBackHandler } from './backStack.js';
 
 const REMOVED_KEY = 'dd_removed';
 const flagGet = () => {
@@ -174,6 +178,8 @@ function Main({ fb, user, farm, farmId }) {
   const { t } = useLang();
   const [tab, setTab] = useState('register');
   const [detail, setDetail] = useState(null); // { customerId, month }
+  const [delivery, setDelivery] = useState(false);
+  const [importReview, setImportReview] = useState(false);
   const [settings, setSettings] = useState({});
   const [customers, setCustomers] = useState([]);
   const [days, setDays] = useState({});
@@ -212,29 +218,32 @@ function Main({ fb, user, farm, farmId }) {
     };
   }, []);
 
-  // Android hardware back button
+  // Android hardware back button: close topmost overlay first (via backStack),
+  // then app-level screens, else exit.
   const navRef = useRef({});
-  navRef.current = { tab, detail };
+  navRef.current = { tab, detail, delivery, importReview };
   useEffect(() => {
     let handle;
-    import('@capacitor/app')
-      .then(({ App: CapApp }) =>
-        CapApp.addListener('backButton', () => {
-          const { tab: tb, detail: dt } = navRef.current;
-          if (dt) setDetail(null);
-          else if (tb !== 'register') setTab('register');
-          else CapApp.exitApp();
-        }),
-      )
-      .then((h) => (handle = h))
-      .catch(() => {});
+    CapApp.addListener('backButton', () => {
+      if (handleBack()) return; // a nested overlay handled it
+      const { tab: tb, detail: dt, delivery: dl, importReview: ir } = navRef.current;
+      if (dl) setDelivery(false);
+      else if (ir) setImportReview(false);
+      else if (dt) setDetail(null);
+      else if (tb !== 'register') setTab('register');
+      else CapApp.exitApp();
+    }).then((h) => (handle = h));
     return () => handle && handle.remove && handle.remove();
   }, []);
 
   const data = { fb, user, settings, customers, days, pendingDays, payments, displayName, setDisplayName, online, farm, farmId };
 
   let screen;
-  if (detail) {
+  if (delivery) {
+    screen = <Delivery {...data} onBack={() => setDelivery(false)} />;
+  } else if (importReview) {
+    screen = <ImportReview {...data} onDone={() => setImportReview(false)} />;
+  } else if (detail) {
     screen = (
       <CustomerDetail
         {...data}
@@ -244,7 +253,7 @@ function Main({ fb, user, farm, farmId }) {
         onBack={() => setDetail(null)}
       />
     );
-  } else if (tab === 'register') screen = <Register {...data} />;
+  } else if (tab === 'register') screen = <Register {...data} onDelivery={() => setDelivery(true)} onImportReview={() => setImportReview(true)} />;
   else if (tab === 'hisaab')
     screen = <Hisaab {...data} month={month} setMonth={setMonth} openCustomer={(id) => setDetail({ customerId: id, month })} />;
   else if (tab === 'customers') screen = <Customers {...data} openCustomer={(id) => setDetail({ customerId: id, month })} />;
@@ -268,6 +277,8 @@ function Main({ fb, user, farm, farmId }) {
             className={'tab' + (tab === id && !detail ? ' active' : '')}
             onClick={() => {
               setDetail(null);
+              setDelivery(false);
+              setImportReview(false);
               setTab(id);
             }}
           >

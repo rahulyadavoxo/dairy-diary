@@ -1,14 +1,13 @@
 // ============================================================
-//  PASTE YOUR FIREBASE WEB CONFIG HERE (the only file to edit)
-//  Firebase console > Project settings > General > Your apps >
-//  Web app > "SDK setup and configuration" > Config
-//  Replace every value below, keep the quotes, then rebuild.
+//  Firebase web config — Dairy Diary ("My First Project", Mumbai).
+//  These keys are public by design (they ship inside the app);
+//  security is enforced by firestore.rules (device list).
 // ============================================================
 export const firebaseConfig = {
-  apiKey: 'PASTE_YOUR_API_KEY',
-  authDomain: 'PASTE_YOUR_PROJECT.firebaseapp.com',
-  projectId: 'PASTE_YOUR_PROJECT_ID',
-  storageBucket: 'PASTE_YOUR_PROJECT.appspot.com',
-  messagingSenderId: 'PASTE_YOUR_SENDER_ID',
-  appId: 'PASTE_YOUR_APP_ID',
+  apiKey: 'AIzaSyC7JXLoiAi2yxGkvL3gEW6BCqqoSTU5Qxk',
+  authDomain: 'project-c9157c64-e3e6-4b08-89f.firebaseapp.com',
+  projectId: 'project-c9157c64-e3e6-4b08-89f',
+  storageBucket: 'project-c9157c64-e3e6-4b08-89f.firebasestorage.app',
+  messagingSenderId: '1037020881724',
+  appId: '1:1037020881724:web:576a3558b9b6359d7d7439',
 };

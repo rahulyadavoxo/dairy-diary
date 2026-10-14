@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLang } from '../i18n.js';
 import { saveEntries } from '../db.js';
-import { milkRateFor, paneerRateFor, toMilli } from '../billing.js';
+import { toMilli } from '../billing.js';
+import { normaliseEntry } from '../entry.js';
 import { addDays, dmy, fmtQty, timeHM, todayISO } from '../format.js';
 
 export function sortCustomers(list) {
@@ -16,21 +17,42 @@ export function isPaused(c, date) {
 }
 
 function defaultRow(c, date) {
-  return { milkL: Number(c.usualL) || 0, paneerKg: 0, skip: isPaused(c, date), note: '' };
+  return { milkL: Number(c.usualL) || 0, milkMorningL: 0, milkEveningL: 0, paneerKg: 0, skip: isPaused(c, date), note: '' };
+}
+
+const SESSION_KEY = 'dd_session';
+function defaultSession() {
+  try {
+    const s = localStorage.getItem(SESSION_KEY);
+    if (s === 'morning' || s === 'evening' || s === 'total') return s;
+  } catch {
+    /* ignore */
+  }
+  return new Date().getHours() < 13 ? 'morning' : 'evening';
 }
 
 const AUTOSAVE_MS = 1200;
 
-export default function Register({ fb, customers, days, pendingDays, settings, displayName }) {
+export default function Register({ fb, customers, days, pendingDays, settings, displayName, onDelivery }) {
   const { t } = useLang();
   const [date, setDate] = useState(todayISO());
   const [drafts, setDrafts] = useState({});
   const [query, setQuery] = useState('');
   const [openPaneer, setOpenPaneer] = useState({});
   const [flash, setFlash] = useState('');
+  const [session, setSession] = useState(defaultSession);
   const dirty = useRef({}); // cid -> row awaiting autosave
   const timer = useRef(null);
   const ctx = useRef({});
+
+  const pickSession = (s) => {
+    setSession(s);
+    try {
+      localStorage.setItem(SESSION_KEY, s);
+    } catch {
+      /* ignore */
+    }
+  };
 
   const day = days[date] || null;
   const saved = (day && day.entries) || {};
@@ -39,14 +61,7 @@ export default function Register({ fb, customers, days, pendingDays, settings, d
 
   const rowFor = (c) => drafts[c.id] || saved[c.id] || defaultRow(c, date);
 
-  const normalise = (c, r, st) => ({
-    milkL: Math.max(0, toMilli(r.milkL) / 1000),
-    paneerKg: Math.max(0, toMilli(r.paneerKg) / 1000),
-    skip: !!r.skip,
-    note: r.note || '',
-    milkRatePaise: milkRateFor(c, st, null),
-    paneerRatePaise: paneerRateFor(st, null),
-  });
+  const normalise = (c, r, st) => normaliseEntry(c, r, st);
 
   ctx.current = { date, displayName, byId, settings };
 
@@ -89,6 +104,24 @@ export default function Register({ fb, customers, days, pendingDays, settings, d
     timer.current = setTimeout(flush, AUTOSAVE_MS);
   };
 
+  /** Write a quantity into the active session field, keeping milkL (= total) in sync. */
+  const updateQty = (c, v) => {
+    const r = rowFor(c);
+    const val = Math.max(0, toMilli(v) / 1000);
+    if (session === 'morning') {
+      const e = toMilli(r.milkEveningL) / 1000;
+      update(c, { milkMorningL: val, milkL: Math.round((val + e) * 1000) / 1000 });
+    } else if (session === 'evening') {
+      const m = toMilli(r.milkMorningL) / 1000;
+      update(c, { milkEveningL: val, milkL: Math.round((m + val) * 1000) / 1000 });
+    } else {
+      // Total mode: sessions not tracked (null), milkL is the whole day's quantity.
+      update(c, { milkL: val, milkMorningL: null, milkEveningL: null });
+    }
+  };
+
+  const qtyFor = (r) => (session === 'morning' ? r.milkMorningL || 0 : session === 'evening' ? r.milkEveningL || 0 : r.milkL);
+
   const saveAll = () => {
     active.forEach((c) => {
       dirty.current[c.id] = rowFor(c);
@@ -121,9 +154,25 @@ export default function Register({ fb, customers, days, pendingDays, settings, d
           </button>
           <label className="date-pick">
             <span>{dmy(date)}</span>
-            <input type="date" value={date} onChange={(e) => e.target.value && changeDate(e.target.value)} />
+            <input
+              type="date"
+              value={date}
+              max={todayISO()}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v) changeDate(v > todayISO() ? todayISO() : v);
+              }}
+            />
           </label>
-          <button className="btn icon" onClick={() => changeDate(addDays(date, 1))} aria-label={t('nextDay')}>
+          <button
+            className="btn icon"
+            disabled={date === todayISO()}
+            onClick={() => {
+              const n = addDays(date, 1);
+              if (n <= todayISO()) changeDate(n);
+            }}
+            aria-label={t('nextDay')}
+          >
             ▶
           </button>
           {date !== todayISO() && (
@@ -148,6 +197,25 @@ export default function Register({ fb, customers, days, pendingDays, settings, d
             </>
           )}
         </p>
+        <div className="chips session-chips" role="tablist" aria-label={t('session')}>
+          {['morning', 'evening', 'total'].map((s) => (
+            <button
+              key={s}
+              type="button"
+              role="tab"
+              aria-selected={session === s}
+              className={'btn chip' + (session === s ? ' on' : '')}
+              onClick={() => pickSession(s)}
+            >
+              {t('session_' + s)}
+            </button>
+          ))}
+          {onDelivery && (
+            <button type="button" className="btn chip delivery-chip" onClick={onDelivery}>
+              🚚 {t('delivery')}
+            </button>
+          )}
+        </div>
       </header>
 
       {!settings.milkRatePaise && <p className="card warn small">{t('rateMissing')}</p>}
@@ -175,21 +243,21 @@ export default function Register({ fb, customers, days, pendingDays, settings, d
               </div>
               <div className="row-controls">
                 <div className="stepper">
-                  <button className="btn step" disabled={r.skip} onClick={() => update(c, { milkL: Math.max(0, (toMilli(r.milkL) - 500) / 1000) })}>
+                  <button className="btn step" disabled={r.skip} onClick={() => updateQty(c, (toMilli(qtyFor(r)) - 250) / 1000)}>
                     −
                   </button>
                   <input
                     className="qty"
                     type="number"
                     inputMode="decimal"
-                    step="0.5"
+                    step="0.25"
                     min="0"
                     disabled={r.skip}
-                    value={r.milkL}
-                    onChange={(e) => update(c, { milkL: e.target.value })}
+                    value={qtyFor(r)}
+                    onChange={(e) => updateQty(c, e.target.value)}
                   />
                   <span className="unit">{t('litre')}</span>
-                  <button className="btn step" disabled={r.skip} onClick={() => update(c, { milkL: (toMilli(r.milkL) + 500) / 1000 })}>
+                  <button className="btn step" disabled={r.skip} onClick={() => updateQty(c, (toMilli(qtyFor(r)) + 250) / 1000)}>
                     +
                   </button>
                 </div>

@@ -1,14 +1,26 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import { useState } from 'react';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
-import App from '../src/App.jsx';
+import { LangContext, loadLang, saveLang, makeT } from '../src/i18n.js';
+import NotConfigured from '../src/screens/NotConfigured.jsx';
 import { isFirebaseConfigured } from '../src/firebase.js';
 import { STRINGS } from '../src/i18n.js';
 import { billText, waLink } from '../src/bill.js';
 import { computeMonth } from '../src/billing.js';
 
 describe('Firebase placeholder detection', () => {
-  it('treats the shipped placeholder config as NOT configured', () => {
-    expect(isFirebaseConfigured()).toBe(false);
+  it('rejects a placeholder-shaped config', () => {
+    expect(
+      isFirebaseConfigured({
+        apiKey: 'PASTE_YOUR_API_KEY',
+        authDomain: 'PASTE_YOUR_PROJECT.firebaseapp.com',
+        projectId: 'PASTE_YOUR_PROJECT_ID',
+        appId: 'PASTE_YOUR_APP_ID',
+      }),
+    ).toBe(false);
+  });
+  it('accepts the shipped config (real Firebase project)', () => {
+    expect(isFirebaseConfigured()).toBe(true);
   });
   it('accepts a real-looking config', () => {
     expect(
@@ -21,20 +33,33 @@ describe('Firebase placeholder detection', () => {
   });
 });
 
+function NotConfiguredHarness() {
+  const [lang, setLangState] = useState(loadLang());
+  const setLang = (l) => {
+    saveLang(l);
+    setLangState(l);
+  };
+  return (
+    <LangContext.Provider value={{ lang, setLang, t: makeT(lang) }}>
+      <NotConfigured />
+    </LangContext.Provider>
+  );
+}
+
 describe('Not-configured screen (smoke)', () => {
   beforeEach(() => {
     cleanup();
     localStorage.clear();
   });
   it('renders in Hindi by default, toggles to English and remembers it', () => {
-    render(<App />);
+    render(<NotConfiguredHarness />);
     expect(screen.getByTestId('not-configured')).toBeTruthy();
     expect(screen.getByText(STRINGS.hi.notConfiguredTitle)).toBeTruthy();
     fireEvent.click(screen.getByText(STRINGS.hi.langToggle));
     expect(screen.getByText(STRINGS.en.notConfiguredTitle)).toBeTruthy();
     expect(localStorage.getItem('dd_lang')).toBe('en');
     cleanup();
-    render(<App />);
+    render(<NotConfiguredHarness />);
     expect(screen.getByText(STRINGS.en.notConfiguredTitle)).toBeTruthy();
   });
 });
