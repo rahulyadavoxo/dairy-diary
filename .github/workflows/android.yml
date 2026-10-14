@@ -17,7 +17,22 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build && npx cap sync android
+      # Private signing key from repo secrets (Settings > Secrets and variables > Actions):
+      #   DD_KEYSTORE_B64 = base64 of the .p12 file, DD_KEY_PASS = its password.
+      # Without them the APK is signed with a throwaway debug key and won't update the farm phones.
+      - name: Restore signing key
+        env:
+          DD_KEYSTORE_B64: ${{ secrets.DD_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$DD_KEYSTORE_B64" ]; then
+            echo "$DD_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/dd-release.p12"
+            echo "DD_KEYSTORE=$RUNNER_TEMP/dd-release.p12" >> "$GITHUB_ENV"
+          else
+            echo "::warning::DD_KEYSTORE_B64 secret not set - APK will not install over the farm app"
+          fi
       - run: cd android && chmod +x gradlew && ./gradlew assembleDebug
+        env:
+          DD_KEY_PASS: ${{ secrets.DD_KEY_PASS }}
       - uses: actions/upload-artifact@v4
         with:
           name: dairy-diary-debug-apk

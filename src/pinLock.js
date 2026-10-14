@@ -89,3 +89,13 @@ export function migrateLegacyPin(settings) {
     return false;
   }
 }
+
+/** True once this phone has its own copy (or its own choice) of the PIN, so the old synced
+ *  settings.totalsPinHash is no longer needed and can be deleted from Firestore. */
+export function legacyPinCleared() {
+  try {
+    return localStorage.getItem(MIGRATED_KEY) === '1';
+  } catch {
+    return false;
+  }
+}

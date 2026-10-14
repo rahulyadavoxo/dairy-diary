@@ -7,8 +7,8 @@ android {
         applicationId "in.dairydiary.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 6
-        versionName "1.9.6"
+        versionCode 7
+        versionName "1.9.7"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -17,18 +17,26 @@ android {
         }
     }
     signingConfigs {
-        // Fixed debug key kept in the repo so every rebuild installs as an UPDATE over the old app.
-        // The file used to be excluded by .gitignore (*.keystore), so a fresh clone / the GitHub
-        // workflow failed with "Keystore file ... not found". Now: use it when present, otherwise
-        // fall back to the standard Android debug key so the build never breaks.
-        def fixedKey = file('dairy-diary-debug.keystore')
-        if (fixedKey.exists()) {
+        // The farm's signing key is PRIVATE and never committed (anyone holding it could ship an
+        // "update" over the installed app). Supply it from outside the repo:
+        //   DD_KEYSTORE  = path to the .p12/.jks file   (env var or -PDD_KEYSTORE=...)
+        //   DD_KEY_PASS  = its store/key password        (env var or -PDD_KEY_PASS=...)
+        //   DD_KEY_ALIAS = key alias (optional, default androiddebugkey)
+        // On GitHub Actions these come from the DD_KEYSTORE_B64 / DD_KEY_PASS repo secrets.
+        // Without them the build still works, signed with the machine's standard debug key, but
+        // that APK will NOT install as an update over the farm phones' app.
+        def ddProp = { String k -> System.getenv(k) ?: project.findProperty(k) }
+        def ddStore = ddProp('DD_KEYSTORE')
+        def ddPass = ddProp('DD_KEY_PASS')
+        if (ddStore && ddPass && file(ddStore).exists()) {
             debug {
-                storeFile fixedKey
-                storePassword System.getenv('DD_KEY_PASS') ?: (project.findProperty('DD_KEY_PASS') ?: 'android')
-                keyAlias 'androiddebugkey'
-                keyPassword System.getenv('DD_KEY_PASS') ?: (project.findProperty('DD_KEY_PASS') ?: 'android')
+                storeFile file(ddStore)
+                storePassword ddPass
+                keyAlias(ddProp('DD_KEY_ALIAS') ?: 'androiddebugkey')
+                keyPassword ddPass
             }
+        } else {
+            logger.warn('Dairy Diary: DD_KEYSTORE/DD_KEY_PASS not set - signing with the local debug key (not installable over the farm app).')
         }
     }
     buildTypes {

@@ -110,3 +110,21 @@ describe('1.9.5 wrong-PIN throttle', () => {
     expect(_wait()).toBe(0);
   });
 });
+
+describe('1.9.7 hardening', () => {
+  it('legacyPinCleared is false until this phone has migrated, then true', async () => {
+    const { migrateLegacyPin, legacyPinCleared } = await import('../src/pinLock.js');
+    localStorage.clear();
+    expect(legacyPinCleared()).toBe(false);
+    migrateLegacyPin({ totalsPinHash: 'abc' });
+    expect(legacyPinCleared()).toBe(true);
+    localStorage.clear();
+  });
+  it('October import data is optional (empty when the private file is absent)', async () => {
+    const m = await import('../src/octoberImport.js');
+    expect(typeof m.OCT_IMPORT).toBe('object');
+    expect(Array.isArray(m.IMPORT_DATES)).toBe(true);
+    expect(m.parseImportValue('X')).toBe(null);
+    expect(m.parseImportValue('7+2').milkL).toBe(9);
+  });
+});

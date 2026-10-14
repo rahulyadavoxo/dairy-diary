@@ -6,7 +6,10 @@ android/.gradle/
 android/local.properties
 dist-apk/
 *.keystore
-!android/app/dairy-diary-debug.keystore
 *.jks
 android/app/release/
 .env
+*.p12
+signing/
+# Real customer data (register transcriptions) stays on the build machine only
+src/*.local.js

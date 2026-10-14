@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { LangContext, loadLang, saveLang, makeT, useLang } from './i18n.js';
 import { isFirebaseConfigured, getFirebase } from './firebase.js';
-import { listenAll } from './db.js';
+import { listenAll, saveSettings } from './db.js';
 import { todayISO, monthOf } from './format.js';
 import NotConfigured from './screens/NotConfigured.jsx';
 import Login from './screens/Login.jsx';
@@ -19,7 +19,8 @@ import Removed from './screens/Removed.jsx';
 import { listenFarm, deviceStatus, loadFarmId, wipeLocalData } from './devices.js';
 import { App as CapApp } from '@capacitor/app';
 import { handleBack, pushBackHandler } from './backStack.js';
-import { migrateLegacyPin } from './pinLock.js';
+import { migrateLegacyPin, legacyPinCleared } from './pinLock.js';
+import { IMPORT_DATES } from './octoberImport.js';
 
 const REMOVED_KEY = 'dd_removed';
 const flagGet = () => {
@@ -221,6 +222,11 @@ function Main({ fb, user, farm, farmId }) {
       listenAll(fb, {
         settings: (s) => {
           migrateLegacyPin(s); // before render, so Hisaab sees the PIN in the same update
+          // The old synced hash (unsalted SHA-256 of a 4-digit PIN) is readable by every paired
+          // phone and trivially reversible. Once copied to this phone, delete it from Firestore.
+          if (s && s.totalsPinHash && legacyPinCleared() && fb.fsMod.deleteField) {
+            saveSettings(fb, { totalsPinHash: fb.fsMod.deleteField() });
+          }
           setSettings(s);
         },
         customers: setCustomers,
@@ -289,7 +295,7 @@ function Main({ fb, user, farm, farmId }) {
         onBack={() => setDetail(null)}
       />
     );
-  } else if (tab === 'register') screen = <Register {...data} onDelivery={() => setDelivery(true)} onImportReview={() => setImportReview(true)} />;
+  } else if (tab === 'register') screen = <Register {...data} onDelivery={() => setDelivery(true)} onImportReview={IMPORT_DATES.length ? () => setImportReview(true) : undefined} />;
   else if (tab === 'hisaab')
     screen = <Hisaab {...data} month={month} setMonth={setMonth} openCustomer={(id) => setDetail({ customerId: id, month })} />;
   else if (tab === 'customers') screen = <Customers {...data} openCustomer={(id) => setDetail({ customerId: id, month })} />;
