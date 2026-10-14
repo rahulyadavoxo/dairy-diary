@@ -37,24 +37,35 @@ describe('upi helpers', () => {
   });
 });
 
-describe('payment card QR', () => {
-  it('cash: no QR box', () => {
-    render(wrap(<CustomerDetail {...props({ upiId: 'rahul@okaxis' })} />));
-    expect(screen.queryByTestId('upi-qr-box')).toBeNull();
-  });
-  it('UPI without an ID asks to set it in Settings', () => {
-    render(wrap(<CustomerDetail {...props({})} />));
-    fireEvent.click(screen.getByText(/UPI/, { selector: 'button' }));
+describe('UPI QR at the bottom of the customer page', () => {
+  const withDue = (settings) => ({ ...props(settings), days: { '2026-10-01': { entries: { c1: { milkL: 2, milkRatePaise: 6000 } } } } });
+  const amountBox = (c) => c.querySelector('form.pay input[type="number"]');
+
+  it('no UPI ID: asks to set it in Settings', () => {
+    render(wrap(<CustomerDetail {...withDue({})} />));
     expect(screen.getByText(en.upiNotSet)).toBeTruthy();
   });
-  it('UPI + amount shows the QR with the amount, after the Add payment button', () => {
-    const { container } = render(wrap(<CustomerDetail {...props({ upiId: 'rahul@okaxis' })} />));
-    fireEvent.click(screen.getByText(/UPI/, { selector: 'button' }));
-    expect(screen.getByText(en.upiEnterAmount)).toBeTruthy();
-    fireEvent.change(container.querySelector('form.pay input[type="number"]'), { target: { value: '250' } });
+  it('shows the full due by default, even in Cash mode, and is the last thing on the page', () => {
+    const { container } = render(wrap(<CustomerDetail {...withDue({ upiId: 'rahul@okaxis' })} />));
+    expect(screen.getByTestId('upi-qr-amount').textContent).toMatch(/120/);
     expect(screen.getByTestId('upi-qr').getAttribute('src')).toMatch(/^data:image/);
-    expect(screen.getByText('rahul@okaxis')).toBeTruthy();
-    const form = container.querySelector('form.pay');
-    expect(form.lastElementChild.getAttribute('data-testid')).toBe('upi-qr-box');
+    expect(container.firstChild.lastElementChild.getAttribute('data-testid')).toBe('upi-qr-box');
+  });
+  it('follows the typed amount live and falls back to the due when cleared', () => {
+    const { container } = render(wrap(<CustomerDetail {...withDue({ upiId: 'rahul@okaxis' })} />));
+    const src0 = screen.getByTestId('upi-qr').getAttribute('src');
+    fireEvent.change(amountBox(container), { target: { value: '50' } });
+    expect(screen.getByTestId('upi-qr-amount').textContent).toMatch(/50/);
+    const src1 = screen.getByTestId('upi-qr').getAttribute('src');
+    expect(src1).not.toBe(src0);
+    fireEvent.change(amountBox(container), { target: { value: '75.5' } });
+    expect(screen.getByTestId('upi-qr-amount').textContent).toMatch(/75\.50/);
+    expect(screen.getByTestId('upi-qr').getAttribute('src')).not.toBe(src1);
+    fireEvent.change(amountBox(container), { target: { value: '' } });
+    expect(screen.getByTestId('upi-qr').getAttribute('src')).toBe(src0);
+  });
+  it('nothing due and nothing typed: says so', () => {
+    render(wrap(<CustomerDetail {...props({ upiId: 'rahul@okaxis' })} />));
+    expect(screen.getByText(en.upiNoDue)).toBeTruthy();
   });
 });

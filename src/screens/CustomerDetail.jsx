@@ -77,13 +77,15 @@ export default function CustomerDetail({ fb, customers, days, payments, settings
     }
   };
 
-  // UPI QR for the amount typed above (shown at the bottom of the payment card)
+  // UPI QR at the very bottom of the page. Amount = what's typed in the payment box, else the
+  // full amount due. Recomputed on every render, so it follows the amount live.
   const upiId = validUpiId(settings.upiId);
-  const qrAmount = toPaise(amount);
-  const qrLink = mode === 'upi' && upiId && qrAmount > 0
+  const typedPaise = toPaise(amount);
+  const qrAmount = typedPaise > 0 ? typedPaise : fullPaymentPaise(row.balancePaise);
+  const qrLink = upiId && qrAmount > 0
     ? upiLink({ upiId, payeeName: settings.farmName || 'Dairy', amountPaise: qrAmount, note: `${settings.farmName || 'Dairy'} - ${customer.name}` })
     : null;
-  const qrSrc = qrLink ? qrDataUrl(qrLink) : null;
+  const qrSrc = qrLink ? qrDataUrl(qrLink) : null; // plain compute: this runs after the early return, so no hooks here
 
   const dates = monthDates(month);
   const blanks = Array.from({ length: mondayOffset(month) }); // Monday-first, like the other calendars
@@ -198,23 +200,6 @@ export default function CustomerDetail({ fb, customers, days, payments, settings
         <button className="btn primary big" type="submit">
           {t('addPayment')}
         </button>
-        {mode === 'upi' && (
-          <div className="upi-qr" data-testid="upi-qr-box">
-            {!upiId ? (
-              <p className="muted small">{t('upiNotSet')}</p>
-            ) : !qrSrc ? (
-              <p className="muted small">{t('upiEnterAmount')}</p>
-            ) : (
-              <>
-                <p className="small"><b>{t('upiScanToPay')}</b></p>
-                <img src={qrSrc} alt="UPI QR" data-testid="upi-qr" style={{ width: '100%', maxWidth: 280, imageRendering: 'pixelated', background: '#fff', borderRadius: 12 }} />
-                <p className="kv big"><span>{t('amount')}</span><b>{rupees(qrAmount)}</b></p>
-                <p className="muted small">{upiId}</p>
-                <p className="muted small">{t('upiAfterPaid')}</p>
-              </>
-            )}
-          </div>
-        )}
       </form>
 
       <h2>{t('payments')}</h2>
@@ -244,6 +229,23 @@ export default function CustomerDetail({ fb, customers, days, payments, settings
           </li>
         ))}
       </ul>
+
+      <h2>{t('upiQrTitle')}</h2>
+      <div className="card upi-qr" data-testid="upi-qr-box">
+        {!upiId ? (
+          <p className="muted small">{t('upiNotSet')}</p>
+        ) : !qrSrc ? (
+          <p className="muted small">{t('upiNoDue')}</p>
+        ) : (
+          <>
+            <p className="small"><b>{t('upiScanToPay')}</b></p>
+            <img src={qrSrc} alt="UPI QR" data-testid="upi-qr" style={{ width: '100%', maxWidth: 280, imageRendering: 'pixelated', background: '#fff', borderRadius: 12 }} />
+            <p className="kv big"><span>{t('upiPayable')}</span><b data-testid="upi-qr-amount">{rupees(qrAmount)}</b></p>
+            <p className="muted small">{upiId}</p>
+            <p className="muted small">{t('upiAfterPaid')}</p>
+          </>
+        )}
+      </div>
     </div>
   );
 }
