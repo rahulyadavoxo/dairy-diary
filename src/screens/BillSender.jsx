@@ -6,8 +6,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLang } from '../i18n.js';
 import { computeMonth } from '../billing.js';
-import { billText, waLink } from '../bill.js';
-import { renderBillImage, shareImage, billFileName, billFingerprint } from '../billImage.js';
+import { renderBillImage, billFileName, billFingerprint } from '../billImage.js';
+import { validWaNumber, sendBillToWhatsApp, isShareCancel } from '../waShare.js';
 import { getCachedPhoto, putCachedPhoto } from '../billCache.js';
 import { saveSettings } from '../db.js';
 import { addMonths, monthOf, todayISO, monthName, rupees } from '../format.js';
@@ -47,6 +47,8 @@ export default function BillSender({ fb, customers, days, payments, settings, on
   const [imgUrl, setImgUrl] = useState(null);
   const [imgBlob, setImgBlob] = useState(null);
   const [imgErr, setImgErr] = useState('');
+  const [shareErr, setShareErr] = useState('');
+  const [noNumber, setNoNumber] = useState(false);
   const curRow = idx < targets.length ? targets[idx] : null;
 
   // Render the bill image (with calendar) for preview — prefer cached photo
@@ -128,16 +130,32 @@ export default function BillSender({ fb, customers, days, payments, settings, on
   }
 
   const row = targets[idx];
-  const text = billText(row, billMonth, settings);
 
-  const sharePhoto = async () => {
+  const sharePhoto = async (pickManually = false) => {
     if (!imgBlob) return;
+    const n = validWaNumber(row.customer.phone);
+    if (!n && !pickManually) { setNoNumber(true); setShareErr(''); return; }
+    setNoNumber(false);
+    setShareErr('');
     try {
-      await shareImage(imgBlob, billFileName(row.customer.name, billMonth));
+      await sendBillToWhatsApp({
+        blob: imgBlob,
+        fileName: billFileName(row.customer.name, billMonth),
+        phone: pickManually ? null : n,
+      });
       setOpened(true);
     } catch (e) {
+      if (isShareCancel(e)) return;
       console.error('[share-bill]', e);
+      setShareErr(e && e.code === 'NOT_INSTALLED' ? t('waNotInstalled') : t('shareFailed'));
     }
+  };
+
+  const nextCustomer = () => {
+    setOpened(false);
+    setNoNumber(false);
+    setShareErr('');
+    setIdx((i) => i + 1);
   };
 
   return (
@@ -173,26 +191,33 @@ export default function BillSender({ fb, customers, days, payments, settings, on
             <button
               type="button"
               className="btn whatsapp big"
-              onClick={sharePhoto}
+              onClick={() => sharePhoto(false)}
               disabled={!imgBlob}
             >
               📤 {t('waSharePhoto')}
             </button>
-            <p className="muted small" style={{ marginTop: '0.5rem' }}>{t('waSharePhotoHint')}</p>
-            <button
-              type="button"
-              className="btn small ghost"
-              onClick={() => {
-                window.location.href = waLink(row.customer.phone, text);
-                setOpened(true);
-              }}
-              style={{ marginTop: '0.5rem' }}
-            >
-              {t('waOpenChatText')}
-            </button>
+            {shareErr && <p className="err small">{shareErr}</p>}
+            {noNumber ? (
+              <>
+                <p className="err small" data-testid="wa-no-number">{t('waNoNumber')}</p>
+                <button
+                  type="button"
+                  className="btn ghost"
+                  onClick={() => sharePhoto(true)}
+                  disabled={!imgBlob}
+                  style={{ marginTop: '0.5rem' }}
+                >
+                  {t('waPickManually')}
+                </button>
+              </>
+            ) : validWaNumber(row.customer.phone) ? (
+              <p className="muted small" style={{ marginTop: '0.5rem' }}>{t('waDirectHint')}: +{validWaNumber(row.customer.phone)}</p>
+            ) : (
+              <p className="muted small" style={{ marginTop: '0.5rem' }}>{t('waNoNumber')}</p>
+            )}
           </>
         ) : (
-          <button type="button" className="btn primary big" onClick={() => { setOpened(false); setIdx((i) => i + 1); }}>
+          <button type="button" className="btn primary big" onClick={nextCustomer}>
             ✓ {t('waNext')}
           </button>
         )}

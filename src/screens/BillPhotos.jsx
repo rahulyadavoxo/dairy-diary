@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLang } from '../i18n.js';
 import { computeMonth } from '../billing.js';
 import { renderBillImage, shareImage, billFileName, billFingerprint } from '../billImage.js';
+import { validWaNumber, sendBillToWhatsApp } from '../waShare.js';
 import { putCachedPhoto } from '../billCache.js';
 import { addMonths, monthOf, todayISO } from '../format.js';
 import MonthNav from '../components/MonthNav.jsx';
@@ -66,6 +67,19 @@ export default function BillPhotos({ customers, days, payments, settings, month:
     }
   };
 
+  const shareOne = async (p) => {
+    try {
+      const c = customers.find((x) => x.id === p.id);
+      await sendBillToWhatsApp({
+        blob: p.blob,
+        fileName: billFileName(p.name, month),
+        phone: validWaNumber(c && c.phone),
+      });
+    } catch (e) {
+      console.error('[bill-photos] share', e);
+    }
+  };
+
   const downloadAll = async () => {
     for (const p of photos) {
       try {
@@ -110,7 +124,7 @@ export default function BillPhotos({ customers, days, payments, settings, month:
                   <button
                     type="button"
                     className="btn small"
-                    onClick={() => shareImage(p.blob, billFileName(p.name, month)).catch((e) => console.error('[bill-photos] share', e))}
+                    onClick={() => shareOne(p)}
                   >
                     {t('sharePhoto')}
                   </button>

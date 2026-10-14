@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { render, screen, fireEvent, cleanup, act, within } from '@testing-library/react';
 
 // Bill photo rendering needs a real canvas; sharing needs the system share sheet.
-const share = vi.hoisted(() => ({ impl: null, waLink: null }));
+const share = vi.hoisted(() => ({ impl: null }));
 vi.mock('../src/billImage.js', async (orig) => {
   const real = await orig();
   return {
@@ -13,12 +13,12 @@ vi.mock('../src/billImage.js', async (orig) => {
     shareImage: vi.fn((...a) => share.impl(...a)),
   };
 });
-vi.mock('../src/bill.js', async (orig) => {
-  const real = await orig();
-  share.waLink = vi.fn(() => 'about:blank#wa');
-  return { ...real, waLink: share.waLink };
-});
 vi.mock('../src/billPreGen.js', () => ({ preGenerateBillPhotos: vi.fn() }));
+// Mock the native WhatsApp plugin (1.9.9: photo only, no wa.me text fallback)
+vi.mock('@capacitor/core', () => ({
+  Capacitor: { isNativePlatform: () => true },
+  registerPlugin: () => ({ shareImage: (...a) => share.impl(...a) }),
+}));
 
 import { LangContext, makeT, STRINGS } from '../src/i18n.js';
 import { entryCharge, computeMonth, milkRateFor, paneerRateFor } from '../src/billing.js';
@@ -78,7 +78,6 @@ beforeEach(() => {
   cleanup();
   localStorage.clear();
   share.impl = async () => 'shared';
-  share.waLink.mockClear();
 });
 afterEach(() => vi.restoreAllMocks());
 
@@ -350,10 +349,9 @@ describe('#7 closing the share sheet does not open WhatsApp', () => {
     await act(async () => {
       fireEvent.click(screen.getByText(en.shareWhatsApp));
     });
-    expect(share.waLink).not.toHaveBeenCalled();
     expect(isShareCancel({ name: 'AbortError' })).toBe(true);
   });
-  it('a real failure still falls back to the text bill', async () => {
+  it('a real failure shows the shareFailed error (1.9.9: photo only, no text fallback)', async () => {
     share.impl = async () => {
       throw new Error('boom');
     };
@@ -361,7 +359,7 @@ describe('#7 closing the share sheet does not open WhatsApp', () => {
     await act(async () => {
       fireEvent.click(screen.getByText(en.shareWhatsApp));
     });
-    expect(share.waLink).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText('Share failed, try again')).toBeTruthy();
   });
 });
 

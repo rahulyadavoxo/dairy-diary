@@ -2,8 +2,8 @@ import { useMemo, useState } from 'react';
 import { useLang } from '../i18n.js';
 import { computeMonth, fullPaymentPaise } from '../billing.js';
 import { addPayment, deletePayment } from '../db.js';
-import { billText, waLink } from '../bill.js';
-import { renderBillImage, shareImage, billFileName, billFingerprint } from '../billImage.js';
+import { renderBillImage, billFileName, billFingerprint } from '../billImage.js';
+import { validWaNumber, sendBillToWhatsApp } from '../waShare.js';
 import { getCachedPhoto, putCachedPhoto } from '../billCache.js';
 import { dmy, fmtQty, mondayOffset, monthDates, paiseToInput, rupees, toPaise, todayISO, weekdaysMonFirst } from '../format.js';
 import { MonthNav } from './Hisaab.jsx';
@@ -26,6 +26,7 @@ export default function CustomerDetail({ fb, customers, days, payments, settings
   // All hooks must run on every render, BEFORE any early return (Rules of Hooks).
   const [sharing, setSharing] = useState(false);
   const [shareErr, setShareErr] = useState('');
+  const [noNumber, setNoNumber] = useState(false);
 
   if (!customer || !row) {
     return (
@@ -47,30 +48,29 @@ export default function CustomerDetail({ fb, customers, days, payments, settings
     setAmount('');
   };
 
-  const share = async () => {
+  const share = async (pickManually = false) => {
     if (sharing) return;
+    const n = validWaNumber(customer.phone);
+    if (!n && !pickManually) { setNoNumber(true); setShareErr(''); return; }
+    setNoNumber(false);
     setSharing(true);
     setShareErr('');
     try {
-      // 1) Use the pre-generated saved photo if available (instant, reliable)
       const fp = billFingerprint(row, settings);
       let blob = await getCachedPhoto(customerId, month, fp);
-      // 2) Otherwise render on demand and cache it
       if (!blob) {
         blob = await renderBillImage(row, month, settings);
         putCachedPhoto(customerId, month, blob, fp);
       }
-      await shareImage(blob, billFileName(customer.name, month));
+      await sendBillToWhatsApp({
+        blob,
+        fileName: billFileName(customer.name, month),
+        phone: pickManually ? null : n,
+      });
     } catch (e) {
-      if (isShareCancel(e)) return; // closed the share sheet: do nothing
-      console.error('[share-bill] photo failed, falling back to text', e);
-      // Fallback: share as text via WhatsApp link
-      try {
-        const url = waLink(customer.phone, billText(row, month, settings));
-        window.location.href = url;
-      } catch (e2) {
-        setShareErr(t('shareFailed'));
-      }
+      if (isShareCancel(e)) return;
+      console.error('[share-bill] photo failed', e);
+      setShareErr(e && e.code === 'NOT_INSTALLED' ? t('waNotInstalled') : t('shareFailed'));
     } finally {
       setSharing(false);
     }
@@ -120,11 +120,20 @@ export default function CustomerDetail({ fb, customers, days, payments, settings
           <span>{row.balancePaise >= 0 ? (customer.isSupplier ? t('weOwe') : t('balanceDue')) : t('advance')}</span>
           <b className={customer.isSupplier ? '' : row.balancePaise > 0 ? 'due' : 'clear'}>{rupees(Math.abs(row.balancePaise))}</b>
         </div>
-        <button className="btn whatsapp big" onClick={share} disabled={sharing}>
+        <button className="btn whatsapp big" onClick={() => share(false)} disabled={sharing}>
           {sharing ? t('loading') : t('shareWhatsApp')}
         </button>
         {shareErr && <p className="err small">{shareErr}</p>}
-        <p className="muted small">{t('waSharePhotoHint')}</p>
+        {noNumber ? (
+          <>
+            <p className="err small" data-testid="wa-no-number">{t('waNoNumber')}</p>
+            <button className="btn ghost" onClick={() => share(true)} disabled={sharing}>{t('waPickManually')}</button>
+          </>
+        ) : validWaNumber(customer.phone) ? (
+          <p className="muted small">{t('waDirectHint')}: +{validWaNumber(customer.phone)}</p>
+        ) : (
+          <p className="muted small">{t('waNoNumber')}</p>
+        )}
       </div>
 
       <h2>{t('calendar')}</h2>
