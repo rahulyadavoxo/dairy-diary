@@ -1,7 +1,7 @@
 {
   "name": "dairy-diary",
   "private": true,
-  "version": "1.10.5",
+  "version": "1.10.6",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -16,6 +16,7 @@
     "@capacitor/android": "^8.5.3",
     "@capacitor/app": "^8.1.2",
     "@capacitor/core": "^8.5.3",
+    "@capacitor/haptics": "^8.0.2",
     "firebase": "^12.19.0",
     "qrcode-generator": "^2.0.4",
     "react": "^19.3.0",

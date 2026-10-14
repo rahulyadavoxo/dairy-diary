@@ -4,6 +4,7 @@
 // fuzzy). Tap a name → see all days (Oct 1-13) in one place → edit → save.
 // Nothing is uploaded until the user taps "Save".
 import { useMemo, useState, useEffect } from 'react';
+import { saveFeedback } from '../feedback.js';
 import { useLang } from '../i18n.js';
 import { saveEntries, deleteEntry } from '../db.js';
 import { normaliseEntry } from '../entry.js';
@@ -108,7 +109,7 @@ function CustomerDays({ fb, customer, regName, days, settings, displayName, onDo
       const n = Number(v);
       return v !== '' && v != null && Number.isFinite(n) && n > 0;
     });
-    if (!datesToSave.length || saving) return;
+    if (!datesToSave.length || saving) return saving ? undefined : saveFeedback(false);
     setSaving(true);
     setFlash(t('saving'));
     try {
@@ -139,9 +140,11 @@ function CustomerDays({ fb, customer, regName, days, settings, displayName, onDo
         );
       }
       setFlash(t('saved'));
+      saveFeedback(true);
       if (onSaved) onSaved();
     } catch (e) {
       setFlash(t('saveFailed'));
+      saveFeedback(false);
       console.error('[import-save]', e);
     }
     setSaving(false);

@@ -257,6 +257,21 @@ describe('scroll position is kept behind a sub-screen', () => {
     rerender(<Probe open={false} />);
     expect(y).toBe(2400);
   });
+  it('a different tab after closing starts at the top', () => {
+    let y = -1;
+    vi.spyOn(window, 'scrollTo').mockImplementation((_x, ny) => {
+      y = ny;
+    });
+    function P({ open, k }) {
+      useScrollKeep(open, k);
+      return null;
+    }
+    Object.defineProperty(window, 'scrollY', { value: 1800, configurable: true });
+    const { rerender } = render(<P open={false} k="customers" />);
+    rerender(<P open k="customers" />);
+    rerender(<P open={false} k="register" />);
+    expect(y).toBe(0);
+  });
   it('is used by every screen that swaps its list for a sub-screen', () => {
     ['src/App.jsx', 'src/screens/Customers.jsx', 'src/screens/Hisaab.jsx', 'src/screens/RegisterView.jsx'].forEach((f) =>
       expect(readFileSync(f, 'utf8')).toContain('useScrollKeep('),

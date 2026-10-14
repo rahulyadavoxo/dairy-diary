@@ -4,19 +4,23 @@
 // sub-screen opens at the top, and closing it puts the list back exactly where it was.
 import { useLayoutEffect, useRef } from 'react';
 
-export function useScrollKeep(open) {
+// `key` (optional): the list being kept, e.g. the tab. If it changed while the sub-screen was
+// open (another tab tapped), the new list starts at the top instead.
+export function useScrollKeep(open, key = '') {
   const y = useRef(0);
   const wasOpen = useRef(false);
+  const openKey = useRef(key);
   useLayoutEffect(() => {
     if (typeof window === 'undefined') return undefined;
     if (open) {
       wasOpen.current = true;
+      openKey.current = key;
       window.scrollTo(0, 0);
       return undefined;
     }
     if (wasOpen.current) {
       wasOpen.current = false;
-      const target = y.current;
+      const target = openKey.current === key ? y.current : 0;
       window.scrollTo(0, target);
       // Late layout (fonts, images) can shorten the page for a frame; try once more.
       if (window.requestAnimationFrame) window.requestAnimationFrame(() => window.scrollTo(0, target));
@@ -27,5 +31,5 @@ export function useScrollKeep(open) {
     on();
     window.addEventListener('scroll', on, { passive: true });
     return () => window.removeEventListener('scroll', on);
-  }, [open]);
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 }

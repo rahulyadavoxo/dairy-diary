@@ -2,6 +2,9 @@
 // Sounds: 'save' (two-note "ting"), 'delivered' (bright ding), 'usual' (two quick taps),
 // 'absent' (low falling tone). All play only from a user tap (WebView autoplay rules).
 
+import { Capacitor } from '@capacitor/core';
+import { Haptics } from '@capacitor/haptics';
+
 let ctx = null;
 function audio() {
   if (typeof window === 'undefined') return null;
@@ -55,13 +58,27 @@ export function playSound(name) {
   }
 }
 
-/** One vibration: the save did not happen (bad input, or the server refused the write). */
-export function vibrateFail() {
+function webVibrate() {
   try {
     if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(250);
   } catch {
     /* ignore */
   }
+}
+
+/** One vibration: the save did not happen (bad input, or the server refused the write).
+    On the phone the native Haptics plugin vibrates (reliable in the WebView); web falls back. */
+export function vibrateFail() {
+  try {
+    if (Capacitor.isNativePlatform && Capacitor.isNativePlatform() && Haptics && Haptics.vibrate) {
+      const p = Haptics.vibrate({ duration: 250 });
+      if (p && p.catch) p.catch(webVibrate);
+      return;
+    }
+  } catch {
+    /* fall back below */
+  }
+  webVibrate();
 }
 
 /** Save button pressed: ok -> "ting", not ok -> one vibration. Returns ok. */

@@ -214,7 +214,7 @@ function Main({ fb, user, farm, farmId }) {
   const [delivery, setDelivery] = useState(false);
   const [importReview, setImportReview] = useState(false);
   // Customer detail / delivery / import review replace the tab's list: keep its scroll position.
-  useScrollKeep(!!detail || delivery || importReview);
+  useScrollKeep(!!detail || delivery || importReview, tab);
   const [settings, setSettings] = useState({});
   const [customers, setCustomers] = useState([]);
   const [days, setDays] = useState({});

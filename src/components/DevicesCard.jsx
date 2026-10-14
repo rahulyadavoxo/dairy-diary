@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { saveFeedback } from '../feedback.js';
 import { useLang } from '../i18n.js';
 import {
   listDevices,
@@ -79,9 +80,13 @@ export default function DevicesCard({ fb, farm, farmId, uid, online, now: nowPro
   const saveName = (e) => {
     e.preventDefault();
     // A blank name keeps the form open with the error; a good name clears any old error.
-    if (!cleanDeviceName(newName)) return setErr(t('errInvalidName'));
+    if (!cleanDeviceName(newName)) return saveFeedback(false), setErr(t('errInvalidName'));
     setErr('');
-    renameDevice(fb, farmId, uid, newName).catch(() => setErr(t('errInvalidName')));
+    renameDevice(fb, farmId, uid, newName).catch(() => {
+      saveFeedback(false);
+      setErr(t('errInvalidName'));
+    });
+    saveFeedback(true);
     setRenaming(false);
   };
 
