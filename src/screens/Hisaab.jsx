@@ -255,7 +255,7 @@ export default function Hisaab({ fb, customers, days, payments, settings, month,
                   {t('paneer')}
                   <br />
                   <b>
-                    {fmtQty(r.paneerG / 1000)} {t('kg')} · {money(r.paneerPaise)}
+                    {r.paneerG} {t('gram')} · {money(r.paneerPaise)}
                   </b>
                 </span>
                 <span>

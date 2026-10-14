@@ -173,7 +173,7 @@ export function renderBillImage(row, month, settings = {}) {
     const rateTxt = rates.length === 1 ? ` × ${rupees(rates[0])}` : '';
     srow(`दूध / Milk  ${fmtQty(row.milkMl / 1000)} L${rateTxt}`, rupees(row.milkPaise));
     if (row.paneerG > 0 || row.paneerPaise > 0) {
-      srow(`पनीर / Paneer  ${fmtQty(row.paneerG / 1000)} kg`, rupees(row.paneerPaise));
+      srow(`पनीर / Paneer  ${row.paneerG} g`, rupees(row.paneerPaise));
     }
     // separators sit midway between two rows (y - 30 touched the next row's text)
     line(g, 60, y - 46, W - 60, y - 46);

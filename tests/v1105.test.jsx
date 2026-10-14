@@ -180,7 +180,7 @@ describe('delivery screen layout and list', () => {
     minus('qty-morning');
     fireEvent.change(box('qty-morning').querySelector('input'), { target: { value: '0' } });
     fireEvent.change(box('qty-evening').querySelector('input'), { target: { value: '0' } });
-    fireEvent.change(document.querySelector('.deli-card .deli-qty input'), { target: { value: '0.5' } });
+    fireEvent.change(document.querySelector('.deli-card .deli-qty input'), { target: { value: '500' } }); // grams (1.10.14)
     tap(screen.getByText(en.delivered));
     expect(lastEntry(fb, 'c1').paneerKg).toBe(0.5);
     tap(screen.getAllByText(`← ${en.back}`).find((b) => b.closest('.deli-card')));

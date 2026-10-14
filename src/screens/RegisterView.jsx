@@ -9,7 +9,8 @@ import { addDays, dmy, fmtQty, timeHM, todayISO, monthName as fmtMonthName, shor
 import { toMilli } from '../billing.js';
 import { pushBackHandler } from '../backStack.js';
 import { useScrollKeep } from '../scrollKeep.js';
-import { dayFilled, lockedBy, ringTimes } from '../reminders.js';
+import { lockedBy, ringTimes } from '../reminders.js';
+import { saveFeedback } from '../feedback.js';
 
 export { sortCustomers, isPaused };
 
@@ -177,8 +178,14 @@ export default function RegisterView({ fb, customers, days, pendingDays, setting
   const isToday = date === todayISO();
   const lockAll = lockedBy({ now, days, pendingDays, hasCustomers: active.length > 0, times: ringTimes(settings) });
   const lockDay = isToday ? lockAll : null;
-  // "Edit this day" only while nobody has an entry on that day; after that, "Edit old records".
-  const dayHasEntries = dayFilled(days, pendingDays, date);
+  // "Edit this day" opens only once EVERY customer due that day (active, not paused) has an entry
+  // (user, 15 Oct 2026). Until then a tap only explains why.
+  const dueToday = active.filter((c) => !isPaused(c, date));
+  const allDone = dueToday.length > 0 && dueToday.every((c) => !!(day && day.entries && day.entries[c.id]));
+  const pendingCount = dueToday.filter((c) => !(day && day.entries && day.entries[c.id])).length;
+  const editDayOk = allDone && !lockDay;
+  const [editMsg, setEditMsg] = useState('');
+  useEffect(() => setEditMsg(''), [date]);
 
   // Day total = milk delivered to customers. Supplier rows are milk bought, not sold.
   let totalMl = 0;
@@ -276,10 +283,24 @@ export default function RegisterView({ fb, customers, days, pendingDays, setting
             📥 {t('importReviewTitle')}
           </button>
         )}
-        <button type="button" className="btn big delivery-cta" disabled={!!lockDay || dayHasEntries} onClick={() => setEditing({ date })}>
-          ✏️ {t('editDay')} ({dmy(date, lang)})
+        <button
+          type="button"
+          className={'btn big delivery-cta' + (editDayOk ? '' : ' looks-disabled')}
+          aria-disabled={!editDayOk}
+          data-testid="edit-day"
+          onClick={() => {
+            if (editDayOk) return setEditing({ date });
+            saveFeedback(false);
+            setEditMsg(lockDay ? t('lockedYesterday').replace('{date}', dmy(lockDay, lang)) : t('editDayNeedsAll').replace('{n}', pendingCount));
+          }}
+        >
+          {editDayOk ? '✏️' : '🔒'} {t('editDay')} ({dmy(date, lang)})
         </button>
-        {dayHasEntries && <p className="muted small">{t('editDayDone')}</p>}
+        {editMsg && (
+          <p className="error small" role="alert">
+            {editMsg}
+          </p>
+        )}
       </header>
 
       {!settings.milkRatePaise && <p className="card warn small">{t('rateMissing')}</p>}

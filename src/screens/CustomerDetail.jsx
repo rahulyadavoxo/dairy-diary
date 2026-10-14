@@ -144,7 +144,7 @@ export default function CustomerDetail({ fb, customers, days, payments, settings
           <div className="kv">
             <span>{t('paneer')}</span>
             <b>
-              {fmtQty(row.paneerG / 1000)} {t('kg')} · {rupees(row.paneerPaise)}
+              {row.paneerG} {t('gram')} · {rupees(row.paneerPaise)}
             </b>
           </div>
         )}

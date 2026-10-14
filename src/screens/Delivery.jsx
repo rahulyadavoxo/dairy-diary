@@ -4,6 +4,7 @@
 // "As usual" fills the usual quantities; "Absent" records that the customer didn't take milk.
 // The back button re-opens an earlier customer for corrections.
 import { useEffect, useMemo, useRef, useState } from 'react';
+import PaneerGrams from '../components/PaneerGrams.jsx';
 import { useLang } from '../i18n.js';
 import { saveEntries, deleteEntry } from '../db.js';
 import { playSound } from '../feedback.js';
@@ -167,7 +168,7 @@ function DeliveryCard({ c, initM, initE, initT, initPaneer, onDelivered, onAbsen
         {c.area && <span className="muted small"> · {c.area}</span>}
       </h2>
       <ToggleBar label={'🧀 ' + t('paneer')} on={paneerOn} onChange={setPaneerOn} testId="paneer-toggle" />
-      {paneerOn && <QtyEdit label={t('paneer') + ' (kg)'} value={paneer} onChange={setPaneer} />}
+      {paneerOn && <PaneerGrams label={t('paneer') + ' (' + t('gram') + ')'} value={paneer} onChange={setPaneer} testId="paneer-qty" />}
       <QtyEdit label={t('session_morning')} value={m} onChange={editM} testId="qty-morning" />
       <QtyEdit label={t('session_evening')} value={e} onChange={editE} testId="qty-evening" />
       <QtyEdit label={t('session_total')} value={tot} onChange={editT} testId="qty-total" />

@@ -9,6 +9,7 @@ import { saveEntries } from '../db.js';
 import { toMilli } from '../billing.js';
 import { normaliseEntry, usualMorning, usualEvening } from '../entry.js';
 import { addDays, dmy, fmtQty, timeHM, todayISO } from '../format.js';
+import PaneerGrams from '../components/PaneerGrams.jsx';
 import { pushBackHandler } from '../backStack.js';
 
 export function sortCustomers(list) {
@@ -247,7 +248,7 @@ export default function DayEditor({ fb, customers, days, pendingDays = {}, setti
               {totalPaneerG > 0 && (
                 <>
                   {' '}
-                  · {t('paneer')}: <b>{fmtQty(totalPaneerG / 1000)} {t('kg')}</b>
+                  · {t('paneer')}: <b>{totalPaneerG} {t('gram')}</b>
                 </>
               )}
             </p>
@@ -318,19 +319,7 @@ export default function DayEditor({ fb, customers, days, pendingDays = {}, setti
                   <span className="muted small total-only">{t('totalOnlyHint').replace('{q}', `${fmtQty(r.milkL)} ${t('litre')}`)}</span>
                 )}
                 {showPaneer ? (
-                  <label className="paneer">
-                    {t('paneer')}
-                    <input
-                      type="number"
-                      inputMode="decimal"
-                      step="0.25"
-                      min="0"
-                      value={r.paneerKg || ''}
-                      placeholder="0"
-                      onChange={(e) => update(c, { paneerKg: e.target.value })}
-                    />
-                    {t('kg')}
-                  </label>
+                  <PaneerGrams className="paneer" value={r.paneerKg} onChange={(kg) => update(c, { paneerKg: kg })} />
                 ) : (
                   <button className="btn small ghost" onClick={() => setOpenPaneer({ ...openPaneer, [c.id]: true })}>
                     + {t('paneer')}

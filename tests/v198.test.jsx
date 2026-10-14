@@ -278,9 +278,10 @@ describe('#5 any past day can be edited from Register', () => {
   it('"Edit this day" opens the editor for that date and saves through saveEntries', () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true);
     const fb = mkFb();
-    render(wrap(<RegisterView {...regProps(fb)} />));
-    fireEvent.click(screen.getByLabelText(en.prevDay));
     const y = addDays(todayISO(), -1);
+    // 1.10.14: "Edit this day" opens only once every customer has that day's entry
+    render(wrap(<RegisterView {...regProps(fb, { days: { ...oldDays(), [y]: { entries: { c1: { milkL: 2 }, c2: { milkL: 1 } } } } })} />));
+    fireEvent.click(screen.getByLabelText(en.prevDay));
     fireEvent.click(screen.getByText(new RegExp(en.editDay)));
     const ed = screen.getByTestId('day-editor');
     // mark Asha skipped and add a note for Bablu, then save
@@ -736,7 +737,9 @@ describe('1.10.11 customer form, special paneer rate, day editor', () => {
   });
 
   it('"Edit this day" edits only that day (no ◀ ▶ in the editor)', () => {
-    render(wrap(<RegisterView {...regProps(mkFb())} />));
+    const p = regProps(mkFb());
+    p.days = { ...p.days, [todayISO()]: { entries: { c1: { milkL: 1 }, c2: { milkL: 1 } } } };
+    render(wrap(<RegisterView {...p} />));
     fireEvent.click(screen.getByText(new RegExp(en.editDay)));
     const ed = screen.getByTestId('day-editor');
     expect(within(ed).queryByLabelText(en.prevDay)).toBeNull();
@@ -808,7 +811,11 @@ describe('1.10.12 rings, lock, payment animation, total-first day editor', () =>
       render(wrap(<RegisterView {...regProps(mkFb(), days)} />));
       const card = screen.getByTestId('lock-card');
       expect(screen.getByText(new RegExp(en.delivery)).closest('button').disabled).toBe(true);
-      expect(screen.getByText(new RegExp(en.editDay)).closest('button').disabled).toBe(true);
+      const eb = screen.getByTestId('edit-day');
+      expect(eb.getAttribute('aria-disabled')).toBe('true');
+      fireEvent.click(eb);
+      expect(screen.queryByTestId('day-editor')).toBeNull();
+      expect(screen.getByRole('alert').textContent).toContain(dmy(addDays(todayISO(), -1)));
       fireEvent.click(within(card).getByText(new RegExp(en.fillYesterday)));
       const ed = screen.getByTestId('day-editor');
       expect(within(ed).getByRole('heading', { level: 1 }).textContent).toContain(dmy(addDays(todayISO(), -1)));
@@ -816,12 +823,40 @@ describe('1.10.12 rings, lock, payment animation, total-first day editor', () =>
       vi.useRealTimers();
     }
   });
-  it('Edit this day is off once the day has any entry', () => {
-    const days = { [addDays(todayISO(), -1)]: { entries: { c1: { milkL: 1 } } }, [todayISO()]: { entries: { c2: { milkL: 1 } } } };
-    render(wrap(<RegisterView {...regProps(mkFb(), days)} />));
-    expect(screen.getByText(new RegExp(en.editDay)).closest('button').disabled).toBe(true);
-    expect(screen.getByText(en.editDayDone)).toBeTruthy();
+  it('Edit this day opens only after every customer\'s entry; before that a tap explains why', () => {
+    const y = { [addDays(todayISO(), -1)]: { entries: { c1: { milkL: 1 } } } };
+    const partial = { ...y, [todayISO()]: { entries: { c2: { milkL: 1 } } } };
+    const { unmount } = render(wrap(<RegisterView {...regProps(mkFb(), partial)} />));
     expect(screen.queryByTestId('lock-card')).toBeNull();
+    const eb = screen.getByTestId('edit-day');
+    expect(eb.getAttribute('aria-disabled')).toBe('true');
+    fireEvent.click(eb);
+    expect(screen.queryByTestId('day-editor')).toBeNull();
+    expect(screen.getByRole('alert').textContent).toBe(en.editDayNeedsAll.replace('{n}', 1));
+    unmount();
+    const full = { ...y, [todayISO()]: { entries: { c1: { skip: true, milkL: 0 }, c2: { milkL: 1 } } } };
+    render(wrap(<RegisterView {...regProps(mkFb(), full)} />));
+    expect(screen.getByTestId('edit-day').getAttribute('aria-disabled')).toBe('false');
+    fireEvent.click(screen.getByTestId('edit-day'));
+    expect(screen.getByTestId('day-editor')).toBeTruthy();
+  });
+  it('paneer is in grams: − / + move 100 g, any amount can be typed', async () => {
+    const { default: PaneerGrams } = await import('../src/components/PaneerGrams.jsx');
+    let kg = 0.25;
+    const { rerender } = render(wrap(<PaneerGrams value={kg} onChange={(v) => (kg = v)} />));
+    const input = document.querySelector('input.paneer-g');
+    expect(input.value).toBe('250');
+    expect(input.getAttribute('step')).toBe('100');
+    fireEvent.click(screen.getByLabelText('+100'));
+    expect(kg).toBe(0.3); // 250 -> next 100
+    rerender(wrap(<PaneerGrams value={kg} onChange={(v) => (kg = v)} />));
+    fireEvent.click(screen.getByLabelText('+100'));
+    expect(kg).toBe(0.4);
+    rerender(wrap(<PaneerGrams value={kg} onChange={(v) => (kg = v)} />));
+    fireEvent.click(screen.getByLabelText('−100'));
+    expect(kg).toBe(0.3);
+    fireEvent.change(input, { target: { value: '175' } });
+    expect(kg).toBe(0.175);
   });
   it('the day editor opens on Total, and a total clears morning/evening', () => {
     localStorage.setItem('dd_session', 'morning');
