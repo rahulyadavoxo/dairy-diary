@@ -26,7 +26,7 @@ android {
             debug {
                 storeFile fixedKey
                 storePassword System.getenv('DD_KEY_PASS') ?: (project.findProperty('DD_KEY_PASS') ?: 'android')
-                keyAlias 'dairydiary'
+                keyAlias 'androiddebugkey'
                 keyPassword System.getenv('DD_KEY_PASS') ?: (project.findProperty('DD_KEY_PASS') ?: 'android')
             }
         }
