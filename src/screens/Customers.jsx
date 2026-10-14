@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLang } from '../i18n.js';
 import { saveCustomer, saveOrder } from '../db.js';
-import { sortCustomers, isPaused } from './Register.jsx';
+import { sortCustomers, isPaused, matchesQuery } from './Register.jsx';
 import { dmy, fmtQty, paiseToInput, rupees, toPaise, todayISO } from '../format.js';
 import { pushBackHandler } from '../backStack.js';
 import ImportCustomers from './ImportCustomers.jsx';
@@ -40,6 +40,12 @@ export function pauseLabel(c, today, t) {
   return '';
 }
 
+// Search text survives the edit form and the ₹ detail screen (which unmounts this screen).
+const view = { query: '' };
+export function resetCustomersView() {
+  view.query = '';
+}
+
 export default function Customers({ fb, customers, settings, openCustomer }) {
   const { t } = useLang();
   const [editing, setEditing] = useState(null); // null | 'new' | customer
@@ -48,6 +54,12 @@ export default function Customers({ fb, customers, settings, openCustomer }) {
   const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState({});
   const [lastEdited, setLastEdited] = useState(loadLastEdited);
+  const [query, setQueryState] = useState(() => view.query);
+  const setQuery = (v) => {
+    view.query = v;
+    setQueryState(v);
+  };
+  const searching = query.trim() !== '';
   useScrollKeep(!!editing || importing);
   const sorted = useMemo(() => sortCustomers(customers), [customers]);
   const active = sorted.filter((c) => c.active !== false);
@@ -101,16 +113,29 @@ export default function Customers({ fb, customers, settings, openCustomer }) {
         <h1>
           {t('customersTitle')} <span className="muted small">({active.length})</span>
         </h1>
-        <button className="btn primary big" onClick={() => setEditing('new')}>
-          + {t('addCustomer')}
-        </button>
-        <button className="btn big" onClick={() => setImporting(true)}>
-          ⇪ {t('importTitle')}
-        </button>
-        <button className="btn big" onClick={() => { setSelecting(!selecting); setSelected({}); }}>
-          {selecting ? t('cancel') : t('selectTag')}
-        </button>
-        <p className="muted small">{t('routeOrder')}: ▲ / ▼</p>
+        <div className="head-btns" data-testid="cust-head-btns">
+          <button className="btn primary" onClick={() => setEditing('new')}>
+            + {t('addCustomer')}
+          </button>
+          <button className="btn" onClick={() => setImporting(true)}>
+            ⇪ {t('importTitle')}
+          </button>
+          <button className="btn" onClick={() => { setSelecting(!selecting); setSelected({}); }}>
+            {selecting ? t('cancel') : t('selectTag')}
+          </button>
+        </div>
+        <div className="search-wrap">
+          <span className="search-icon" aria-hidden="true">🔍</span>
+          <input
+            className="search"
+            type="search"
+            placeholder={t('search')}
+            aria-label={t('search')}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </div>
+        <p className="muted small">{searching ? t('routeOrderSearch') : `${t('routeOrder')}: ▲ / ▼`}</p>
       </header>
       {selecting && selectedIds.length > 0 && (
         <div className="select-bar">
@@ -124,8 +149,9 @@ export default function Customers({ fb, customers, settings, openCustomer }) {
         </div>
       )}
       {active.length === 0 && <p className="empty">{t('noCustomers')}</p>}
+      {active.length > 0 && searching && !active.some((c) => matchesQuery(c, query)) && <p className="empty">{t('noMatch')}</p>}
       <ul className="rows">
-        {active.map((c, i) => (
+        {active.map((c, i) => (searching && !matchesQuery(c, query) ? null : (
           <li key={c.id} className={'row cust-row' + (c.id === lastEdited ? ' last-edited' : '')} data-testid={c.id === lastEdited ? 'last-edited' : undefined}>
             {selecting ? (
               <input
@@ -137,10 +163,10 @@ export default function Customers({ fb, customers, settings, openCustomer }) {
               />
             ) : (
               <div className="order-btns">
-                <button className="btn step" disabled={i === 0} onClick={() => move(i, -1)} aria-label={t('moveUp')}>
+                <button className="btn step" disabled={searching || i === 0} onClick={() => move(i, -1)} aria-label={t('moveUp')}>
                   ▲
                 </button>
-                <button className="btn step" disabled={i === active.length - 1} onClick={() => move(i, 1)} aria-label={t('moveDown')}>
+                <button className="btn step" disabled={searching || i === active.length - 1} onClick={() => move(i, 1)} aria-label={t('moveDown')}>
                   ▼
                 </button>
               </div>
@@ -163,7 +189,7 @@ export default function Customers({ fb, customers, settings, openCustomer }) {
               ₹
             </button>
           </li>
-        ))}
+        )))}
       </ul>
       {inactive.length > 0 && (
         <label className="check">
@@ -172,7 +198,7 @@ export default function Customers({ fb, customers, settings, openCustomer }) {
       )}
       {showInactive && (
         <ul className="rows">
-          {inactive.map((c) => (
+          {inactive.filter((c) => matchesQuery(c, query)).map((c) => (
             <li key={c.id} className="row cust-row inactive">
               <button className="cust-main" onClick={() => setEditing(c)}>
                 <b>{c.name}</b>

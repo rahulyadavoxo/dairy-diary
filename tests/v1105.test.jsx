@@ -20,7 +20,7 @@ vi.mock('../src/feedback.js', () => ({
 import { LangContext, makeT, STRINGS } from '../src/i18n.js';
 import { todayISO } from '../src/format.js';
 import Delivery, { dayComplete, TAP_GUARD_MS } from '../src/screens/Delivery.jsx';
-import Customers from '../src/screens/Customers.jsx';
+import Customers, { resetCustomersView } from '../src/screens/Customers.jsx';
 import { useScrollKeep } from '../src/scrollKeep.js';
 
 const en = STRINGS.en;
@@ -61,6 +61,7 @@ beforeEach(() => {
   localStorage.clear();
   fx.sounds = [];
   fx.fails = 0;
+  resetCustomersView();
   now = 1_000_000;
   vi.spyOn(Date, 'now').mockImplementation(() => now);
 });
@@ -276,5 +277,40 @@ describe('scroll position is kept behind a sub-screen', () => {
     ['src/App.jsx', 'src/screens/Customers.jsx', 'src/screens/Hisaab.jsx', 'src/screens/RegisterView.jsx'].forEach((f) =>
       expect(readFileSync(f, 'utf8')).toContain('useScrollKeep('),
     );
+  });
+});
+
+describe('Customers: three buttons in one row + search', () => {
+  const c3 = { id: 'c3', name: 'Chandan', order: 30, area: 'Station road', phone: '94313 37743', usualMorningL: 1, usualEveningL: 0 };
+  it('New / Bulk add / Select & tag sit together in one row', () => {
+    render(wrap(<Customers fb={mkFb()} customers={[c1, c2]} settings={settings} openCustomer={() => {}} />));
+    const btns = [...screen.getByTestId('cust-head-btns').querySelectorAll('button')].map((b) => b.textContent);
+    expect(btns).toEqual([`+ ${en.addCustomer}`, `⇪ ${en.importTitle}`, en.selectTag]);
+    expect(readFileSync('src/styles.css', 'utf8')).toMatch(/\.head-btns \{[^}]*repeat\(3, 1fr\)/);
+  });
+  it('search filters by name, area or phone, keeps the route numbers and turns ▲ / ▼ off', () => {
+    const fb = mkFb();
+    render(wrap(<Customers fb={fb} customers={[c1, c2, c3]} settings={settings} openCustomer={() => {}} />));
+    const box = screen.getByLabelText(en.search);
+    fireEvent.change(box, { target: { value: 'chan' } });
+    const names = () => [...document.querySelectorAll('.cust-main b')].map((b) => b.textContent);
+    expect(names()).toEqual(['3. Chandan']);
+    expect(screen.getByLabelText(en.moveUp).disabled).toBe(true);
+    fireEvent.change(box, { target: { value: 'station' } });
+    expect(names()).toEqual(['3. Chandan']);
+    fireEvent.change(box, { target: { value: '7743' } });
+    expect(names()).toEqual(['3. Chandan']);
+    fireEvent.change(box, { target: { value: 'zzz' } });
+    expect(screen.getByText(en.noMatch)).toBeTruthy();
+    fireEvent.change(box, { target: { value: '' } });
+    expect(names()).toEqual(['1. Asha', '2. Bablu', '3. Chandan']);
+  });
+  it('the search stays after editing a customer and coming back', () => {
+    render(wrap(<Customers fb={mkFb()} customers={[c1, c2, c3]} settings={settings} openCustomer={() => {}} />));
+    fireEvent.change(screen.getByLabelText(en.search), { target: { value: 'bab' } });
+    fireEvent.click(screen.getByText(/Bablu/));
+    fireEvent.click(screen.getByText(en.save));
+    expect(screen.getByLabelText(en.search).value).toBe('bab');
+    expect([...document.querySelectorAll('.cust-main b')].map((b) => b.textContent)).toEqual(['2. Bablu']);
   });
 });
