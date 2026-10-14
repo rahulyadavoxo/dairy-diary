@@ -127,6 +127,9 @@ export default function RegisterView({ fb, customers, days, pendingDays, setting
   const { t, lang } = useLang();
   const [date, setDate] = useState(todayISO());
   const [query, setQuery] = useState('');
+  // Phone Back while a search is typed clears the search first (instead of leaving the tab).
+  const hasQuery = String(query || '').trim() !== '';
+  useEffect(() => (hasQuery ? pushBackHandler(() => setQuery('')) : undefined), [hasQuery]); // eslint-disable-line react-hooks/exhaustive-deps
   const [calId, setCalId] = useState(null);
   const [editing, setEditing] = useState(null); // { date, customerId? } — day editor open
   useScrollKeep(!!editing);

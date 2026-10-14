@@ -60,6 +60,9 @@ export default function Customers({ fb, customers, settings, openCustomer }) {
     setQueryState(v);
   };
   const searching = query.trim() !== '';
+  // Phone Back while a search is typed clears the search first (instead of leaving the tab).
+  const hasQuery = String(query || '').trim() !== '';
+  useEffect(() => (hasQuery ? pushBackHandler(() => setQuery('')) : undefined), [hasQuery]); // eslint-disable-line react-hooks/exhaustive-deps
   useScrollKeep(!!editing || importing);
   const sorted = useMemo(() => sortCustomers(customers), [customers]);
   const active = sorted.filter((c) => c.active !== false);

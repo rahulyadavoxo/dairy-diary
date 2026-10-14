@@ -37,6 +37,9 @@ export default function Hisaab({ fb, customers, days, payments, settings, month,
     hisaabView.payFilter = v;
     setPayFilterState(v);
   };
+  // Phone Back while a search is typed clears the search first (instead of leaving the tab).
+  const hasQuery = String(query || '').trim() !== '';
+  useEffect(() => (hasQuery ? pushBackHandler(() => setQuery('')) : undefined), [hasQuery]); // eslint-disable-line react-hooks/exhaustive-deps
   const [showTotals, setShowTotals] = useState(() => {
     // With a PIN set, totals must be hidden on the very first paint. The effect below runs
     // after paint, so starting from the saved '1' flashed the totals for a moment.

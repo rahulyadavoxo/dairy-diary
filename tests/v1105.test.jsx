@@ -22,6 +22,9 @@ import { todayISO } from '../src/format.js';
 import Delivery, { dayComplete, TAP_GUARD_MS } from '../src/screens/Delivery.jsx';
 import Customers, { resetCustomersView } from '../src/screens/Customers.jsx';
 import { useScrollKeep } from '../src/scrollKeep.js';
+import { handleBack } from '../src/backStack.js';
+import { act } from '@testing-library/react';
+import RegisterView from '../src/screens/RegisterView.jsx';
 
 const en = STRINGS.en;
 const settings = { milkRatePaise: 6000, paneerRatePaise: 40000 };
@@ -312,5 +315,49 @@ describe('Customers: three buttons in one row + search', () => {
     fireEvent.click(screen.getByText(en.save));
     expect(screen.getByLabelText(en.search).value).toBe('bab');
     expect([...document.querySelectorAll('.cust-main b')].map((b) => b.textContent)).toEqual(['2. Bablu']);
+  });
+});
+
+describe('phone Back clears a typed search first', () => {
+  it('Customers: Back empties the search and shows the full list; the next Back is the app\'s', () => {
+    render(wrap(<Customers fb={mkFb()} customers={[c1, c2]} settings={settings} openCustomer={() => {}} />));
+    fireEvent.change(screen.getByLabelText(en.search), { target: { value: 'bab' } });
+    expect(document.querySelectorAll('.cust-main').length).toBe(1);
+    let ran;
+    act(() => {
+      ran = handleBack();
+    });
+    expect(ran).toBe(true);
+    expect(screen.getByLabelText(en.search).value).toBe('');
+    expect(document.querySelectorAll('.cust-main').length).toBe(2);
+    act(() => {
+      ran = handleBack();
+    });
+    expect(ran).toBe(false);
+  });
+  it('Back closes the edit form before it clears the search', () => {
+    render(wrap(<Customers fb={mkFb()} customers={[c1, c2]} settings={settings} openCustomer={() => {}} />));
+    fireEvent.change(screen.getByLabelText(en.search), { target: { value: 'bab' } });
+    fireEvent.click(screen.getByText(/Bablu/));
+    act(() => {
+      handleBack();
+    });
+    expect(screen.getByLabelText(en.search).value).toBe('bab');
+    act(() => {
+      handleBack();
+    });
+    expect(screen.getByLabelText(en.search).value).toBe('');
+  });
+  it('Register and Hisaab do the same', () => {
+    render(wrap(<RegisterView fb={mkFb()} customers={[c1, c2]} days={{}} pendingDays={{}} settings={settings} displayName="x" />));
+    const box = document.querySelector('input.search');
+    fireEvent.change(box, { target: { value: 'ash' } });
+    act(() => {
+      expect(handleBack()).toBe(true);
+    });
+    expect(document.querySelector('input.search').value).toBe('');
+    ['src/screens/Hisaab.jsx', 'src/screens/RegisterView.jsx', 'src/screens/Customers.jsx'].forEach((f) =>
+      expect(readFileSync(f, 'utf8')).toContain("pushBackHandler(() => setQuery(''))"),
+    );
   });
 });
