@@ -25,9 +25,9 @@ android {
         if (fixedKey.exists()) {
             debug {
                 storeFile fixedKey
-                storePassword 'yFEKsZ2nAQ7aa7fyAWnWAK9W'
+                storePassword System.getenv('DD_KEY_PASS') ?: (project.findProperty('DD_KEY_PASS') ?: 'android')
                 keyAlias 'dairydiary'
-                keyPassword 'yFEKsZ2nAQ7aa7fyAWnWAK9W'
+                keyPassword System.getenv('DD_KEY_PASS') ?: (project.findProperty('DD_KEY_PASS') ?: 'android')
             }
         }
     }
