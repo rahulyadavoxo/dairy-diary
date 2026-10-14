@@ -410,7 +410,7 @@ describe('#10 hardware back closes sub-screens', () => {
   });
   it('bill sender (Hisaab)', () => {
     render(wrap(<Hisaab fb={mkFb()} customers={[c1]} days={{}} payments={[]} settings={settings} month={todayISO().slice(0, 7)} setMonth={() => {}} openCustomer={() => {}} />));
-    fireEvent.click(screen.getByText(`📲 ${en.waBillsTitle}`));
+    fireEvent.click(screen.getByText(`📲 ${en.waBillsShort}`));
     expect(screen.queryByText(en.hisaabTitle)).toBeNull();
     act(() => {
       expect(handleBack()).toBe(true);

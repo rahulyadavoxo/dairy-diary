@@ -8,6 +8,7 @@ import { fmtQty, monthDates, rupees, todayISO, monthOf } from '../format.js';
 import BillSender, { shouldPromptBills } from './BillSender.jsx';
 import BillPhotos, { defaultPhotoMonth } from './BillPhotos.jsx';
 import MonthNav from '../components/MonthNav.jsx';
+import { matchesQuery } from './Register.jsx';
 
 export { MonthNav };
 
@@ -15,6 +16,9 @@ export default function Hisaab({ fb, customers, days, payments, settings, month,
   const { t } = useLang();
   const [sending, setSending] = useState(false);
   const [photos, setPhotos] = useState(false);
+  const [query, setQuery] = useState('');
+  // 'all' | 'unpaid' (balance due > 0) | 'paid' (nothing due / advance)
+  const [payFilter, setPayFilter] = useState('all');
   const [showTotals, setShowTotals] = useState(() => {
     // With a PIN set, totals must be hidden on the very first paint. The effect below runs
     // after paint, so starting from the saved '1' flashed the totals for a moment.
@@ -92,8 +96,15 @@ export default function Hisaab({ fb, customers, days, payments, settings, month,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [month, res]);
   // Customers (they owe us) and suppliers (we owe them) are listed separately.
-  const rows = sortByDue(allRows.filter((r) => !r.customer.isSupplier));
-  const supplierRows = sortByDue(allRows.filter((r) => r.customer.isSupplier));
+  const customerRows = sortByDue(allRows.filter((r) => !r.customer.isSupplier));
+  const unpaidCount = customerRows.filter((r) => r.balancePaise > 0).length;
+  const paidCount = customerRows.length - unpaidCount;
+  const rows = customerRows.filter(
+    (r) =>
+      matchesQuery(r.customer, query) &&
+      (payFilter === 'all' || (payFilter === 'unpaid' ? r.balancePaise > 0 : r.balancePaise <= 0)),
+  );
+  const supplierRows = sortByDue(allRows.filter((r) => r.customer.isSupplier && matchesQuery(r.customer, query)));
   const sTotals = res.supplierTotals || { billedPaise: 0, collectedPaise: 0, pendingPaise: 0, advancePaise: 0 };
   const hasSuppliers = supplierRows.length > 0;
   const md = monthDates(monthOf(todayISO()));
@@ -120,15 +131,13 @@ export default function Hisaab({ fb, customers, days, payments, settings, month,
             </button>
           </div>
         )}
-        <div className="chips">
-          <button type="button" className="btn chip" onClick={() => setSending(true)}>
-            📲 {t('waBillsTitle')}
+        <div className="tool-row">
+          <button type="button" className="btn small" onClick={() => setSending(true)}>
+            📲 {t('waBillsShort')}
           </button>
-          <button type="button" className={'btn chip' + (isLastDay ? ' on' : '')} onClick={() => setPhotos(true)}>
-            🖼️ {t('billPhotos')}
+          <button type="button" className={'btn small' + (isLastDay ? ' on' : '')} onClick={() => setPhotos(true)}>
+            🖼️ {t('billPhotosShort')}
           </button>
-        </div>
-        <div className="totals-head">
           <button type="button" className="btn small ghost" onClick={toggleTotals}>
             {showTotals ? '👁️' : pinLocked ? '🔒' : '👁️‍🗨️'} {showTotals ? t('hide') : t('show')}
           </button>
@@ -176,9 +185,22 @@ export default function Hisaab({ fb, customers, days, payments, settings, month,
             {t('advance')}: {rupees(res.totals.advancePaise)}
           </p>
         )}
+        <input className="search" type="search" placeholder={t('search')} value={query} onChange={(e) => setQuery(e.target.value)} />
+        <div className="chips filter-chips" role="group">
+          {[
+            ['all', t('filterAll'), customerRows.length],
+            ['unpaid', t('filterUnpaid'), unpaidCount],
+            ['paid', t('filterPaid'), paidCount],
+          ].map(([k, label, n]) => (
+            <button key={k} type="button" className={'btn chip small' + (payFilter === k ? ' on' : '')} aria-pressed={payFilter === k} onClick={() => setPayFilter(k)}>
+              {label} ({n})
+            </button>
+          ))}
+        </div>
         <p className="muted small">{t('sortedByDue')}</p>
       </header>
-      {rows.length === 0 && <p className="empty">{t('noActivity')}</p>}
+      {customerRows.length === 0 && <p className="empty">{t('noActivity')}</p>}
+      {customerRows.length > 0 && rows.length === 0 && <p className="empty">{t('noMatch')}</p>}
       <ul className="rows">
         {rows.map((r) => (
           <li key={r.customerId}>

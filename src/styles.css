@@ -243,3 +243,9 @@ hr.sep { border: 0; border-top: 1px solid var(--line); margin: 1rem 0; }
 /* UPI QR at the bottom of the payment card */
 .upi-qr { margin-top: 1rem; padding: 1rem; border: 2px dashed #2e7d32; border-radius: 14px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 0.35rem; }
 .upi-qr .kv { width: 100%; max-width: 280px; display: flex; justify-content: space-between; margin: 0; }
+
+/* Hisaab: compact toolbar (WhatsApp / photos / show) in one row */
+.tool-row { display: flex; gap: 0.4rem; margin: 0.4rem 0; }
+.tool-row .btn { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 0.85rem; padding: 0.3rem 0.4rem; }
+.tool-row .btn.on { background: var(--green); color: #fff; border-color: var(--green); }
+.filter-chips .btn { min-height: 40px; font-size: 0.9rem; }
