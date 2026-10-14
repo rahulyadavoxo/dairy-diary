@@ -58,6 +58,16 @@ export default function Hisaab({ fb, customers, days, payments, settings, month,
     } catch {}
   };
 
+  // Lock enforcement: totals must start hidden whenever the PIN lock is on —
+  // both when the PIN is newly set and on every app start with a PIN present.
+  useEffect(() => {
+    if (pinLocked) {
+      doHideShow(false);
+      setPinOpen(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pinLocked]);
+
   const toggleTotals = () => {
     if (showTotals) {
       // Hiding never needs PIN

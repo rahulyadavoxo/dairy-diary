@@ -150,7 +150,7 @@ export default function Settings({ fb, user, settings, displayName, setDisplayNa
           </button>
         )}
         <p className="muted tiny">
-          {t('version')} 1.9.1
+          {t('version')} 1.9.3
         </p>
       </div>
     </form>
