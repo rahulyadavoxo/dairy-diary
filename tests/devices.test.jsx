@@ -19,6 +19,7 @@ import {
 import { Gate } from '../src/App.jsx';
 import DevicesCard from '../src/components/DevicesCard.jsx';
 import { LangContext, makeT, STRINGS } from '../src/i18n.js';
+import { hashPin, savePinHash } from '../src/pinLock.js';
 
 const NOW = Date.UTC(2026, 9, 13, 10, 0, 0);
 const farm = {
@@ -280,6 +281,7 @@ describe('Settings → Phones card', () => {
   });
   it('"Add phone" shows a 6-digit code with a countdown, and "Phone added" once used', async () => {
     const { fb } = fakeFb();
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
     const view = render(withLang(<DevicesCard fb={fb} farm={farm} farmId="own" uid="own" online />, 'en'));
     fireEvent.click(screen.getByText('➕ ' + STRINGS.en.addPhone));
     const codeEl = await screen.findByTestId('pairing-code');
@@ -294,5 +296,49 @@ describe('Settings → Phones card', () => {
     const { fb } = fakeFb();
     render(withLang(<DevicesCard fb={fb} farm={farm} farmId="own" uid="own" online={false} now={NOW} />));
     expect(screen.getByText('➕ ' + STRINGS.hi.addPhone).disabled).toBe(true);
+  });
+});
+
+describe('1.10.15: adding / removing a phone needs the PIN', () => {
+  beforeEach(() => {
+    cleanup();
+    localStorage.clear();
+    vi.restoreAllMocks();
+  });
+  it('no PIN set: Remove asks a confirm; No = nothing removed', () => {
+    const { fb, writes } = fakeFb();
+    const c = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    render(withLang(<DevicesCard fb={fb} farm={farm} farmId="own" uid="own" online now={NOW} />, 'en'));
+    fireEvent.click(screen.getAllByText(STRINGS.en.removeDevice)[0]);
+    expect(c).toHaveBeenCalled();
+    expect(writes).toEqual([]);
+  });
+  it('PIN set: Remove opens the PIN box; wrong PIN removes nothing, right PIN removes', async () => {
+    savePinHash(await hashPin('4321'));
+    const { fb, writes } = fakeFb();
+    const c = vi.spyOn(window, 'confirm');
+    render(withLang(<DevicesCard fb={fb} farm={farm} farmId="own" uid="own" online now={NOW} />, 'en'));
+    fireEvent.click(screen.getAllByText(STRINGS.en.removeDevice)[0]);
+    expect(c).not.toHaveBeenCalled();
+    expect(screen.getByTestId('pin-gate')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText(STRINGS.en.pinEnter), { target: { value: '1111' } });
+    fireEvent.click(screen.getByText(STRINGS.en.pinGateOk));
+    await screen.findByText(STRINGS.en.pinWrong);
+    expect(writes).toEqual([]);
+    fireEvent.change(screen.getByLabelText(STRINGS.en.pinEnter), { target: { value: '4321' } });
+    fireEvent.click(screen.getByText(STRINGS.en.pinGateOk));
+    await waitFor(() => expect(writes).toEqual([['update', 'farms/own', { 'devices.p2': 'DELETE' }]]));
+    expect(screen.queryByTestId('pin-gate')).toBeNull();
+  });
+  it('PIN set: Add phone shows no code until the PIN is right', async () => {
+    savePinHash(await hashPin('4321'));
+    const { fb } = fakeFb();
+    render(withLang(<DevicesCard fb={fb} farm={farm} farmId="own" uid="own" online />, 'en'));
+    fireEvent.click(screen.getByText('➕ ' + STRINGS.en.addPhone));
+    expect(screen.getByText(STRINGS.en.pinForAddPhone, { exact: false })).toBeTruthy();
+    expect(screen.queryByTestId('pairing-code')).toBeNull();
+    fireEvent.change(screen.getByLabelText(STRINGS.en.pinEnter), { target: { value: '4321' } });
+    fireEvent.click(screen.getByText(STRINGS.en.pinGateOk));
+    expect(await screen.findByTestId('pairing-code')).toBeTruthy();
   });
 });

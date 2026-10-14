@@ -29,6 +29,7 @@ import Delivery, { deliveredFor, deliveryList, TAP_GUARD_MS } from '../src/scree
 import CustomerDetail, { isShareCancel } from '../src/screens/CustomerDetail.jsx';
 import Customers, { CustomerForm, pauseLabel } from '../src/screens/Customers.jsx';
 import Settings from '../src/screens/Settings.jsx';
+import { hashPin, savePinHash } from '../src/pinLock.js';
 import SetupFarm from '../src/screens/SetupFarm.jsx';
 import Hisaab from '../src/screens/Hisaab.jsx';
 import BillPhotos, { defaultPhotoMonth } from '../src/screens/BillPhotos.jsx';
@@ -41,7 +42,6 @@ import { fitText, billHeight } from '../src/billImage.js';
 import { withFarmName } from '../src/App.jsx';
 import { signOutAndWipe } from '../src/devices.js';
 import { handleBack } from '../src/backStack.js';
-import { savePinHash } from '../src/pinLock.js';
 
 const en = STRINGS.en;
 const settings = { milkRatePaise: 6000, paneerRatePaise: 40000 };
@@ -506,6 +506,7 @@ describe('#18 blank rate keeps the old rate', () => {
     render(wrap(<Settings fb={fb} user={{ uid: 'u1', email: 'o@x.in' }} settings={settings} displayName="x" setDisplayName={() => {}} online farm={null} farmId="f" />));
     fireEvent.change(screen.getByLabelText(en.milkRate), { target: { value: '' } });
     fireEvent.change(screen.getByLabelText(en.paneerRate), { target: { value: '420.5' } });
+    window.confirm = () => true; // rate change asks first (no PIN set)
     fireEvent.click(screen.getByText(en.save));
     const w = fb.writes.find((x) => x.path === 'farms/f/settings/main');
     expect('milkRatePaise' in w.data).toBe(false);
@@ -930,5 +931,71 @@ describe('1.10.13 ring times from Settings', () => {
     fireEvent.click(screen.getByText(en.ringSave));
     const w = fb.writes.find((x) => x.path === 'farms/f/settings/main');
     expect(w.data).toEqual({ ringNight: '21:00', ringMorning: '07:30' });
+  });
+});
+
+describe('1.10.15: Settings Saved/Save button and PIN for rates / UPI', () => {
+  beforeEach(() => {
+    cleanup();
+    localStorage.clear();
+    vi.restoreAllMocks();
+  });
+  const S = { milkRatePaise: 6000, paneerRatePaise: 40000, farmName: 'Shiv', upiId: 'shiv9939@ybl', phone: '' };
+  const mount = (fb) =>
+    render(wrap(<Settings fb={fb} user={{ uid: 'u1', email: 'o@x.in' }} settings={S} displayName="Rahul" setDisplayName={() => {}} online farm={null} farmId="f" />));
+  const settingsWrite = (fb) => fb.writes.find((x) => x.path === 'farms/f/settings/main');
+
+  it('nothing changed: white "✓ Saved"; a change turns it into the green Save', () => {
+    mount(mkFb());
+    const b = screen.getByTestId('settings-save');
+    expect(b.textContent).toBe('✓ ' + en.savedState);
+    expect(b.className).toContain('saved-btn');
+    expect(b.className).not.toContain('primary');
+    fireEvent.change(screen.getByLabelText(en.farmName), { target: { value: 'Shiv dairy' } });
+    expect(b.textContent).toBe(en.save);
+    expect(b.className).toContain('primary');
+    fireEvent.change(screen.getByLabelText(en.farmName), { target: { value: 'Shiv' } });
+    expect(b.textContent).toBe('✓ ' + en.savedState);
+  });
+  it('dairy name change saves without any PIN or confirm', () => {
+    const fb = mkFb();
+    const c = vi.spyOn(window, 'confirm');
+    mount(fb);
+    fireEvent.change(screen.getByLabelText(en.farmName), { target: { value: 'Shiv dairy' } });
+    fireEvent.click(screen.getByTestId('settings-save'));
+    expect(c).not.toHaveBeenCalled();
+    expect(settingsWrite(fb).data.farmName).toBe('Shiv dairy');
+  });
+  it('tapping "Saved" with nothing changed writes nothing', () => {
+    const fb = mkFb();
+    mount(fb);
+    fireEvent.click(screen.getByTestId('settings-save'));
+    expect(settingsWrite(fb)).toBeUndefined();
+  });
+  it('no PIN: milk-rate change asks a confirm; No = not saved', () => {
+    const fb = mkFb();
+    vi.spyOn(window, 'confirm').mockReturnValue(false);
+    mount(fb);
+    fireEvent.change(screen.getByLabelText(en.milkRate), { target: { value: '65' } });
+    fireEvent.click(screen.getByTestId('settings-save'));
+    expect(settingsWrite(fb)).toBeUndefined();
+  });
+  it('PIN set: UPI / rate change saves only after the right PIN', async () => {
+    savePinHash(await hashPin('2580'));
+    const fb = mkFb();
+    mount(fb);
+    fireEvent.change(screen.getByLabelText(en.upiId), { target: { value: 'ram123@ybl' } });
+    fireEvent.change(screen.getByLabelText(en.paneerRate), { target: { value: '360' } });
+    fireEvent.click(screen.getByTestId('settings-save'));
+    expect(screen.getByTestId('pin-gate')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText(en.pinEnter), { target: { value: '0000' } });
+    fireEvent.click(screen.getByText(en.pinGateOk));
+    await screen.findByText(en.pinWrong);
+    expect(settingsWrite(fb)).toBeUndefined();
+    fireEvent.change(screen.getByLabelText(en.pinEnter), { target: { value: '2580' } });
+    fireEvent.click(screen.getByText(en.pinGateOk));
+    await waitFor(() => expect(settingsWrite(fb)).toBeTruthy());
+    expect(settingsWrite(fb).data.upiId).toBe('ram123@ybl');
+    expect(settingsWrite(fb).data.paneerRatePaise).toBe(36000);
   });
 });

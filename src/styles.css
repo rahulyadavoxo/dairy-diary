@@ -363,3 +363,5 @@ input.switch:focus-visible { outline: 3px solid #9fd3b2; outline-offset: 2px; }
 .ring-times label { flex: 1 1 8rem; }
 .cal-edit-row { margin-top: 0.4rem; }
 .btn.looks-disabled { opacity: 0.45; }
+.btn.saved-btn { background: #fff; color: var(--green); border: 1px solid #d9e6dd; }
+.modal.pin-card { max-width: 420px; }

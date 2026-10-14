@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { saveFeedback } from '../feedback.js';
+import { usePinGate } from './PinGate.jsx';
 import { useLang } from '../i18n.js';
 import {
   listDevices,
@@ -47,7 +48,10 @@ export default function DevicesCard({ fb, farm, farmId, uid, online, now: nowPro
   const usedBy = pairing ? devices.find((d) => d.code === pairing.code) : null;
   const left = pairing ? secondsLeft({ createdAt: pairing.createdAtMs }, now) : 0;
 
-  const addPhone = async () => {
+  const gate = usePinGate();
+  // Adding or removing a phone needs the PIN (user, 15 Oct 2026). A new code ("New code") too.
+  const addPhone = () => gate.ask(t('pinForAddPhone'), addPhoneNow);
+  const addPhoneNow = async () => {
     setErr('');
     setBusy(true);
     try {
@@ -70,11 +74,12 @@ export default function DevicesCard({ fb, farm, farmId, uid, online, now: nowPro
 
   const remove = (d) => {
     const self = d.uid === uid;
-    if (!window.confirm(t(self ? 'confirmLeave' : 'confirmRemoveDevice') + `\n\n${d.name}`)) return;
-    removeDevice(fb, farmId, d.uid).catch((e) => {
-      console.error(e);
-      setErr(t('errDenied'));
-    });
+    gate.ask(t(self ? 'confirmLeave' : 'confirmRemoveDevice') + ` — ${d.name}`, () =>
+      removeDevice(fb, farmId, d.uid).catch((e) => {
+        console.error(e);
+        setErr(t('errDenied'));
+      }),
+    );
   };
 
   const saveName = (e) => {
@@ -92,6 +97,7 @@ export default function DevicesCard({ fb, farm, farmId, uid, online, now: nowPro
 
   return (
     <div className="card devices" data-testid="devices">
+      {gate.element}
       <h2>{t('devicesTitle')}</h2>
       <p className="muted small">{t('devicesHint')}</p>
       <ul className="device-list">

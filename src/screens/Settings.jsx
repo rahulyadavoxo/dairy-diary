@@ -9,6 +9,7 @@ import DevicesCard from '../components/DevicesCard.jsx';
 import { signOutAndWipe } from '../devices.js';
 import { clearCachedPhotos } from '../billCache.js';
 import { ringTimes, validRingTimes } from '../reminders.js';
+import { usePinGate } from '../components/PinGate.jsx';
 
 // Single source of truth for the version (package.json, injected by vite.config.js).
 // eslint-disable-next-line no-undef
@@ -32,8 +33,10 @@ export default function Settings({ fb, user, settings, displayName, setDisplayNa
   const [ring, setRing] = useState({ night: nightStr, morning: morningStr });
   const [ringMsg, setRingMsg] = useState({ text: '', err: false });
   useEffect(() => setRing({ night: nightStr, morning: morningStr }), [nightStr, morningStr]);
+  const ringDirty = ring.night !== nightStr || ring.morning !== morningStr;
   const saveRing = (e) => {
     e.preventDefault();
+    if (!ringDirty) return;
     if (!validRingTimes(ring.night, ring.morning)) {
       setRingMsg({ text: t('ringTimesInvalid'), err: true });
       saveFeedback(false);
@@ -110,8 +113,31 @@ export default function Settings({ fb, user, settings, displayName, setDisplayNa
 
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
 
+  const gate = usePinGate();
+  // Nothing changed -> a white "✓ Saved" button; any change -> the green "Save" (user, 15 Oct 2026).
+  const dirty =
+    f.milkRate !== paiseToInput(settings.milkRatePaise) ||
+    f.paneerRate !== paiseToInput(settings.paneerRatePaise) ||
+    f.farmName !== (settings.farmName || '') ||
+    f.phone !== (settings.phone || '') ||
+    f.upiId !== (settings.upiId || '') ||
+    (name.trim() !== '' && name.trim() !== displayName);
+
   const save = (e) => {
     e.preventDefault();
+    if (!dirty) return;
+    // Rates and the UPI ID decide where money goes and how much: they need the PIN.
+    const mr0 = toPaise(f.milkRate);
+    const pr0 = toPaise(f.paneerRate);
+    const sensitive =
+      (mr0 !== null && mr0 > 0 && mr0 !== settings.milkRatePaise) ||
+      (pr0 !== null && pr0 > 0 && pr0 !== settings.paneerRatePaise) ||
+      f.upiId.trim() !== (settings.upiId || '');
+    if (sensitive && !(f.upiId.trim() && !validUpiId(f.upiId.trim()))) return gate.ask(t('pinForSettings'), doSave);
+    doSave();
+  };
+
+  const doSave = () => {
     // A blank (or invalid) rate box keeps the old rate instead of silently saving ₹0.
     const upiRaw = f.upiId.trim();
     if (upiRaw && !validUpiId(upiRaw)) {
@@ -146,6 +172,7 @@ export default function Settings({ fb, user, settings, displayName, setDisplayNa
     // form used to be nested inside the settings <form>: nested forms are invalid HTML and their
     // submit events bubbled into save(), so setting a PIN / renaming a phone also re-saved rates.
     <div className="screen form">
+      {gate.element}
       <header className="screen-head">
         <h1>{t('settingsTitle')}</h1>
       </header>
@@ -177,8 +204,8 @@ export default function Settings({ fb, user, settings, displayName, setDisplayNa
         <input value={name} onChange={(e) => setName(e.target.value)} />
       </label>
       {msg && <p className="ok">{msg}</p>}
-      <button className="btn primary big" type="submit">
-        {t('save')}
+      <button className={'btn big ' + (dirty ? 'primary' : 'saved-btn')} type="submit" data-testid="settings-save">
+        {dirty ? t('save') : '✓ ' + t('savedState')}
       </button>
       </form>
 
@@ -210,8 +237,8 @@ export default function Settings({ fb, user, settings, displayName, setDisplayNa
           </label>
         </div>
         {ringMsg.text && <p className={(ringMsg.err ? 'error' : 'ok') + ' small'}>{ringMsg.text}</p>}
-        <button type="submit" className="btn small primary">
-          {t('ringSave')}
+        <button type="submit" className={'btn small ' + (ringDirty ? 'primary' : 'saved-btn')} data-testid="ring-save">
+          {ringDirty ? t('ringSave') : '✓ ' + t('savedState')}
         </button>
       </form>
 
