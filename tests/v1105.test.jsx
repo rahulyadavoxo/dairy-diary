@@ -361,3 +361,21 @@ describe('phone Back clears a typed search first', () => {
     );
   });
 });
+
+describe('start-up animation', () => {
+  it('loading shows the milk-bottle splash with the app name and the loading text', async () => {
+    const { default: Splash } = await import('../src/components/Splash.jsx');
+    render(<Splash text="Loading…" />);
+    const s = screen.getByTestId('splash');
+    expect(s.querySelector('svg .splash-milk')).toBeTruthy();
+    expect(s.textContent).toContain('Dairy Diary');
+    expect(s.textContent).toContain('Loading…');
+  });
+  it('App uses it for every start-up wait, and index.html shows it before JavaScript runs', () => {
+    const app = readFileSync('src/App.jsx', 'utf8');
+    expect(app.match(/<Splash /g).length).toBe(3);
+    expect(app).not.toContain(`<div className="center-screen">{t('loading')}</div>`);
+    expect(readFileSync('index.html', 'utf8')).toContain('class="dd-boot"');
+    expect(readFileSync('src/styles.css', 'utf8')).toContain('prefers-reduced-motion');
+  });
+});

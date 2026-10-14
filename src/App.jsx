@@ -17,6 +17,7 @@ import JoinFarm from './screens/JoinFarm.jsx';
 import SetupFarm from './screens/SetupFarm.jsx';
 import Removed from './screens/Removed.jsx';
 import { useScrollKeep } from './scrollKeep.js';
+import Splash from './components/Splash.jsx';
 import { listenFarm, deviceStatus, loadFarmId, wipeLocalData } from './devices.js';
 import { App as CapApp } from '@capacitor/app';
 import { handleBack } from './backStack.js';
@@ -97,7 +98,7 @@ function Authed() {
       </div>
     );
   }
-  if (!fb || user === undefined) return <div className="center-screen">{t('loading')}</div>;
+  if (!fb || user === undefined) return <Splash text={t('loading')} />;
   return <Gate fb={fb} user={user} />;
 }
 
@@ -164,7 +165,7 @@ function FarmGate({ fb, user, farmId, onRemoved }) {
 
   const fbFarm = useMemo(() => ({ ...fb, farmId }), [fb, farmId]);
 
-  if (lockOut) return <div className="center-screen">{t('loading')}</div>;
+  if (lockOut) return <Splash text={t('loading')} />;
   if (status === 'authorized') return <Main fb={fbFarm} user={user} farm={state.farm} farmId={farmId} />;
   if (status === 'error') {
     // A network/unknown error on the farm listener is NOT "farm does not exist": never offer
@@ -193,10 +194,7 @@ function FarmGate({ fb, user, farmId, onRemoved }) {
     );
   }
   return (
-    <div className="center-screen">
-      <p>{t('loading')}</p>
-      {slow && <p className="muted small">{t('waitingForServer')}</p>}
-    </div>
+    <Splash text={t('loading')}>{slow && <p className="muted small">{t('waitingForServer')}</p>}</Splash>
   );
 }
 

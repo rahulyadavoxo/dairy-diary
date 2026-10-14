@@ -37,9 +37,28 @@
       } catch (e) {}
     })();
     </script>
+    <style>
+      /* Shown by the WebView before the app's JavaScript starts (replaced on first render). */
+      html, body { margin: 0; height: 100%; background: #f6f4ee; }
+      .dd-boot { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.5rem; font-family: 'Noto Sans', system-ui, Roboto, sans-serif; }
+      .dd-boot-name { font-size: 1.6rem; font-weight: 800; color: #1f6f43; }
+      .dd-boot-milk { transform: translateY(150px); animation: dd-boot-fill 2.8s ease-in-out infinite; }
+      .dd-boot-wave { animation: dd-boot-wave 1.6s linear infinite; }
+      @keyframes dd-boot-fill { 0% { transform: translateY(150px); } 75%, 100% { transform: translateY(52px); } }
+      @keyframes dd-boot-wave { to { transform: translateX(60px); } }
+      @media (prefers-reduced-motion: reduce) { .dd-boot-milk, .dd-boot-wave { animation: none; } .dd-boot-milk { transform: translateY(70px); } }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root"><div class="dd-boot" role="status" aria-label="Dairy Diary">
+      <svg viewBox="0 0 120 160" width="120" height="160" aria-hidden="true">
+        <defs><clipPath id="dd-boot-clip"><path d="M46 22h28v12c0 5 16 12 16 28v80a12 12 0 0 1-12 12H42a12 12 0 0 1-12-12V62c0-16 16-23 16-28z"/></clipPath></defs>
+        <g clip-path="url(#dd-boot-clip)"><rect width="120" height="160" fill="#e4f1e8"/><g class="dd-boot-milk"><path class="dd-boot-wave" fill="#fff" d="M-120 10 q15 -8 30 0 t30 0 t30 0 t30 0 t30 0 t30 0 t30 0 t30 0 t30 0 t30 0 t30 0 t30 0 V200 H-120 Z"/></g></g>
+        <path d="M46 22h28v12c0 5 16 12 16 28v80a12 12 0 0 1-12 12H42a12 12 0 0 1-12-12V62c0-16 16-23 16-28z" fill="none" stroke="#1f6f43" stroke-width="4" stroke-linejoin="round"/>
+        <rect x="43" y="14" width="34" height="10" rx="3" fill="#1f6f43"/>
+      </svg>
+      <div class="dd-boot-name">Dairy Diary</div>
+    </div></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

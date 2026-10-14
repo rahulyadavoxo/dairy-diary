@@ -268,3 +268,34 @@ hr.sep { border: 0; border-top: 1px solid var(--line); margin: 1rem 0; }
 .toggle-bar.on .knob { left: 25px; }
 .deli-card .deli-qty { display: block; margin-top: 0.5rem; }
 .deli-total { font-size: 1.15rem; margin: 0.7rem 0 0.4rem; }
+
+/* --- 1.10.9: start-up animation (milk bottle filling) --- */
+.splash { gap: 0.35rem; }
+.splash-bottle { width: 120px; height: 160px; overflow: visible; margin-bottom: 0.4rem; }
+.splash-glass { fill: #e4f1e8; }
+.splash-outline { fill: none; stroke: var(--green); stroke-width: 4; stroke-linejoin: round; }
+.splash-cap { fill: var(--green); }
+.splash-wave { fill: #ffffff; animation: dd-wave 1.6s linear infinite; }
+.splash-wave.back { fill: #fbf5e3; animation-duration: 2.4s; animation-direction: reverse; }
+.splash-milk { animation: dd-fill 2.8s ease-in-out infinite; transform: translateY(150px); }
+.splash-drop { fill: #ffffff; stroke: #cfe3d6; stroke-width: 1; animation: dd-drop 0.7s ease-in infinite; }
+.splash-name { font-size: 1.6rem; font-weight: 800; color: var(--green); letter-spacing: 0.02em; animation: dd-pop 0.6s ease-out both; }
+.splash-text { color: var(--muted); font-size: 0.95rem; }
+@keyframes dd-wave { from { transform: translateX(0); } to { transform: translateX(60px); } }
+@keyframes dd-fill {
+  0% { transform: translateY(150px); }
+  75% { transform: translateY(52px); }
+  90% { transform: translateY(52px); opacity: 1; }
+  100% { transform: translateY(52px); opacity: 0; }
+}
+@keyframes dd-drop {
+  0% { transform: translateY(0); opacity: 1; }
+  80% { transform: translateY(60px); opacity: 1; }
+  100% { transform: translateY(70px); opacity: 0; }
+}
+@keyframes dd-pop { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .splash-wave, .splash-drop, .splash-name { animation: none; }
+  .splash-milk { animation: none; transform: translateY(70px); }
+  .splash-drop { display: none; }
+}
