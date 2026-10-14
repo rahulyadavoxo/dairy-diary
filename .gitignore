@@ -6,6 +6,7 @@ android/.gradle/
 android/local.properties
 dist-apk/
 *.keystore
+!android/app/dairy-diary-debug.keystore
 *.jks
 android/app/release/
 .env

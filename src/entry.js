@@ -7,8 +7,12 @@ const q3 = (v) => Math.max(0, toMilli(v) / 1000);
 export function normaliseEntry(customer, raw, settings) {
   const morn = q3(raw.milkMorningL);
   const eve = q3(raw.milkEveningL);
-  // milkL is the source of truth for billing; if sessions are present they define it.
-  const hasSessions = raw.milkMorningL != null || raw.milkEveningL != null;
+  // milkL is the source of truth for billing. The morning/evening split defines it only when
+  // the split actually carries milk, or when no milkL was given at all. A stored "0 + 0" split
+  // (total-mode / legacy entries) must NOT wipe an existing milkL when the row is re-saved.
+  const hasMilkL = raw.milkL != null && raw.milkL !== '';
+  const sessionsGiven = raw.milkMorningL != null || raw.milkEveningL != null;
+  const hasSessions = sessionsGiven && (morn > 0 || eve > 0 || !hasMilkL);
   const total = hasSessions ? Math.round((morn + eve) * 1000) / 1000 : q3(raw.milkL);
   return {
     milkL: total,

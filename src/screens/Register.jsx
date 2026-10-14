@@ -17,7 +17,8 @@ export function isPaused(c, date) {
 }
 
 function defaultRow(c, date) {
-  return { milkL: Number(c.usualL) || 0, milkMorningL: 0, milkEveningL: 0, paneerKg: 0, skip: isPaused(c, date), note: '' };
+  // Sessions are null (not 0): a 0 + 0 split would otherwise override the pre-filled usual litres.
+  return { milkL: Number(c.usualL) || 0, milkMorningL: null, milkEveningL: null, paneerKg: 0, skip: isPaused(c, date), note: '' };
 }
 
 const SESSION_KEY = 'dd_session';

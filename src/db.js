@@ -119,20 +119,24 @@ export function addPayment(fb, p) {
   return ref.id;
 }
 
-export function deletePayment(fb, id) {
+export function deletePayment(fb, id, payment) {
   const { fsMod } = fb;
+  if (payment && payment.customerId && payment.date) deleteCachedPhoto(payment.customerId, payment.date.slice(0, 7));
   return log(fsMod.deleteDoc(fdoc(fb, 'payments', id)));
 }
 
 /** Delete one customer's entry for a date (removes it from the day's entries map). */
-export async function deleteEntry(fb, date, customerId, editorName) {
+// Not awaited by the UI (same reason as saveEntries: offline the promise never resolves).
+export function deleteEntry(fb, date, customerId, editorName) {
   const { fsMod } = fb;
   const now = Date.now();
   deleteCachedPhoto(customerId, date.slice(0, 7));
   // updateDoc (not setDoc+merge) is the reliable way to delete a nested field
-  await fsMod.updateDoc(fdoc(fb, 'days', date), {
-    [`entries.${customerId}`]: fsMod.deleteField(),
-    lastEditedBy: editorName,
-    lastEditedAt: now,
-  });
+  return log(
+    fsMod.updateDoc(fdoc(fb, 'days', date), {
+      [`entries.${customerId}`]: fsMod.deleteField(),
+      lastEditedBy: editorName,
+      lastEditedAt: now,
+    }),
+  );
 }

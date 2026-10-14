@@ -257,6 +257,7 @@ export const STRINGS = {
     pinEnter: 'PIN daalo',
     pinWrong: 'Galat PIN',
     pinUnlock: 'Unlock',
+    pinFailed: 'PIN set nahi ho paya',
   },
   en: {
     appName: 'Dairy Diary',
@@ -478,7 +479,7 @@ export const STRINGS = {
     register: 'Register',
     saveAllDays: 'Save all days',
     customersDone: 'customers done',
-    tapCustomerHint: 'Naam pe tap karo — uske saare din ek jagah edit karo',
+    tapCustomerHint: 'Tap a name to edit all of its days in one place',
     notMatched: 'not matched',
     noRegisterData: 'not in register',
     registerOnlyNames: 'In register, not in your list',
@@ -513,6 +514,7 @@ export const STRINGS = {
     pinEnter: 'Enter PIN',
     pinWrong: 'Wrong PIN',
     pinUnlock: 'Unlock',
+    pinFailed: 'Could not set PIN',
   },
 };
 

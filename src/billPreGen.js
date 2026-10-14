@@ -3,28 +3,26 @@
 // bill PNG and stores it in the on-phone cache (IndexedDB), so that sharing
 // later sends the saved image directly instead of rendering on the fly.
 // Runs one at a time with pauses to avoid blocking the UI.
-import { renderBillImage } from './billImage.js';
+import { renderBillImage, billFingerprint } from './billImage.js';
 import { getCachedPhoto, putCachedPhoto } from './billCache.js';
 
-let running = false;
+let runId = 0;
 
 export function preGenerateBillPhotos(rows, month, settings) {
-  if (running) return;
-  running = true;
+  // A newer call (other month / fresh data) cancels the older run instead of being ignored.
+  const myRun = ++runId;
   const queue = rows.filter((r) => r.hasActivity || r.balancePaise !== 0);
   let i = 0;
 
   const step = async () => {
-    if (i >= queue.length) {
-      running = false;
-      return;
-    }
+    if (myRun !== runId || i >= queue.length) return;
     const r = queue[i++];
     try {
-      const cached = await getCachedPhoto(r.customerId, month);
-      if (!cached) {
+      const fp = billFingerprint(r, settings);
+      const cached = await getCachedPhoto(r.customerId, month, fp);
+      if (!cached && myRun === runId) {
         const blob = await renderBillImage(r, month, settings);
-        await putCachedPhoto(r.customerId, month, blob);
+        await putCachedPhoto(r.customerId, month, blob, fp);
       }
     } catch {
       /* skip failures — on-demand generation remains as fallback */

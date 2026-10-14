@@ -72,13 +72,18 @@ function Authed() {
 
   useEffect(() => {
     let unsub = () => {};
+    let alive = true; // unmounted before getFirebase() resolved -> don't attach a leaking listener
     getFirebase()
       .then((f) => {
+        if (!alive) return;
         setFb(f);
         unsub = f.authMod.onAuthStateChanged(f.auth, (u) => setUser(u || null));
       })
-      .catch((e) => setInitError(String(e && e.message ? e.message : e)));
-    return () => unsub();
+      .catch((e) => alive && setInitError(String(e && e.message ? e.message : e)));
+    return () => {
+      alive = false;
+      unsub();
+    };
   }, []);
 
   if (initError) {
@@ -122,7 +127,12 @@ export function Gate({ fb, user }) {
   // Join screen is returned from the same position whether or not the anonymous sign-in
   // has happened yet, so its state survives the auth change mid-join.
   if ((!user && mode === 'join') || (user && user.isAnonymous && !anonFarmId)) {
-    return <JoinFarm fb={fb} user={user} onJoined={(farmId) => setJoinedFarm(farmId)} onBack={user ? null : () => setMode('welcome')} />;
+    // An anonymous phone whose join failed used to be stuck here with no way back to the owner
+    // login. It has not joined any farm yet, so signing out loses nothing.
+    const back = user
+      ? () => fb.authMod.signOut(fb.auth).catch(() => {}).finally(() => setMode('welcome'))
+      : () => setMode('welcome');
+    return <JoinFarm fb={fb} user={user} onJoined={(farmId) => setJoinedFarm(farmId)} onBack={back} />;
   }
   if (!user && mode === 'login') return <Login fb={fb} onBack={() => setMode('welcome')} />;
   if (!user) return <Welcome onOwner={() => setMode('login')} onJoin={() => setMode('join')} />;
@@ -153,6 +163,19 @@ function FarmGate({ fb, user, farmId, onRemoved }) {
 
   if (lockOut) return <div className="center-screen">{t('loading')}</div>;
   if (status === 'authorized') return <Main fb={fbFarm} user={user} farm={state.farm} farmId={farmId} />;
+  if (status === 'error') {
+    // A network/unknown error on the farm listener is NOT "farm does not exist": never offer
+    // SetupFarm (which would try to create the farm again) — let the user retry.
+    return (
+      <div className="center-screen" data-testid="farm-error">
+        <p className="error">{t('waitingForServer')}</p>
+        {state.error && <p className="muted tiny">{String(state.error.code || state.error.message || state.error)}</p>}
+        <button className="btn big" onClick={() => window.location.reload()}>
+          {t('loading')} ↻
+        </button>
+      </div>
+    );
+  }
   if (status === 'noFarm' && !user.isAnonymous) return <SetupFarm fb={fb} user={user} />;
   if (status === 'removed' || status === 'noFarm') {
     // owner account but denied / missing: almost always unpublished rules or wrong OWNER_EMAIL
@@ -224,6 +247,7 @@ function Main({ fb, user, farm, farmId }) {
   navRef.current = { tab, detail, delivery, importReview };
   useEffect(() => {
     let handle;
+    let cancelled = false;
     CapApp.addListener('backButton', () => {
       if (handleBack()) return; // a nested overlay handled it
       const { tab: tb, detail: dt, delivery: dl, importReview: ir } = navRef.current;
@@ -232,8 +256,16 @@ function Main({ fb, user, farm, farmId }) {
       else if (dt) setDetail(null);
       else if (tb !== 'register') setTab('register');
       else CapApp.exitApp();
-    }).then((h) => (handle = h));
-    return () => handle && handle.remove && handle.remove();
+    }).then((h) => {
+      handle = h;
+      // unmounted before addListener resolved: remove now, or two listeners pile up and one
+      // back press closes two screens / exits the app
+      if (cancelled && h && h.remove) h.remove();
+    });
+    return () => {
+      cancelled = true;
+      if (handle && handle.remove) handle.remove();
+    };
   }, []);
 
   const data = { fb, user, settings, customers, days, pendingDays, payments, displayName, setDisplayName, online, farm, farmId };

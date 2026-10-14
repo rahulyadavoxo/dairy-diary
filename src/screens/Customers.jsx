@@ -10,13 +10,17 @@ const EMPTY = { name: '', phone: '', area: '', usualMorningL: 0.5, usualEveningL
 const round3 = (n) => Math.max(0, Math.round(Number(n || 0) * 1000) / 1000);
 
 /** Usual morning litres for a customer (falls back to half of legacy usualL). */
+// Number(null) and Number('') are 0 (finite), so a null/empty field used to count as "set to 0"
+// and the legacy usualL fallback was never used.
+const isSet = (v) => v !== null && v !== undefined && v !== '' && Number.isFinite(Number(v));
+
 export function usualMorning(c) {
-  if (Number.isFinite(Number(c.usualMorningL))) return round3(c.usualMorningL);
+  if (isSet(c.usualMorningL)) return round3(c.usualMorningL);
   return round3((Number(c.usualL) || 0) / 2);
 }
 /** Usual evening litres for a customer (falls back to half of legacy usualL). */
 export function usualEvening(c) {
-  if (Number.isFinite(Number(c.usualEveningL))) return round3(c.usualEveningL);
+  if (isSet(c.usualEveningL)) return round3(c.usualEveningL);
   return round3((Number(c.usualL) || 0) / 2);
 }
 
@@ -184,6 +188,7 @@ function CustomerForm({ fb, initial, nextOrder, onDone }) {
   const submit = (e) => {
     e.preventDefault();
     if (!f.name.trim()) return setErr(t('nameRequired'));
+    if (f.pauseFrom && f.pauseTo && f.pauseFrom > f.pauseTo) return setErr(`${t('pauseFrom')} > ${t('pauseTo')}`);
     const data = {
       name: f.name.trim(),
       phone: f.phone.trim(),

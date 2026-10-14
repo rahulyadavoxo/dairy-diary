@@ -58,7 +58,7 @@ function DeliveryCard({ c, initM, initE, initPaneer, onDelivered, onSkip, onBack
   };
   const asUsualQty = session === 'morning' ? usualMorning(c) : session === 'evening' ? usualEvening(c) : usualMorning(c) + usualEvening(c);
 
-  const deliverNow = (mm, ee, pp) => onDelivered({ milkMorningL: mm, milkEveningL: ee, paneerKg: pp });
+  const deliverNow = (mm, ee, pp) => onDelivered({ milkMorningL: mm, milkEveningL: ee, paneerKg: pp }, session);
 
   return (
     <div className="card deli-card">
@@ -161,10 +161,21 @@ export default function Delivery({ fb, customers, days, settings, displayName, o
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [done]);
 
-  const deliver = (c, raw) => {
-    const entry = normaliseEntry(c, { ...raw, skip: false, note: '' }, settings);
+  const deliver = (c, raw, session) => {
+    // Merge with what is already saved for today so delivering one session never wipes the
+    // other session's milk (e.g. evening delivery must keep the morning quantity) or the note.
+    const prev = saved[c.id] || {};
+    const merged = { ...raw };
+    if (session === 'morning' && prev.milkEveningL != null) merged.milkEveningL = Number(prev.milkEveningL) || 0;
+    if (session === 'evening' && prev.milkMorningL != null) merged.milkMorningL = Number(prev.milkMorningL) || 0;
+    const entry = normaliseEntry(c, { ...merged, skip: false, note: prev.note || '' }, settings);
     saveEntries(fb, date, { [c.id]: entry }, displayName);
-    if (!review) setHistory((h) => [...h, { id: c.id, m: entry.milkMorningL, e: entry.milkEveningL, p: entry.paneerKg || 0 }]);
+    if (!(entry.milkL > 0)) {
+      // Nothing delivered (0 L): move on instead of showing the same customer forever.
+      setSkipped((s) => ({ ...s, [c.id]: true }));
+    } else if (!review) {
+      setHistory((h) => [...h, { id: c.id, m: entry.milkMorningL, e: entry.milkEveningL, p: entry.paneerKg || 0 }]);
+    }
     setReview(null);
     // the live listener removes c from `remaining`, so the next customer appears
   };
@@ -218,7 +229,7 @@ export default function Delivery({ fb, customers, days, settings, displayName, o
             initM={review ? review.m : usualMorning(current)}
             initE={review ? review.e : usualEvening(current)}
             initPaneer={review ? review.p || 0 : 0}
-            onDelivered={(raw) => deliver(current, raw)}
+            onDelivered={(raw, session) => deliver(current, raw, session)}
             onSkip={() => {
               setReview(null);
               setSkipped((s) => ({ ...s, [current.id]: true }));

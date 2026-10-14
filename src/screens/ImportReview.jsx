@@ -27,6 +27,8 @@ function getReviewDates() {
 /** Known renames: register name -> app customer name. */
 const ALIASES = {
   'Madhu Mishra': 'Madhu Muskan',
+  // Spelling differs between the paper register transcription and the customer list.
+  'Bhabhi G': 'Bhabi G',
 };
 
 /** Find the best transcription name for a database customer. */
@@ -35,15 +37,19 @@ function findRegName(regNames, customer) {
   // 1. exact
   let hit = regNames.find((n) => n.toLowerCase() === key);
   if (hit) return hit;
-  // 2. alias (register -> app)
-  hit = Object.keys(ALIASES).find((rn) => ALIASES[rn].toLowerCase() === key);
+  // 2. alias (register -> app) — only if that register name really exists
+  hit = Object.keys(ALIASES).find((rn) => ALIASES[rn].toLowerCase() === key && regNames.includes(rn));
   if (hit) return hit;
-  // 3. fuzzy: either contains the other
-  hit = regNames.find((n) => {
-    const rn = n.toLowerCase();
-    return key.includes(rn) || rn.includes(key);
+  // 3. fuzzy: whole-word containment only, and only when exactly ONE register name matches.
+  //    (Plain substring matching mapped e.g. "Ravi" -> "Ravi K Maa" or "Mini" -> "Mini Singh Bagal"
+  //    and could import another customer's milk.)
+  const words = (x) => ` ${x.toLowerCase().replace(/[^a-z0-9\u0900-\u097f]+/g, ' ').trim()} `;
+  const k = words(key);
+  const cands = regNames.filter((n) => {
+    const rn = words(n);
+    return k.includes(rn) || rn.includes(k);
   });
-  return hit || null;
+  return cands.length === 1 ? cands[0] : null;
 }
 
 /** All transcribed names across all dates. */
@@ -84,7 +90,7 @@ function CustomerDays({ fb, customer, regName, days, settings, displayName, onDo
     if (!window.confirm(`${dmy(d)} ka entry hatana hai?`)) return;
     setDeleting(d);
     try {
-      await deleteEntry(fb, d, customer.id, displayName);
+      deleteEntry(fb, d, customer.id, displayName); // not awaited: would hang forever offline
       setVals((p) => ({ ...p, [d]: '' }));
       setDeletedDays((s) => new Set(s).add(d));
       setFlash(t('deleted'));
@@ -106,13 +112,29 @@ function CustomerDays({ fb, customer, regName, days, settings, displayName, onDo
     setSaving(true);
     setFlash(t('saving'));
     try {
-      // Save sequentially to avoid write conflicts
+      // NOT awaited: saveEntries only resolves when the server confirms, so awaiting it hung on
+      // "Saving..." forever while offline. Writes are queued locally and sync later.
       for (const d of datesToSave) {
-        const n = Number(vals[d]);
-        await saveEntries(
+        const n = Math.round(Number(vals[d]) * 1000) / 1000;
+        const prev = (days[d] && days[d].entries && days[d].entries[customer.id]) || null;
+        // Unchanged day already in the app: don't rewrite it.
+        if (prev && !prev.skip && Number(prev.milkL) === n) continue;
+        // Keep the register's morning+evening split when it matches the typed total.
+        const parsed = regName ? parseImportValue((OCT_IMPORT[d] || {})[regName]) : null;
+        const split = parsed && parsed.milkMorningL != null && parsed.milkL === n
+          ? { milkMorningL: parsed.milkMorningL, milkEveningL: parsed.milkEveningL }
+          : { milkL: n, milkMorningL: null, milkEveningL: null };
+        saveEntries(
           fb,
           d,
-          { [customer.id]: normaliseEntry(customer, { milkMorningL: n, milkEveningL: 0, paneerKg: 0, skip: false, note: '' }, settings) },
+          {
+            [customer.id]: normaliseEntry(
+              customer,
+              // keep paneer and note already recorded for that day (they were overwritten with 0 / '')
+              { ...split, paneerKg: prev ? prev.paneerKg || 0 : 0, skip: false, note: prev ? prev.note || '' : '' },
+              settings,
+            ),
+          },
           displayName,
         );
       }

@@ -23,28 +23,36 @@ function openDb() {
 
 const key = (customerId, month) => `${customerId}:${month}`;
 
-export async function getCachedPhoto(customerId, month) {
+/**
+ * Returns the cached PNG only if it was rendered from exactly the same bill data (`fp`).
+ * A bill depends on earlier months (previous due), payments, the customer's opening due and
+ * the farm name/phone, so deleting one month's key on edit is not enough: the fingerprint
+ * guarantees a stale photo is never shared.
+ */
+export async function getCachedPhoto(customerId, month, fp) {
   try {
     const db = await openDb();
-    const blob = await new Promise((resolve, reject) => {
+    const rec = await new Promise((resolve, reject) => {
       const tx = db.transaction(STORE, 'readonly');
       const req = tx.objectStore(STORE).get(key(customerId, month));
       req.onsuccess = () => resolve(req.result || null);
       req.onerror = () => reject(req.error);
     });
     db.close();
-    return blob;
+    // Old format (bare Blob, no fingerprint) is treated as stale.
+    if (!rec || !rec.blob || !fp || rec.fp !== fp) return null;
+    return rec.blob;
   } catch {
     return null;
   }
 }
 
-export async function putCachedPhoto(customerId, month, blob) {
+export async function putCachedPhoto(customerId, month, blob, fp) {
   try {
     const db = await openDb();
     await new Promise((resolve, reject) => {
       const tx = db.transaction(STORE, 'readwrite');
-      tx.objectStore(STORE).put(blob, key(customerId, month));
+      tx.objectStore(STORE).put({ blob, fp: fp || '' }, key(customerId, month));
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
     });

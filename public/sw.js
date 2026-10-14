@@ -12,7 +12,7 @@
  *  - The update takes effect on the next app launch (never mid-entry).
  */
 const OTA_BASE = 'https://cdn.jsdelivr.net/gh/rahulyadavoxo/dairy-diary@main/ota';
-const BUNDLED_VERSION = '1.9.3';
+const BUNDLED_VERSION = '1.9.4'; // MUST equal package.json "version" of the APK build
 const CACHE_PREFIX = 'dd-ota-';
 const COMPLETE_MARKER = '/__dd_complete';
 const CHECK_TIMEOUT_MS = 10000;
@@ -42,9 +42,16 @@ async function completeOtaVersions() {
   var keys = await caches.keys();
   for (var k of keys) {
     if (k.indexOf(CACHE_PREFIX) !== 0) continue;
+    var v = k.slice(CACHE_PREFIX.length);
+    // An OTA bundle that is not NEWER than the code inside this APK is obsolete (the APK was
+    // updated). Serving it would shadow the new APK with old code forever — drop it instead.
+    if (verCmp(v, BUNDLED_VERSION) <= 0) {
+      try { await caches.delete(k); } catch (e) { /* ignore */ }
+      continue;
+    }
     try {
       var c = await caches.open(k);
-      if (await c.match(COMPLETE_MARKER)) out.push(k.slice(CACHE_PREFIX.length));
+      if (await c.match(COMPLETE_MARKER)) out.push(v);
     } catch (e) { /* ignore */ }
   }
   out.sort(verCmp);

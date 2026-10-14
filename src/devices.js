@@ -79,9 +79,11 @@ export function secondsLeft(codeDoc, nowMs = Date.now()) {
  *  'noFarm'     – farm doc does not exist (owner: create it)
  *  'authorized' – uid is in devices
  *  'removed'    – farm exists but uid is not in devices, or the server denied access
+ *  'error'      – the listener failed for another reason (offline, unavailable…)
  */
-export function deviceStatus({ farm, exists, denied, loaded }, uid) {
+export function deviceStatus({ farm, exists, denied, loaded, error }, uid) {
   if (denied) return 'removed';
+  if (error) return 'error'; // network / unknown listener error: not proof the farm is missing
   if (!loaded) return 'loading';
   if (!exists) return 'noFarm';
   return farm && farm.devices && Object.prototype.hasOwnProperty.call(farm.devices, uid) ? 'authorized' : 'removed';

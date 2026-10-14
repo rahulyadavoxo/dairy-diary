@@ -4,7 +4,7 @@
 import { useMemo, useState, useEffect } from 'react';
 import { useLang } from '../i18n.js';
 import { sortCustomers, isPaused } from './Register.jsx';
-import { addDays, dmy, fmtQty, timeHM, todayISO } from '../format.js';
+import { addDays, dmy, fmtQty, timeHM, todayISO, monthName as fmtMonthName } from '../format.js';
 import { toMilli } from '../billing.js';
 import { pushBackHandler } from '../backStack.js';
 
@@ -31,7 +31,7 @@ function milkOn(days, cid, iso) {
 
 /** Calendar modal: month grid with each day's milk for one customer (read-only). */
 function CalendarModal({ customer, days, onClose }) {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const now = todayISO();
   const [ym, setYm] = useState(now.slice(0, 7)); // "2026-10"
   const [y, m] = ym.split('-').map(Number);
@@ -55,7 +55,8 @@ function CalendarModal({ customer, days, onClose }) {
     if (nym <= now.slice(0, 7)) setYm(nym);
   };
 
-  const monthName = new Date(y, m - 1, 1).toLocaleString(undefined, { month: 'long', year: 'numeric' });
+  // app language, not the WebView locale (was English on Hindi phones and vice versa)
+  const monthName = fmtMonthName(ym, lang);
   const weekDays = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
   let monthTotal = 0;
   cells.forEach((c) => {

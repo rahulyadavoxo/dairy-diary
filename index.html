@@ -16,7 +16,9 @@
         function poke(reg) {
           try {
             var last = parseInt(localStorage.getItem('dd_ota_check') || '0', 10);
-            if (Date.now() - last > DAILY_MS) {
+            if (Date.now() - last > DAILY_MS && navigator.onLine !== false) {
+              // only count the daily check when we are online, otherwise an offline start
+              // postponed the next update check by a whole day
               localStorage.setItem('dd_ota_check', String(Date.now()));
               var send = function () {
                 try {

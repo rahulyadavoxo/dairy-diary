@@ -49,7 +49,8 @@ export default function Hisaab({ fb, customers, days, payments, settings, month,
   const [pinOpen, setPinOpen] = useState(false);
   const [pinInput, setPinInput] = useState('');
   const [pinErr, setPinErr] = useState('');
-  const pinLocked = !!getPinHash(settings);
+  // Check lock fresh from storage on every render (Settings may have changed it)
+  const pinLocked = !!getPinHash();
 
   const doHideShow = (v) => {
     setShowTotals(v);
@@ -58,21 +59,21 @@ export default function Hisaab({ fb, customers, days, payments, settings, month,
     } catch {}
   };
 
-  // Lock enforcement: totals must start hidden whenever the PIN lock is on —
-  // both when the PIN is newly set and on every app start with a PIN present.
+  // Lock enforcement: whenever this screen mounts/shows with a PIN set,
+  // totals start hidden.
   useEffect(() => {
-    if (pinLocked) {
+    if (getPinHash()) {
       doHideShow(false);
       setPinOpen(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pinLocked]);
+  }, []);
 
   const toggleTotals = () => {
     if (showTotals) {
       // Hiding never needs PIN
       doHideShow(false);
-    } else if (pinLocked) {
+    } else if (getPinHash()) {
       // Showing needs PIN
       setPinInput('');
       setPinErr('');
@@ -84,7 +85,7 @@ export default function Hisaab({ fb, customers, days, payments, settings, month,
 
   const submitPin = async (e) => {
     e.preventDefault();
-    const ok = await verifyPin(settings, pinInput.trim());
+    const ok = await verifyPin(pinInput.trim());
     if (ok) {
       setPinOpen(false);
       doHideShow(true);
@@ -96,10 +97,12 @@ export default function Hisaab({ fb, customers, days, payments, settings, month,
   const allRows = res.rows.filter((r) => r.customer.active !== false || r.hasActivity || r.balancePaise !== 0);
 
   // Pre-generate bill photos in the background so sharing is instant later.
+  // Re-run when the data arrives / changes (it was [month] only, so on app start it ran with an
+  // empty list and never again). Cached photos are fingerprinted, so unchanged bills are skipped.
   useEffect(() => {
     preGenerateBillPhotos(allRows, month, settings);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [month]);
+  }, [month, res]);
   const rows = sortByDue(allRows);
   const sTotals = res.supplierTotals || { billedPaise: 0, collectedPaise: 0, pendingPaise: 0, advancePaise: 0 };
   const hasSuppliers = allRows.some((r) => r.customer.isSupplier);
@@ -178,7 +181,7 @@ export default function Hisaab({ fb, customers, days, payments, settings, month,
             </div>
           </div>
         )}
-        {res.totals.advancePaise > 0 && (
+        {showTotals && res.totals.advancePaise > 0 && (
           <p className="muted small">
             {t('advance')}: {rupees(res.totals.advancePaise)}
           </p>

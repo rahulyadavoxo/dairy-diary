@@ -2,8 +2,12 @@ import { useEffect, useState } from 'react';
 import { useLang } from '../i18n.js';
 import { saveSettings } from '../db.js';
 import { paiseToInput, toPaise } from '../format.js';
-import { getPinHash, hashPin } from '../pinLock.js';
+import { getPinHash, hashPin, savePinHash } from '../pinLock.js';
 import DevicesCard from '../components/DevicesCard.jsx';
+
+// Single source of truth for the version (package.json, injected by vite.config.js).
+// eslint-disable-next-line no-undef
+const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'dev';
 
 export default function Settings({ fb, user, settings, displayName, setDisplayName, online, farm, farmId }) {
   const { t, lang, setLang } = useLang();
@@ -12,7 +16,7 @@ export default function Settings({ fb, user, settings, displayName, setDisplayNa
   const [msg, setMsg] = useState('');
   const [pin, setPin] = useState('');
   const [pinMsg, setPinMsg] = useState('');
-  const hasPin = !!getPinHash(settings);
+  const [hasPin, setHasPin] = useState(() => !!getPinHash());
 
   const savePin = async (e) => {
     e.preventDefault();
@@ -21,17 +25,24 @@ export default function Settings({ fb, user, settings, displayName, setDisplayNa
       setPinMsg(t('pinTooShort'));
       return;
     }
-    const h = await hashPin(p);
-    saveSettings(fb, { totalsPinHash: h });
-    setPin('');
-    setPinMsg(t('pinSaved'));
+    try {
+      const h = await hashPin(p);
+      savePinHash(h);
+      setHasPin(true);
+      setPin('');
+      setPinMsg(t('pinSaved'));
+    } catch (err) {
+      console.error('[pin]', err);
+      setPinMsg(t('pinFailed'));
+    }
     setTimeout(() => setPinMsg(''), 2500);
   };
 
   const removePin = (e) => {
     e.preventDefault();
     if (!window.confirm(t('pinRemoveConfirm'))) return;
-    saveSettings(fb, { totalsPinHash: '' });
+    savePinHash('');
+    setHasPin(false);
     setPinMsg(t('pinRemoved'));
     setTimeout(() => setPinMsg(''), 2500);
   };
@@ -65,10 +76,14 @@ export default function Settings({ fb, user, settings, displayName, setDisplayNa
   };
 
   return (
-    <form className="screen form" onSubmit={save}>
+    // NOTE: the outer element is a <div>, not a <form>. The PIN form and the DevicesCard rename
+    // form used to be nested inside the settings <form>: nested forms are invalid HTML and their
+    // submit events bubbled into save(), so setting a PIN / renaming a phone also re-saved rates.
+    <div className="screen form">
       <header className="screen-head">
         <h1>{t('settingsTitle')}</h1>
       </header>
+      <form onSubmit={save} style={{ display: 'contents' }}>
       <label>
         {t('milkRate')}
         <input type="number" inputMode="decimal" min="0" step="0.5" value={f.milkRate} onChange={set('milkRate')} />
@@ -94,6 +109,7 @@ export default function Settings({ fb, user, settings, displayName, setDisplayNa
       <button className="btn primary big" type="submit">
         {t('save')}
       </button>
+      </form>
 
       <div className="card">
         <p>{t('language')}</p>
@@ -150,9 +166,9 @@ export default function Settings({ fb, user, settings, displayName, setDisplayNa
           </button>
         )}
         <p className="muted tiny">
-          {t('version')} 1.9.3
+          {t('version')} {APP_VERSION}
         </p>
       </div>
-    </form>
+    </div>
   );
 }

@@ -3,8 +3,8 @@ import { useLang } from '../i18n.js';
 import { computeMonth, fullPaymentPaise } from '../billing.js';
 import { addPayment, deletePayment } from '../db.js';
 import { billText, waLink } from '../bill.js';
-import { renderBillImage, shareImage, billFileName } from '../billImage.js';
-import { getCachedPhoto, putCachedPhoto, deleteCachedPhoto } from '../billCache.js';
+import { renderBillImage, shareImage, billFileName, billFingerprint } from '../billImage.js';
+import { getCachedPhoto, putCachedPhoto } from '../billCache.js';
 import { dmy, firstWeekday, fmtQty, monthDates, paiseToInput, rupees, toPaise, todayISO } from '../format.js';
 import { MonthNav } from './Hisaab.jsx';
 
@@ -22,6 +22,9 @@ export default function CustomerDetail({ fb, customers, days, payments, settings
   const [mode, setMode] = useState('cash');
   const [payDate, setPayDate] = useState(todayISO());
   const [err, setErr] = useState('');
+  // All hooks must run on every render, BEFORE any early return (Rules of Hooks).
+  const [sharing, setSharing] = useState(false);
+  const [shareErr, setShareErr] = useState('');
 
   if (!customer || !row) {
     return (
@@ -42,19 +45,18 @@ export default function CustomerDetail({ fb, customers, days, payments, settings
     setAmount('');
   };
 
-  const [sharing, setSharing] = useState(false);
-  const [shareErr, setShareErr] = useState('');
   const share = async () => {
     if (sharing) return;
     setSharing(true);
     setShareErr('');
     try {
       // 1) Use the pre-generated saved photo if available (instant, reliable)
-      let blob = await getCachedPhoto(customerId, month);
+      const fp = billFingerprint(row, settings);
+      let blob = await getCachedPhoto(customerId, month, fp);
       // 2) Otherwise render on demand and cache it
       if (!blob) {
         blob = await renderBillImage(row, month, settings);
-        putCachedPhoto(customerId, month, blob);
+        putCachedPhoto(customerId, month, blob, fp);
       }
       await shareImage(blob, billFileName(customer.name, month));
     } catch (e) {
@@ -195,8 +197,7 @@ export default function CustomerDetail({ fb, customers, days, payments, settings
               className="btn small ghost"
               onClick={() => {
                 if (window.confirm(t('confirmDelete'))) {
-                  deleteCachedPhoto(p.customerId, p.date.slice(0, 7));
-                  deletePayment(fb, p.id);
+                  deletePayment(fb, p.id, p);
                 }
               }}
             >

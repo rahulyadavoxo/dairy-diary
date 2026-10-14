@@ -7,7 +7,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useLang } from '../i18n.js';
 import { computeMonth } from '../billing.js';
 import { billText, waLink } from '../bill.js';
-import { renderBillImage, shareImage, billFileName } from '../billImage.js';
+import { renderBillImage, shareImage, billFileName, billFingerprint } from '../billImage.js';
 import { getCachedPhoto, putCachedPhoto } from '../billCache.js';
 import { saveSettings } from '../db.js';
 import { addMonths, monthOf, todayISO, monthName, rupees } from '../format.js';
@@ -42,6 +42,45 @@ export default function BillSender({ fb, customers, days, payments, settings, on
     return 0;
   });
   const [opened, setOpened] = useState(false);
+  // Preview state + effect live ABOVE the early returns (Rules of Hooks): otherwise moving past
+  // the last customer (idx === targets.length) renders fewer hooks and React crashes.
+  const [imgUrl, setImgUrl] = useState(null);
+  const [imgBlob, setImgBlob] = useState(null);
+  const [imgErr, setImgErr] = useState('');
+  const curRow = idx < targets.length ? targets[idx] : null;
+
+  // Render the bill image (with calendar) for preview — prefer cached photo
+  useEffect(() => {
+    if (!curRow) return undefined;
+    let live = true;
+    let url = null;
+    setImgUrl(null);
+    setImgBlob(null);
+    setImgErr('');
+    (async () => {
+      try {
+        const fp = billFingerprint(curRow, settings);
+        let blob = await getCachedPhoto(curRow.customerId, billMonth, fp);
+        if (!blob) {
+          blob = await renderBillImage(curRow, billMonth, settings);
+          putCachedPhoto(curRow.customerId, billMonth, blob, fp);
+        }
+        if (!live) return;
+        url = URL.createObjectURL(blob);
+        setImgBlob(blob);
+        setImgUrl(url);
+      } catch (e) {
+        if (!live) return;
+        console.error('[bill-render]', e);
+        setImgErr(t('shareFailed'));
+      }
+    })();
+    return () => {
+      live = false;
+      if (url) URL.revokeObjectURL(url); // free the preview image memory
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idx, curRow && curRow.customerId]);
 
   useEffect(() => {
     try {
@@ -90,36 +129,6 @@ export default function BillSender({ fb, customers, days, payments, settings, on
 
   const row = targets[idx];
   const text = billText(row, billMonth, settings);
-  const [imgUrl, setImgUrl] = useState(null);
-  const [imgBlob, setImgBlob] = useState(null);
-  const [imgErr, setImgErr] = useState('');
-
-  // Render the bill image (with calendar) for preview — prefer cached photo
-  useEffect(() => {
-    let live = true;
-    setImgUrl(null);
-    setImgBlob(null);
-    setImgErr('');
-    (async () => {
-      try {
-        let blob = await getCachedPhoto(row.customerId, billMonth);
-        if (!blob) {
-          blob = await renderBillImage(row, billMonth, settings);
-          putCachedPhoto(row.customerId, billMonth, blob);
-        }
-        if (!live) return;
-        setImgBlob(blob);
-        setImgUrl(URL.createObjectURL(blob));
-      } catch (e) {
-        if (!live) return;
-        console.error('[bill-render]', e);
-        setImgErr(t('shareFailed'));
-      }
-    })();
-    return () => {
-      live = false;
-    };
-  }, [idx]);
 
   const sharePhoto = async () => {
     if (!imgBlob) return;

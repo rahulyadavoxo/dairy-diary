@@ -1,6 +1,6 @@
 // Render a customer's monthly bill as a PNG image (canvas 2D).
 // Design: header + month calendar (date-wise milk) + structured summary + footer.
-import { fmtQty, monthName, rupees } from './format.js';
+import { fmtQty, monthName, rupees, todayISO } from './format.js';
 
 const W = 1080;
 const H = 1920;
@@ -76,7 +76,7 @@ export function renderBillImage(row, month, settings = {}) {
     const cellW = (W - 120) / cols;
     const cellH = 104;
     const wd = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
-    const todayStr = new Date().toISOString().slice(0, 10);
+    const todayStr = todayISO(); // local (IST) date, not UTC
 
     // weekday header
     for (let i = 0; i < cols; i++) {
@@ -158,6 +158,9 @@ export function renderBillImage(row, month, settings = {}) {
     text(g, 'धन्यवाद / Thank you 🙏', 60, y, { size: 34, color: MUTED });
     if (settings.phone) text(g, `${farm}: ${settings.phone}`, W - 60, y, { size: 30, align: 'right', color: MUTED });
 
+    // Safety: toBlob can hang forever in some WebViews — time out after 15s.
+    // (Declared BEFORE toBlob so a synchronous callback can never hit the TDZ.)
+    const timer = setTimeout(() => reject(new Error('toBlob timeout')), 15000);
     c.toBlob(
       (blob) => {
         clearTimeout(timer);
@@ -166,17 +169,30 @@ export function renderBillImage(row, month, settings = {}) {
       },
       'image/png',
     );
-    // Safety: toBlob can hang forever in some WebViews — time out after 15s
-    const timer = setTimeout(() => reject(new Error('toBlob timeout')), 15000);
     } catch (e) {
       reject(e);
     }
   });
-  // Hard timeout: never hang longer than 20s total
-  const timeout = new Promise((_, reject) =>
-    setTimeout(() => reject(new Error('render timeout')), 20000),
-  );
-  return Promise.race([render, timeout]);
+  // Hard timeout: never hang longer than 20s total (timer cleared once the race settles)
+  let hard;
+  const timeout = new Promise((_, reject) => {
+    hard = setTimeout(() => reject(new Error('render timeout')), 20000);
+  });
+  return Promise.race([render, timeout]).finally(() => clearTimeout(hard));
+}
+
+/** Everything the bill image shows; used as the photo-cache fingerprint. */
+export function billFingerprint(row, settings = {}) {
+  if (!row) return '';
+  return JSON.stringify([
+    row.customer && row.customer.name,
+    row.milkMl, row.milkPaise, row.paneerG, row.paneerPaise,
+    row.billedPaise, row.previousDuePaise, row.paidPaise, row.balancePaise,
+    [...(row.milkRates || [])].sort(),
+    row.daily || {},
+    settings.farmName || '', settings.phone || '',
+    todayISO(), // the ✕ "gap" marks depend on today's date
+  ]);
 }
 
 /** Share a PNG blob via the system share sheet, falling back to a download. */
