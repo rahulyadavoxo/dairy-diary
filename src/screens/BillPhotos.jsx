@@ -5,16 +5,25 @@ import { useLang } from '../i18n.js';
 import { computeMonth } from '../billing.js';
 import { renderBillImage, shareImage, billFileName, billFingerprint } from '../billImage.js';
 import { putCachedPhoto } from '../billCache.js';
-import { monthName, rupees } from '../format.js';
+import { addMonths, monthOf, todayISO } from '../format.js';
+import MonthNav from '../components/MonthNav.jsx';
 
-export default function BillPhotos({ customers, days, payments, settings, month, onClose }) {
-  const { t, lang } = useLang();
+/** Month to open with: in the first 3 days of a month the bills to make are last month's
+    (the bill sender uses last month too), so the current month is swapped for the previous one. */
+export function defaultPhotoMonth(month, today = todayISO()) {
+  const cur = monthOf(today);
+  return month === cur && Number(today.slice(8, 10)) <= 3 ? addMonths(cur, -1) : month;
+}
+
+export default function BillPhotos({ customers, days, payments, settings, month: initialMonth, onClose }) {
+  const { t } = useLang();
+  const [month, setMonthState] = useState(initialMonth);
   const res = useMemo(
     () => computeMonth({ customers, days, payments, settings, month }),
     [customers, days, payments, settings, month],
   );
   const targets = useMemo(
-    () => res.rows.filter((r) => r.customer.active !== false && r.hasActivity),
+    () => res.rows.filter((r) => r.customer.active !== false && !r.customer.isSupplier && r.hasActivity),
     [res],
   );
   const [photos, setPhotos] = useState([]); // [{id,name,url,blob}]
@@ -22,6 +31,12 @@ export default function BillPhotos({ customers, days, payments, settings, month,
   const [doneMsg, setDoneMsg] = useState('');
 
   const urls = useRef([]);
+  const setMonth = (m) => {
+    if (working) return;
+    setPhotos([]);
+    setDoneMsg('');
+    setMonthState(m);
+  };
   // Revoke every preview URL when the screen closes (memory leak on low-RAM phones).
   useEffect(() => () => urls.current.forEach((u) => URL.revokeObjectURL(u)), []);
 
@@ -72,9 +87,8 @@ export default function BillPhotos({ customers, days, payments, settings, month,
         <button type="button" className="btn small ghost" onClick={onClose}>
           ← {t('back')}
         </button>
-        <h1>
-          {t('billPhotos')} <span className="muted small">{monthName(month, lang)}</span>
-        </h1>
+        <h1>{t('billPhotos')}</h1>
+        <MonthNav month={month} setMonth={setMonth} />
         <p className="muted small">{t('billPhotosHint')}</p>
       </header>
       {photos.length === 0 ? (

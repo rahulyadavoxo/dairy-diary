@@ -1,9 +1,14 @@
+// Day editor: correct any past day (or today) for every customer, or for one customer.
+// Opened from the Register tab ("Edit this day") and from a customer's calendar (tap a date).
+// Rows: milk for the chosen session (morning / evening / total), skip, paneer, note. Edits
+// autosave after a short pause and are flushed when the editor closes or the date changes.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLang } from '../i18n.js';
 import { saveEntries } from '../db.js';
 import { toMilli } from '../billing.js';
-import { normaliseEntry } from '../entry.js';
+import { normaliseEntry, usualMorning, usualEvening } from '../entry.js';
 import { addDays, dmy, fmtQty, timeHM, todayISO } from '../format.js';
+import { pushBackHandler } from '../backStack.js';
 
 export function sortCustomers(list) {
   return [...list].sort((a, b) => (a.order ?? 1e9) - (b.order ?? 1e9) || String(a.name || '').localeCompare(String(b.name || '')));
@@ -16,13 +21,24 @@ export function isPaused(c, date) {
   return date >= from && date <= to;
 }
 
-function defaultRow(c, date) {
-  // Sessions are null (not 0): a 0 + 0 split would otherwise override the pre-filled usual litres.
-  return { milkL: Number(c.usualL) || 0, milkMorningL: null, milkEveningL: null, paneerKg: 0, skip: isPaused(c, date), note: '' };
+/** Search: name / area as text; the phone by digits only ("98765 43210" finds 9876543210). */
+export function matchesQuery(c, query) {
+  const q = String(query || '').trim().toLowerCase();
+  if (!q) return true;
+  if ([c.name, c.area].some((v) => String(v || '').toLowerCase().includes(q))) return true;
+  const qd = q.replace(/\D/g, '');
+  return qd.length > 0 && qd.length === q.replace(/[\s+()-]/g, '').length && String(c.phone || '').replace(/\D/g, '').includes(qd);
 }
 
-const SESSION_KEY = 'dd_session';
-function defaultSession() {
+/** Suggestion for a customer with no entry that day: the usual morning / evening litres. */
+function defaultRow(c, date) {
+  const m = usualMorning(c);
+  const e = usualEvening(c);
+  return { milkL: Math.round((m + e) * 1000) / 1000, milkMorningL: m, milkEveningL: e, paneerKg: 0, skip: isPaused(c, date), note: '' };
+}
+
+export const SESSION_KEY = 'dd_session';
+export function defaultSession() {
   try {
     const s = localStorage.getItem(SESSION_KEY);
     if (s === 'morning' || s === 'evening' || s === 'total') return s;
@@ -34,9 +50,9 @@ function defaultSession() {
 
 const AUTOSAVE_MS = 1200;
 
-export default function Register({ fb, customers, days, pendingDays, settings, displayName, onDelivery }) {
+export default function DayEditor({ fb, customers, days, pendingDays = {}, settings, displayName, date: initialDate, customerId, onClose }) {
   const { t } = useLang();
-  const [date, setDate] = useState(todayISO());
+  const [date, setDate] = useState(() => (initialDate && initialDate <= todayISO() ? initialDate : todayISO()));
   const [drafts, setDrafts] = useState({});
   const [query, setQuery] = useState('');
   const [openPaneer, setOpenPaneer] = useState({});
@@ -57,7 +73,10 @@ export default function Register({ fb, customers, days, pendingDays, settings, d
 
   const day = days[date] || null;
   const saved = (day && day.entries) || {};
-  const active = useMemo(() => sortCustomers(customers.filter((c) => c.active !== false)), [customers]);
+  const active = useMemo(
+    () => (customerId ? customers.filter((c) => c.id === customerId) : sortCustomers(customers.filter((c) => c.active !== false))),
+    [customers, customerId],
+  );
   const byId = useMemo(() => Object.fromEntries(customers.map((c) => [c.id, c])), [customers]);
 
   const rowFor = (c) => drafts[c.id] || saved[c.id] || defaultRow(c, date);
@@ -89,6 +108,15 @@ export default function Register({ fb, customers, days, pendingDays, settings, d
 
   // flush pending edits when leaving the screen or changing date
   useEffect(() => () => flush(), []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const close = () => {
+    flush();
+    onClose();
+  };
+  // Hardware back closes the editor (after saving pending edits), not the whole Register tab.
+  const closeRef = useRef(close);
+  closeRef.current = close;
+  useEffect(() => pushBackHandler(() => closeRef.current()), []);
 
   const changeDate = (d) => {
     flush();
@@ -124,103 +152,109 @@ export default function Register({ fb, customers, days, pendingDays, settings, d
   const qtyFor = (r) => (session === 'morning' ? r.milkMorningL || 0 : session === 'evening' ? r.milkEveningL || 0 : r.milkL);
 
   const saveAll = () => {
+    // Rows without a saved entry only show the usual litres as a suggestion. Saving them creates
+    // entries (= bills) for that day, so ask first when editing the whole day.
+    const fresh = active.filter((c) => !saved[c.id] && !drafts[c.id]).length;
+    if (!customerId && fresh > 0 && !window.confirm(t('saveAllConfirm').replace('{n}', fresh))) return;
     active.forEach((c) => {
       dirty.current[c.id] = rowFor(c);
     });
     flush();
   };
 
-  const q = query.trim().toLowerCase();
-  const visible = q
-    ? active.filter((c) => [c.name, c.area, c.phone].some((v) => String(v || '').toLowerCase().includes(q)))
-    : active;
+  const visible = active.filter((c) => matchesQuery(c, query));
 
+  // Day total = milk sold to customers, from saved / edited rows only (suggestions are not
+  // deliveries; supplier rows are milk bought, not sold).
   let totalMl = 0;
   let totalPaneerG = 0;
   active.forEach((c) => {
+    if (c.isSupplier || !(drafts[c.id] || saved[c.id])) return;
     const r = rowFor(c);
     if (!r.skip) totalMl += toMilli(r.milkL);
     totalPaneerG += toMilli(r.paneerKg);
   });
 
-  const unsavedCount = active.filter((c) => !saved[c.id] || drafts[c.id]).length;
+  const unsavedCount = active.filter((c) => drafts[c.id]).length;
+
+  const only = customerId ? active[0] : null;
 
   return (
-    <div className="screen register">
-      <header className="screen-head">
-        <h1>{date === todayISO() ? t('registerTitle') : dmy(date)}</h1>
-        <div className="date-nav">
-          <button className="btn icon" onClick={() => changeDate(addDays(date, -1))} aria-label={t('prevDay')}>
-            ◀
+    <div className="full-overlay" data-testid="day-editor">
+      <div className="screen register">
+        <header className="screen-head">
+          <button type="button" className="btn small ghost" onClick={close}>
+            ← {t('back')}
           </button>
-          <label className="date-pick">
-            <span>{dmy(date)}</span>
-            <input
-              type="date"
-              value={date}
-              max={todayISO()}
-              onChange={(e) => {
-                const v = e.target.value;
-                if (v) changeDate(v > todayISO() ? todayISO() : v);
-              }}
-            />
-          </label>
-          <button
-            className="btn icon"
-            disabled={date === todayISO()}
-            onClick={() => {
-              const n = addDays(date, 1);
-              if (n <= todayISO()) changeDate(n);
-            }}
-            aria-label={t('nextDay')}
-          >
-            ▶
-          </button>
-          {date !== todayISO() && (
-            <button className="btn small" onClick={() => changeDate(todayISO())}>
-              {t('today')}
+          <h1>
+            ✏️ {only ? only.name : t('editDayTitle')} · {dmy(date)}
+          </h1>
+          <div className="date-nav">
+            <button className="btn icon" onClick={() => changeDate(addDays(date, -1))} aria-label={t('prevDay')}>
+              ◀
             </button>
-          )}
-        </div>
-        <p className="muted small">
-          {day && day.lastEditedBy
-            ? `${t('lastEdited')}: ${day.lastEditedBy}, ${timeHM(day.lastEditedAt)}`
-            : t('nobodyYet')}
-          {pendingDays[date] ? ` · ${t('pendingSync')}` : day ? ` · ${t('synced')}` : ''}
-        </p>
-        <input className="search" type="search" placeholder={t('search')} value={query} onChange={(e) => setQuery(e.target.value)} />
-        <p className="day-total">
-          {t('dayTotal')}: <b>{fmtQty(totalMl / 1000)} {t('litre')}</b>
-          {totalPaneerG > 0 && (
-            <>
-              {' '}
-              · {t('paneer')}: <b>{fmtQty(totalPaneerG / 1000)} {t('kg')}</b>
-            </>
-          )}
-        </p>
-        <div className="chips session-chips" role="tablist" aria-label={t('session')}>
-          {['morning', 'evening', 'total'].map((s) => (
+            <label className="date-pick">
+              <span>{dmy(date)}</span>
+              <input
+                type="date"
+                value={date}
+                max={todayISO()}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (v) changeDate(v > todayISO() ? todayISO() : v);
+                }}
+              />
+            </label>
             <button
-              key={s}
-              type="button"
-              role="tab"
-              aria-selected={session === s}
-              className={'btn chip' + (session === s ? ' on' : '')}
-              onClick={() => pickSession(s)}
+              className="btn icon"
+              disabled={date >= todayISO()}
+              onClick={() => {
+                const n = addDays(date, 1);
+                if (n <= todayISO()) changeDate(n);
+              }}
+              aria-label={t('nextDay')}
             >
-              {t('session_' + s)}
+              ▶
             </button>
-          ))}
-          {onDelivery && (
-            <button type="button" className="btn chip delivery-chip" onClick={onDelivery}>
-              🚚 {t('delivery')}
-            </button>
+          </div>
+          <p className="muted small">
+            {day && day.lastEditedBy ? `${t('lastEdited')}: ${day.lastEditedBy}, ${timeHM(day.lastEditedAt)}` : t('nobodyYet')}
+            {pendingDays[date] ? ` · ${t('pendingSync')}` : day ? ` · ${t('synced')}` : ''}
+          </p>
+          {!only && (
+            <input className="search" type="search" placeholder={t('search')} value={query} onChange={(e) => setQuery(e.target.value)} />
           )}
-        </div>
-      </header>
+          {!only && (
+            <p className="day-total">
+              {t('dayTotal')}: <b>{fmtQty(totalMl / 1000)} {t('litre')}</b>
+              {totalPaneerG > 0 && (
+                <>
+                  {' '}
+                  · {t('paneer')}: <b>{fmtQty(totalPaneerG / 1000)} {t('kg')}</b>
+                </>
+              )}
+            </p>
+          )}
+          <div className="chips session-chips" role="tablist" aria-label={t('session')}>
+            {['morning', 'evening', 'total'].map((s) => (
+              <button
+                key={s}
+                type="button"
+                role="tab"
+                aria-selected={session === s}
+                className={'btn chip' + (session === s ? ' on' : '')}
+                onClick={() => pickSession(s)}
+              >
+                {t('session_' + s)}
+              </button>
+            ))}
+          </div>
+          <p className="muted small">{t('editDayHint')}</p>
+        </header>
 
       {!settings.milkRatePaise && <p className="card warn small">{t('rateMissing')}</p>}
       {active.length === 0 && <p className="empty">{t('noCustomers')}</p>}
+      {active.length > 0 && visible.length === 0 && <p className="empty">{t('noResults')}</p>}
 
       <ul className="rows">
         {visible.map((c) => {
@@ -236,6 +270,7 @@ export default function Register({ fb, customers, days, pendingDays, settings, d
                   <b>{c.name}</b>
                   {c.area && <span className="muted small"> · {c.area}</span>}
                   {isPaused(c, date) && <span className="tag">{t('paused')}</span>}
+                  {c.isSupplier && <span className="tag supplier-tag">🏷️ {t('supplier')}</span>}
                   {s && s.updatedBy && <span className="muted tiny"> · {s.updatedBy}</span>}
                 </div>
                 <button className={'btn toggle' + (r.skip ? ' on' : '')} onClick={() => update(c, { skip: !r.skip })}>
@@ -301,8 +336,9 @@ export default function Register({ fb, customers, days, pendingDays, settings, d
       <div className="savebar">
         <span className="small">{flash || (unsavedCount ? `${t('notSavedYet')}: ${unsavedCount}` : t('saved'))}</span>
         <button className="btn primary big" onClick={saveAll} disabled={!active.length}>
-          {t('saveAll')}
+          {only ? t('save') : t('saveAll')}
         </button>
+      </div>
       </div>
     </div>
   );

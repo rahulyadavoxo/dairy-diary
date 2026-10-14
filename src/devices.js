@@ -278,3 +278,35 @@ export async function wipeLocalData(fb) {
     /* ignore */
   }
 }
+
+/**
+ * Owner "Sign out": besides signing out, remove the farm data this phone keeps — the Firestore
+ * offline cache, the saved bill photos, the PIN and the other per-phone keys (language stays).
+ */
+export async function signOutAndWipe(fb, clearPhotos, waitMs = 8000) {
+  // Give queued entries a chance to reach the server first (the cache is about to be deleted).
+  if (fb.fsMod.waitForPendingWrites) {
+    let timer;
+    await Promise.race([
+      fb.fsMod.waitForPendingWrites(fb.db).catch(() => {}),
+      new Promise((r) => {
+        timer = setTimeout(r, waitMs);
+      }),
+    ]);
+    clearTimeout(timer);
+  }
+  try {
+    if (clearPhotos) await clearPhotos();
+  } catch {
+    /* ignore */
+  }
+  try {
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith('dd_') && k !== 'dd_lang') localStorage.removeItem(k);
+    }
+  } catch {
+    /* ignore */
+  }
+  await wipeLocalData(fb);
+}

@@ -1,10 +1,10 @@
-// Register is now a read-only view: each customer card shows the name and the
-// last 7 days (date + milk). Tapping a card opens a calendar with date-wise milk.
-// Entry happens in Delivery mode (the only button at the top).
+// Register: each customer card shows the name and the last 7 days (date + milk). Tapping a card
+// opens a calendar with date-wise milk; tapping a date there opens the day editor for that
+// customer. Daily entry happens in Delivery mode; "Edit this day" corrects any past day.
 import { useMemo, useState, useEffect } from 'react';
 import { useLang } from '../i18n.js';
-import { sortCustomers, isPaused } from './Register.jsx';
-import { addDays, dmy, fmtQty, timeHM, todayISO, monthName as fmtMonthName } from '../format.js';
+import DayEditor, { sortCustomers, isPaused, matchesQuery } from './Register.jsx';
+import { addDays, dmy, fmtQty, timeHM, todayISO, monthName as fmtMonthName, shortDate, weekdaysMonFirst } from '../format.js';
 import { toMilli } from '../billing.js';
 import { pushBackHandler } from '../backStack.js';
 
@@ -17,20 +17,24 @@ function last7(date) {
   return out;
 }
 
-/** "13 Oct" style short date. */
-function shortDate(iso) {
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const [y, m, d] = iso.split('-').map(Number);
-  return `${d} ${months[m - 1]}`;
+function entryOn(days, cid, iso) {
+  return (days[iso] && days[iso].entries && days[iso].entries[cid]) || null;
 }
 
 function milkOn(days, cid, iso) {
-  const en = days[iso] && days[iso].entries && days[iso].entries[cid];
+  const en = entryOn(days, cid, iso);
   return en && !en.skip ? (en.milkL || 0) : 0;
 }
 
+/** ✕ only for a day that was recorded with no milk (skip / 0 L), like the bill photo. A day with
+    no entry at all (e.g. before the customer started) stays blank. */
+export function isRecordedGap(days, cid, iso) {
+  const en = entryOn(days, cid, iso);
+  return !!en && milkOn(days, cid, iso) <= 0 && !(Number(en.paneerKg) > 0);
+}
+
 /** Calendar modal: month grid with each day's milk for one customer (read-only). */
-function CalendarModal({ customer, days, onClose }) {
+function CalendarModal({ customer, days, onClose, onEditDay }) {
   const { t, lang } = useLang();
   const now = todayISO();
   const [ym, setYm] = useState(now.slice(0, 7)); // "2026-10"
@@ -57,7 +61,7 @@ function CalendarModal({ customer, days, onClose }) {
 
   // app language, not the WebView locale (was English on Hindi phones and vice versa)
   const monthName = fmtMonthName(ym, lang);
-  const weekDays = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+  const weekDays = weekdaysMonFirst(lang);
   let monthTotal = 0;
   cells.forEach((c) => {
     if (c) monthTotal += c.milk;
@@ -89,14 +93,21 @@ function CalendarModal({ customer, days, onClose }) {
           ))}
           {cells.map((c, i) =>
             c ? (
-              <div key={i} className={'cal-cell' + (c.iso === now ? ' today' : '') + (c.milk > 0 ? ' has' : '')}>
+              <button
+                type="button"
+                key={i}
+                disabled={c.iso > now}
+                onClick={() => onEditDay(c.iso)}
+                aria-label={dmy(c.iso)}
+                className={'cal-cell' + (c.iso === now ? ' today' : '') + (c.milk > 0 ? ' has' : '')}
+              >
                 <span className="cal-d">{c.d}</span>
                 {c.milk > 0 ? (
                   <span className="cal-m">{fmtQty(c.milk)}</span>
-                ) : c.iso < now ? (
+                ) : isRecordedGap(days, customer.id, c.iso) ? (
                   <span className="cal-x">✕</span>
                 ) : null}
-              </div>
+              </button>
             ) : (
               <span key={i} />
             ),
@@ -105,16 +116,18 @@ function CalendarModal({ customer, days, onClose }) {
         <p className="muted small">
           {t('monthTotal')}: <b>{fmtQty(monthTotal)} {t('litre')}</b>
         </p>
+        <p className="muted small">✏️ {t('tapDayToEdit')}</p>
       </div>
     </div>
   );
 }
 
 export default function RegisterView({ fb, customers, days, pendingDays, settings, displayName, onDelivery, onImportReview }) {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const [date, setDate] = useState(todayISO());
   const [query, setQuery] = useState('');
   const [calId, setCalId] = useState(null);
+  const [editing, setEditing] = useState(null); // { date, customerId? } — day editor open
 
   // Hardware back button closes the calendar modal first
   useEffect(() => {
@@ -129,17 +142,31 @@ export default function RegisterView({ fb, customers, days, pendingDays, setting
 
   const changeDate = (d) => setDate(d > todayISO() ? todayISO() : d);
 
-  const q = query.trim().toLowerCase();
-  const visible = q
-    ? active.filter((c) => [c.name, c.area, c.phone].some((v) => String(v || '').toLowerCase().includes(q)))
-    : active;
+  const visible = active.filter((c) => matchesQuery(c, query));
 
+  // Day total = milk delivered to customers. Supplier rows are milk bought, not sold.
   let totalMl = 0;
   active.forEach((c) => {
-    totalMl += toMilli(milkOn(days, c.id, date));
+    if (!c.isSupplier) totalMl += toMilli(milkOn(days, c.id, date));
   });
 
   const calCustomer = calId ? byId[calId] : null;
+
+  if (editing) {
+    return (
+      <DayEditor
+        fb={fb}
+        customers={customers}
+        days={days}
+        pendingDays={pendingDays}
+        settings={settings}
+        displayName={displayName}
+        date={editing.date}
+        customerId={editing.customerId}
+        onClose={() => setEditing(null)}
+      />
+    );
+  }
 
   return (
     <div className="screen register">
@@ -188,10 +215,14 @@ export default function RegisterView({ fb, customers, days, pendingDays, setting
             📥 {t('importReviewTitle')}
           </button>
         )}
+        <button type="button" className="btn big delivery-cta" onClick={() => setEditing({ date })}>
+          ✏️ {t('editDay')} ({dmy(date)})
+        </button>
       </header>
 
       {!settings.milkRatePaise && <p className="card warn small">{t('rateMissing')}</p>}
       {active.length === 0 && <p className="empty">{t('noCustomers')}</p>}
+      {active.length > 0 && visible.length === 0 && <p className="empty">{t('noResults')}</p>}
 
       <ul className="rows">
         {visible.map((c) => {
@@ -207,19 +238,19 @@ export default function RegisterView({ fb, customers, days, pendingDays, setting
                     <b>{num}. {c.name}</b>
                     {c.area && <span className="muted small"> · {c.area}</span>}
                     {isPaused(c, date) && <span className="tag">{t('paused')}</span>}
+                    {c.isSupplier && <span className="tag supplier-tag">🏷️ {t('supplier')}</span>}
                   </div>
                   <span className="muted small">{fmtQty(milkOn(days, c.id, date))} {t('litre')}</span>
                 </div>
                 <div className="week-strip">
                   {week.map((iso) => {
                     const mv = milkOn(days, c.id, iso);
-                    const isPast = iso < todayISO();
                     return (
                       <div key={iso} className={'wk' + (iso === date ? ' cur' : '')}>
-                        <span className="wk-d">{shortDate(iso)}</span>
+                        <span className="wk-d">{shortDate(iso, lang).replace(' ', '\n')}</span>
                         {mv > 0 ? (
                           <span className="wk-m">{fmtQty(mv)}</span>
-                        ) : isPast ? (
+                        ) : isRecordedGap(days, c.id, iso) ? (
                           <span className="wk-x">✕</span>
                         ) : (
                           <span className="wk-m">–</span>
@@ -235,7 +266,15 @@ export default function RegisterView({ fb, customers, days, pendingDays, setting
       </ul>
 
       {calCustomer && (
-        <CalendarModal customer={calCustomer} days={days} onClose={() => setCalId(null)} />
+        <CalendarModal
+          customer={calCustomer}
+          days={days}
+          onClose={() => setCalId(null)}
+          onEditDay={(iso) => {
+            setCalId(null);
+            setEditing({ date: iso, customerId: calCustomer.id });
+          }}
+        />
       )}
     </div>
   );

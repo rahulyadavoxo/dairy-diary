@@ -5,10 +5,11 @@ import { addPayment, deletePayment } from '../db.js';
 import { billText, waLink } from '../bill.js';
 import { renderBillImage, shareImage, billFileName, billFingerprint } from '../billImage.js';
 import { getCachedPhoto, putCachedPhoto } from '../billCache.js';
-import { dmy, firstWeekday, fmtQty, monthDates, paiseToInput, rupees, toPaise, todayISO } from '../format.js';
+import { dmy, fmtQty, mondayOffset, monthDates, paiseToInput, rupees, toPaise, todayISO, weekdaysMonFirst } from '../format.js';
 import { MonthNav } from './Hisaab.jsx';
 
-const WEEK = { hi: ['र', 'सो', 'मं', 'बु', 'गु', 'शु', 'श'], en: ['S', 'M', 'T', 'W', 'T', 'F', 'S'] };
+/** The user closed the share sheet: not an error, and not a reason to open WhatsApp anyway. */
+export const isShareCancel = (e) => !!e && (e.name === 'AbortError' || /cancel/i.test(String(e.message || '')));
 
 export default function CustomerDetail({ fb, customers, days, payments, settings, displayName, customerId, month, setMonth, onBack }) {
   const { t, lang } = useLang();
@@ -40,6 +41,7 @@ export default function CustomerDetail({ fb, customers, days, payments, settings
     e.preventDefault();
     const p = toPaise(amount);
     if (!p || p <= 0) return setErr(t('amountInvalid'));
+    if (!payDate || payDate > todayISO()) return setErr(t('dateFuture'));
     setErr('');
     addPayment(fb, { customerId, date: payDate, amountPaise: p, mode, createdBy: displayName });
     setAmount('');
@@ -60,6 +62,7 @@ export default function CustomerDetail({ fb, customers, days, payments, settings
       }
       await shareImage(blob, billFileName(customer.name, month));
     } catch (e) {
+      if (isShareCancel(e)) return; // closed the share sheet: do nothing
       console.error('[share-bill] photo failed, falling back to text', e);
       // Fallback: share as text via WhatsApp link
       try {
@@ -74,7 +77,7 @@ export default function CustomerDetail({ fb, customers, days, payments, settings
   };
 
   const dates = monthDates(month);
-  const blanks = Array.from({ length: firstWeekday(month) });
+  const blanks = Array.from({ length: mondayOffset(month) }); // Monday-first, like the other calendars
   const allPayments = payments
     .filter((p) => p.customerId === customerId)
     .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : (b.createdAt || 0) - (a.createdAt || 0)));
@@ -114,8 +117,8 @@ export default function CustomerDetail({ fb, customers, days, payments, settings
           <b>{rupees(row.paidPaise)}</b>
         </div>
         <div className="kv big">
-          <span>{row.balancePaise >= 0 ? t('balanceDue') : t('advance')}</span>
-          <b className={row.balancePaise > 0 ? 'due' : 'clear'}>{rupees(Math.abs(row.balancePaise))}</b>
+          <span>{row.balancePaise >= 0 ? (customer.isSupplier ? t('weOwe') : t('balanceDue')) : t('advance')}</span>
+          <b className={customer.isSupplier ? '' : row.balancePaise > 0 ? 'due' : 'clear'}>{rupees(Math.abs(row.balancePaise))}</b>
         </div>
         <button className="btn whatsapp big" onClick={share} disabled={sharing}>
           {sharing ? t('loading') : t('shareWhatsApp')}
@@ -126,7 +129,7 @@ export default function CustomerDetail({ fb, customers, days, payments, settings
 
       <h2>{t('calendar')}</h2>
       <div className="calendar">
-        {WEEK[lang].map((w, i) => (
+        {weekdaysMonFirst(lang).map((w, i) => (
           <div key={'w' + i} className="cal-head">
             {w}
           </div>
@@ -147,7 +150,7 @@ export default function CustomerDetail({ fb, customers, days, payments, settings
       </div>
 
       <h2>{t('recordPayment')}</h2>
-      <form className="card pay" onSubmit={record}>
+      <form className="card pay" onSubmit={record} noValidate>
         <div className="chips">
           <button type="button" className="btn chip" onClick={() => setAmount(paiseToInput(fullPaymentPaise(row.balancePaise)))}>
             {t('fullPayment')} {rupees(fullPaymentPaise(row.balancePaise))}
@@ -158,7 +161,7 @@ export default function CustomerDetail({ fb, customers, days, payments, settings
         </div>
         <label>
           {t('amount')}
-          <input type="number" inputMode="decimal" min="0" step="1" value={amount} onChange={(e) => setAmount(e.target.value)} />
+          <input type="number" inputMode="decimal" min="0" step="any" value={amount} onChange={(e) => setAmount(e.target.value)} />
         </label>
         <div className="chips">
           <button type="button" className={'btn chip' + (mode === 'cash' ? ' on' : '')} onClick={() => setMode('cash')}>
@@ -171,7 +174,7 @@ export default function CustomerDetail({ fb, customers, days, payments, settings
         <p className="field-label">{t('date')}</p>
         <label className="date-pick">
           <span>{dmy(payDate)}</span>
-          <input type="date" value={payDate} onChange={(e) => e.target.value && setPayDate(e.target.value)} />
+          <input type="date" value={payDate} max={todayISO()} onChange={(e) => e.target.value && setPayDate(e.target.value)} />
         </label>
         {err && <p className="error">{err}</p>}
         <button className="btn primary big" type="submit">

@@ -1,39 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
+import { pushBackHandler } from '../backStack.js';
 import { useLang } from '../i18n.js';
 import { computeMonth, sortByDue } from '../billing.js';
 import { getPinHash, verifyPin, pinWaitSeconds } from '../pinLock.js';
 import { preGenerateBillPhotos } from '../billPreGen.js';
-import { addMonths, fmtQty, monthDates, monthName, rupees, todayISO, monthOf } from '../format.js';
+import { fmtQty, monthDates, rupees, todayISO, monthOf } from '../format.js';
 import BillSender, { shouldPromptBills } from './BillSender.jsx';
-import BillPhotos from './BillPhotos.jsx';
+import BillPhotos, { defaultPhotoMonth } from './BillPhotos.jsx';
+import MonthNav from '../components/MonthNav.jsx';
 
-export function MonthNav({ month, setMonth }) {
-  const { t, lang } = useLang();
-  const curMonth = monthOf(todayISO());
-  const goMonth = (m) => setMonth(m > curMonth ? curMonth : m);
-  return (
-    <div className="date-nav">
-      <button className="btn icon" onClick={() => goMonth(addMonths(month, -1))} aria-label={t('prevMonth')}>
-        ◀
-      </button>
-      <label className="date-pick">
-        <span>{monthName(month, lang)}</span>
-        <input type="month" value={month} max={curMonth} onChange={(e) => e.target.value && goMonth(e.target.value)} />
-      </label>
-      <button
-        className="btn icon"
-        disabled={month === curMonth}
-        onClick={() => {
-          const n = addMonths(month, 1);
-          if (n <= curMonth) setMonth(n);
-        }}
-        aria-label={t('nextMonth')}
-      >
-        ▶
-      </button>
-    </div>
-  );
-}
+export { MonthNav };
 
 export default function Hisaab({ fb, customers, days, payments, settings, month, setMonth, openCustomer }) {
   const { t } = useLang();
@@ -54,6 +30,13 @@ export default function Hisaab({ fb, customers, days, payments, settings, month,
   const [pinErr, setPinErr] = useState('');
   // Check lock fresh from storage on every render (Settings may have changed it)
   const pinLocked = !!getPinHash();
+  // With a PIN, "hidden" hides every amount on this screen, not only the three total tiles.
+  const masked = pinLocked && !showTotals;
+  const money = (p) => (masked ? '₹ ••••' : rupees(p));
+
+  // Hardware back closes the bill sender / bill photos instead of jumping to the Register tab.
+  useEffect(() => (sending ? pushBackHandler(() => setSending(false)) : undefined), [sending]);
+  useEffect(() => (photos ? pushBackHandler(() => setPhotos(false)) : undefined), [photos]);
 
   const doHideShow = (v) => {
     setShowTotals(v);
@@ -105,12 +88,14 @@ export default function Hisaab({ fb, customers, days, payments, settings, month,
   // Re-run when the data arrives / changes (it was [month] only, so on app start it ran with an
   // empty list and never again). Cached photos are fingerprinted, so unchanged bills are skipped.
   useEffect(() => {
-    preGenerateBillPhotos(allRows, month, settings);
+    preGenerateBillPhotos(allRows.filter((r) => !r.customer.isSupplier), month, settings);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [month, res]);
-  const rows = sortByDue(allRows);
+  // Customers (they owe us) and suppliers (we owe them) are listed separately.
+  const rows = sortByDue(allRows.filter((r) => !r.customer.isSupplier));
+  const supplierRows = sortByDue(allRows.filter((r) => r.customer.isSupplier));
   const sTotals = res.supplierTotals || { billedPaise: 0, collectedPaise: 0, pendingPaise: 0, advancePaise: 0 };
-  const hasSuppliers = allRows.some((r) => r.customer.isSupplier);
+  const hasSuppliers = supplierRows.length > 0;
   const md = monthDates(monthOf(todayISO()));
   const isLastDay = todayISO() === md[md.length - 1];
 
@@ -118,7 +103,7 @@ export default function Hisaab({ fb, customers, days, payments, settings, month,
     return <BillSender fb={fb} customers={customers} days={days} payments={payments} settings={settings} onClose={() => setSending(false)} />;
   }
   if (photos) {
-    return <BillPhotos customers={customers} days={days} payments={payments} settings={settings} month={month} onClose={() => setPhotos(false)} />;
+    return <BillPhotos customers={customers} days={days} payments={payments} settings={settings} month={defaultPhotoMonth(month)} onClose={() => setPhotos(false)} />;
   }
 
   return (
@@ -194,9 +179,59 @@ export default function Hisaab({ fb, customers, days, payments, settings, month,
         <p className="muted small">{t('sortedByDue')}</p>
       </header>
       {rows.length === 0 && <p className="empty">{t('noActivity')}</p>}
+      <ul className="rows">
+        {rows.map((r) => (
+          <li key={r.customerId}>
+            <button className="row hisaab-row" onClick={() => openCustomer(r.customerId)}>
+              <div className="row-top">
+                <b>{r.customer.name}</b>
+                <b className={masked ? 'muted' : r.balancePaise > 0 ? 'due' : 'clear'}>{money(r.balancePaise)}</b>
+              </div>
+              <div className="grid-4 small">
+                <span>
+                  {t('totalLitres')}
+                  <br />
+                  <b>
+                    {fmtQty(r.milkMl / 1000)} {t('litre')}
+                  </b>
+                </span>
+                <span>
+                  {t('milkAmount')}
+                  <br />
+                  <b>{money(r.milkPaise)}</b>
+                </span>
+                <span>
+                  {t('paneer')}
+                  <br />
+                  <b>
+                    {fmtQty(r.paneerG / 1000)} {t('kg')} · {money(r.paneerPaise)}
+                  </b>
+                </span>
+                <span>
+                  {t('previousDue')}
+                  <br />
+                  <b>{money(r.previousDuePaise)}</b>
+                </span>
+                <span>
+                  {t('paidThisMonth')}
+                  <br />
+                  <b>{money(r.paidPaise)}</b>
+                </span>
+                <span>
+                  {t('balanceDue')}
+                  <br />
+                  <b>{money(r.balancePaise)}</b>
+                </span>
+              </div>
+            </button>
+          </li>
+        ))}
+      </ul>
+      {hasSuppliers && (
+        <h2>🏷️ {t('supplierHisaab')}</h2>
+      )}
       {hasSuppliers && showTotals && (
         <div className="card" style={{ marginBottom: '0.8rem' }}>
-          <h3 style={{ margin: '0 0 0.5rem 0' }}>🏷️ {t('supplierHisaab')}</h3>
           <p className="muted small" style={{ margin: '0 0 0.6rem 0' }}>{t('supplierHisaabHint')}</p>
           <div className="totals">
             <div className="total">
@@ -214,57 +249,47 @@ export default function Hisaab({ fb, customers, days, payments, settings, month,
           </div>
         </div>
       )}
-      <ul className="rows">
-        {rows.map((r) => (
-          <li key={r.customerId}>
-            <button className="row hisaab-row" onClick={() => openCustomer(r.customerId)}>
-              <div className="row-top">
-                <b>
-                  {r.customer.name}
-                  {r.customer.isSupplier && <span className="tag supplier-tag"> 🏷️ {t('supplier')}</span>}
-                </b>
-                <b className={r.balancePaise > 0 ? 'due' : 'clear'}>{rupees(r.balancePaise)}</b>
-              </div>
-              <div className="grid-4 small">
-                <span>
-                  {t('totalLitres')}
-                  <br />
+      {hasSuppliers && (
+        <ul className="rows" data-testid="supplier-rows">
+          {supplierRows.map((r) => (
+            <li key={r.customerId}>
+              <button className="row hisaab-row" onClick={() => openCustomer(r.customerId)}>
+                <div className="row-top">
                   <b>
-                    {fmtQty(r.milkMl / 1000)} {t('litre')}
+                    {r.customer.name}
+                    <span className="tag supplier-tag"> 🏷️ {t('supplier')}</span>
                   </b>
-                </span>
-                <span>
-                  {t('milkAmount')}
-                  <br />
-                  <b>{rupees(r.milkPaise)}</b>
-                </span>
-                <span>
-                  {t('paneer')}
-                  <br />
-                  <b>
-                    {fmtQty(r.paneerG / 1000)} {t('kg')} · {rupees(r.paneerPaise)}
-                  </b>
-                </span>
-                <span>
-                  {t('previousDue')}
-                  <br />
-                  <b>{rupees(r.previousDuePaise)}</b>
-                </span>
-                <span>
-                  {t('paidThisMonth')}
-                  <br />
-                  <b>{rupees(r.paidPaise)}</b>
-                </span>
-                <span>
-                  {t('balanceDue')}
-                  <br />
-                  <b>{rupees(r.balancePaise)}</b>
-                </span>
-              </div>
-            </button>
-          </li>
-        ))}
-      </ul>
+                  <b>{money(Math.abs(r.balancePaise))}</b>
+                </div>
+                <div className="grid-4 small">
+                  <span>
+                    {t('totalLitres')}
+                    <br />
+                    <b>
+                      {fmtQty(r.milkMl / 1000)} {t('litre')}
+                    </b>
+                  </span>
+                  <span>
+                    {t('purchased')}
+                    <br />
+                    <b>{money(r.billedPaise)}</b>
+                  </span>
+                  <span>
+                    {t('paidToSupplier')}
+                    <br />
+                    <b>{money(r.paidPaise)}</b>
+                  </span>
+                  <span>
+                    {r.balancePaise >= 0 ? t('weOwe') : t('advance')}
+                    <br />
+                    <b>{money(Math.abs(r.balancePaise))}</b>
+                  </span>
+                </div>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

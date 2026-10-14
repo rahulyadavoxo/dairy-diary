@@ -1,9 +1,9 @@
 // Render a customer's monthly bill as a PNG image (canvas 2D).
 // Design: header + month calendar (date-wise milk) + structured summary + footer.
-import { fmtQty, monthName, rupees, todayISO } from './format.js';
+import { fmtQty, monthName, rupees, todayISO, weekdaysMonFirst } from './format.js';
 
 const W = 1080;
-const H = 1920;
+const CELL_H = 104;
 const GREEN = '#1f6f43';
 const GREEN_DARK = '#14532d';
 const GREEN_LIGHT = '#e8f5e9';
@@ -27,6 +27,36 @@ function text(g, s, x, y, { size = 40, color = INK, bold = false, align = 'left'
   g.fillText(s, x, y);
 }
 
+/** Shorten s with "…" until it is at most maxW pixels wide in the current font. */
+export function fitText(g, s, maxW) {
+  const str = String(s || '');
+  if (!(maxW > 0) || g.measureText(str).width <= maxW) return str;
+  const chars = Array.from(str);
+  let lo = 0;
+  let hi = chars.length;
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2);
+    if (g.measureText(chars.slice(0, mid).join('').trimEnd() + '…').width <= maxW) lo = mid;
+    else hi = mid - 1;
+  }
+  return chars.slice(0, lo).join('').trimEnd() + '…';
+}
+
+const fontOf = (size, bold) => `${bold ? '700' : '400'} ${size}px sans-serif`;
+
+/** Height the bill needs: no big empty band at the bottom (it was a fixed 1920 px). */
+export function billHeight(row, month) {
+  const [yy, mm] = month.split('-').map(Number);
+  const firstDay = (new Date(yy, mm - 1, 1).getDay() + 6) % 7;
+  const weeks = Math.ceil((firstDay + new Date(yy, mm, 0).getDate()) / 7);
+  let sumRows = 2; // milk + this month
+  if (row.paneerG > 0 || row.paneerPaise > 0) sumRows++;
+  if (row.previousDuePaise !== 0) sumRows++;
+  if (row.paidPaise !== 0) sumRows++;
+  // header 200 + calendar title/weekdays 115 + weeks + gap 35 + summary title 60 + rows + balance + footer
+  return 200 + 115 + weeks * CELL_H + 35 + 60 + sumRows * 68 + 16 + 60 + 170;
+}
+
 function roundRect(g, x, y, w, h, r) {
   g.beginPath();
   g.moveTo(x + r, y);
@@ -41,6 +71,7 @@ function roundRect(g, x, y, w, h, r) {
 export function renderBillImage(row, month, settings = {}) {
   const render = new Promise((resolve, reject) => {
     try {
+      const H = billHeight(row, month);
       const c = document.createElement('canvas');
       c.width = W;
       c.height = H;
@@ -57,11 +88,15 @@ export function renderBillImage(row, month, settings = {}) {
     // ===== header bar =====
     g.fillStyle = GREEN;
     g.fillRect(0, 0, W, 200);
-    text(g, '🥛 ' + farm, 60, 90, { size: 54, color: '#fff', bold: true });
-    text(g, cu.name, 60, 150, { size: 38, color: '#fff', bold: true });
-    text(g, `${monthName(month, 'hi')} / ${monthName(month, 'en')}`, W - 60, 150, {
-      size: 32, color: '#c8e6c9', align: 'right',
-    });
+    // Long names are shortened with "…" so they never run under the month or off the image.
+    g.font = fontOf(54, true);
+    text(g, fitText(g, '🥛 ' + farm, W - 120), 60, 90, { size: 54, color: '#fff', bold: true });
+    const monthTxt = `${monthName(month, 'hi')} / ${monthName(month, 'en')}`;
+    g.font = fontOf(32, false);
+    const monthW = g.measureText(monthTxt).width;
+    text(g, monthTxt, W - 60, 150, { size: 32, color: '#c8e6c9', align: 'right' });
+    g.font = fontOf(38, true);
+    text(g, fitText(g, cu.name, W - 120 - monthW - 30), 60, 150, { size: 38, color: '#fff', bold: true });
 
     let y = 265;
 
@@ -74,19 +109,21 @@ export function renderBillImage(row, month, settings = {}) {
     const daysInMonth = new Date(yy, mm, 0).getDate();
     const cols = 7;
     const cellW = (W - 120) / cols;
-    const cellH = 104;
-    const wd = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+    const cellH = CELL_H;
+    const wdHi = weekdaysMonFirst('hi');
+    const wdEn = weekdaysMonFirst('en');
     const todayStr = todayISO(); // local (IST) date, not UTC
 
-    // weekday header
+    // weekday header (Hindi / English, like the rest of the bill)
     for (let i = 0; i < cols; i++) {
       const cx = 60 + i * cellW;
-      text(g, wd[i], cx + cellW / 2, y + 28, { size: 26, color: MUTED, bold: true, align: 'center' });
+      text(g, `${wdHi[i]} / ${wdEn[i]}`, cx + cellW / 2, y + 28, { size: 24, color: MUTED, bold: true, align: 'center' });
     }
     y += 48;
 
     let d = 1;
     const startY = y;
+    const weeks = Math.ceil((firstDay + daysInMonth) / 7);
     for (let week = 0; week < 6 && d <= daysInMonth; week++) {
       for (let col = 0; col < cols; col++) {
         if (d > daysInMonth) break;
@@ -120,7 +157,7 @@ export function renderBillImage(row, month, settings = {}) {
         d++;
       }
     }
-    y = startY + 6 * cellH + 35;
+    y = startY + weeks * cellH + 35;
 
     // ===== summary =====
     text(g, '🧾 हिसाब / Summary', 60, y, { size: 36, bold: true, color: GREEN_DARK });
@@ -138,11 +175,12 @@ export function renderBillImage(row, month, settings = {}) {
     if (row.paneerG > 0 || row.paneerPaise > 0) {
       srow(`पनीर / Paneer  ${fmtQty(row.paneerG / 1000)} kg`, rupees(row.paneerPaise));
     }
-    line(g, 60, y - 30, W - 60, y - 30);
+    // separators sit midway between two rows (y - 30 touched the next row's text)
+    line(g, 60, y - 46, W - 60, y - 46);
     srow('इस महीने / This month', rupees(row.billedPaise), { bold: true });
     if (row.previousDuePaise !== 0) srow('पिछला बाकी / Previous', rupees(row.previousDuePaise), { dim: true });
     if (row.paidPaise !== 0) srow('जमा / Paid', rupees(row.paidPaise), { dim: true });
-    line(g, 60, y - 30, W - 60, y - 30, GREEN, 4);
+    line(g, 60, y - 46, W - 60, y - 46, GREEN, 4);
     y += 16;
     if (row.balancePaise >= 0) {
       text(g, 'कुल बाकी / Balance', 60, y, { size: 44, bold: true, color: GREEN });
@@ -156,7 +194,10 @@ export function renderBillImage(row, month, settings = {}) {
     y = H - 100;
     line(g, 60, y - 45, W - 60, y - 45);
     text(g, 'धन्यवाद / Thank you 🙏', 60, y, { size: 34, color: MUTED });
-    if (settings.phone) text(g, `${farm}: ${settings.phone}`, W - 60, y, { size: 30, align: 'right', color: MUTED });
+    if (settings.phone) {
+      g.font = fontOf(30, false);
+      text(g, fitText(g, `${farm}: ${settings.phone}`, W - 120 - 420), W - 60, y, { size: 30, align: 'right', color: MUTED });
+    }
 
     // Safety: toBlob can hang forever in some WebViews — time out after 15s.
     // (Declared BEFORE toBlob so a synchronous callback can never hit the TDZ.)

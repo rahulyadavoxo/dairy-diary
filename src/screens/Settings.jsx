@@ -4,6 +4,8 @@ import { saveSettings } from '../db.js';
 import { paiseToInput, toPaise } from '../format.js';
 import { getPinHash, hashPin, savePinHash, verifyPin, pinWaitSeconds } from '../pinLock.js';
 import DevicesCard from '../components/DevicesCard.jsx';
+import { signOutAndWipe } from '../devices.js';
+import { clearCachedPhotos } from '../billCache.js';
 
 // Single source of truth for the version (package.json, injected by vite.config.js).
 // eslint-disable-next-line no-undef
@@ -84,12 +86,18 @@ export default function Settings({ fb, user, settings, displayName, setDisplayNa
 
   const save = (e) => {
     e.preventDefault();
-    saveSettings(fb, {
-      milkRatePaise: toPaise(f.milkRate) || 0,
-      paneerRatePaise: toPaise(f.paneerRate) || 0,
-      farmName: f.farmName.trim(),
-      phone: f.phone.trim(),
-    });
+    // A blank (or invalid) rate box keeps the old rate instead of silently saving ₹0.
+    const data = { farmName: f.farmName.trim(), phone: f.phone.trim() };
+    const mr = toPaise(f.milkRate);
+    const pr = toPaise(f.paneerRate);
+    if (mr !== null && mr > 0) data.milkRatePaise = mr;
+    if (pr !== null && pr > 0) data.paneerRatePaise = pr;
+    saveSettings(fb, data);
+    setF((cur) => ({
+      ...cur,
+      milkRate: data.milkRatePaise ? cur.milkRate : paiseToInput(settings.milkRatePaise),
+      paneerRate: data.paneerRatePaise ? cur.paneerRate : paiseToInput(settings.paneerRatePaise),
+    }));
     const n = name.trim();
     if (n && n !== displayName) {
       setDisplayName(n);
@@ -107,14 +115,14 @@ export default function Settings({ fb, user, settings, displayName, setDisplayNa
       <header className="screen-head">
         <h1>{t('settingsTitle')}</h1>
       </header>
-      <form onSubmit={save} style={{ display: 'contents' }}>
+      <form onSubmit={save} style={{ display: 'contents' }} noValidate>
       <label>
         {t('milkRate')}
-        <input type="number" inputMode="decimal" min="0" step="0.5" value={f.milkRate} onChange={set('milkRate')} />
+        <input type="number" inputMode="decimal" min="0" step="any" value={f.milkRate} onChange={set('milkRate')} />
       </label>
       <label>
         {t('paneerRate')}
-        <input type="number" inputMode="decimal" min="0" step="1" value={f.paneerRate} onChange={set('paneerRate')} />
+        <input type="number" inputMode="decimal" min="0" step="any" value={f.paneerRate} onChange={set('paneerRate')} />
       </label>
       <p className="muted small">{t('rateNote')}</p>
       <label>
@@ -203,10 +211,19 @@ export default function Settings({ fb, user, settings, displayName, setDisplayNa
         {/* Anonymous phones have no password: signing out would lose this phone's identity, so
             they leave via "Remove this phone" in the Phones card instead. */}
         {!user.isAnonymous && (
-          <button type="button" className="btn danger big" onClick={() => fb.authMod.signOut(fb.auth)}>
+          <button
+            type="button"
+            className="btn danger big"
+            disabled={!online}
+            onClick={() => {
+              if (!window.confirm(t('confirmSignOut'))) return;
+              signOutAndWipe(fb, clearCachedPhotos).finally(() => window.location.reload());
+            }}
+          >
             {t('signOut')}
           </button>
         )}
+        {!user.isAnonymous && !online && <p className="muted small">{t('signOutNeedsInternet')}</p>}
         <p className="muted tiny">
           {t('version')} {APP_VERSION}
         </p>

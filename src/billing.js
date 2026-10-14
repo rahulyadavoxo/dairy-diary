@@ -22,15 +22,21 @@ export function amountPaise(qtyMilli, ratePaise) {
   return Math.round((qtyMilli * (ratePaise || 0)) / 1000);
 }
 
+/** A usable rate: a whole number of paise above zero. 0 / null / NaN mean "no rate". */
+export const validRate = (x) => Number.isInteger(x) && x > 0;
+
+// An entry saved before any rate was set used to snapshot milkRatePaise: 0 and was then billed
+// ₹0 forever. A 0 / invalid snapshot is ignored, so those days fall back to the customer's
+// special rate or the current settings rate (fixes old entries without a data migration).
 export function milkRateFor(customer, settings, entry) {
-  if (entry && Number.isInteger(entry.milkRatePaise)) return entry.milkRatePaise;
-  if (customer && Number.isInteger(customer.rateOverridePaise) && customer.rateOverridePaise > 0) return customer.rateOverridePaise;
-  return (settings && settings.milkRatePaise) || 0;
+  if (entry && validRate(entry.milkRatePaise)) return entry.milkRatePaise;
+  if (customer && validRate(customer.rateOverridePaise)) return customer.rateOverridePaise;
+  return settings && validRate(settings.milkRatePaise) ? settings.milkRatePaise : 0;
 }
 
 export function paneerRateFor(settings, entry) {
-  if (entry && Number.isInteger(entry.paneerRatePaise)) return entry.paneerRatePaise;
-  return (settings && settings.paneerRatePaise) || 0;
+  if (entry && validRate(entry.paneerRatePaise)) return entry.paneerRatePaise;
+  return settings && validRate(settings.paneerRatePaise) ? settings.paneerRatePaise : 0;
 }
 
 /** Charge for a single saved entry. Skip = no milk that day (paneer still counts if entered). */

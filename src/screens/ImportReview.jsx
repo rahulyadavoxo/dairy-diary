@@ -87,7 +87,7 @@ function CustomerDays({ fb, customer, regName, days, settings, displayName, onDo
 
   const removeDay = async (d) => {
     if (deleting) return;
-    if (!window.confirm(`${dmy(d)} ka entry hatana hai?`)) return;
+    if (!window.confirm(t('confirmDeleteDay').replace('{d}', dmy(d)))) return;
     setDeleting(d);
     try {
       deleteEntry(fb, d, customer.id, displayName); // not awaited: would hang forever offline

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useLang } from '../i18n.js';
 import { LangToggle } from '../App.jsx';
 import { createFarm, cleanDeviceName } from '../devices.js';
+import { saveSettings } from '../db.js';
 
 /** Owner's first phone: the farm doc does not exist yet — name this phone and create it. */
 export default function SetupFarm({ fb, user }) {
@@ -19,6 +20,9 @@ export default function SetupFarm({ fb, user }) {
     setBusy(true);
     try {
       await createFarm(fb, user.uid, n, farmName);
+      // The dairy name shown in Settings and printed on bills lives in settings/main.
+      const fn = farmName.trim().slice(0, 60);
+      if (fn) saveSettings({ ...fb, farmId: user.uid }, { farmName: fn });
       fb.authMod.updateProfile(user, { displayName: n }).catch(() => {});
       // the farm listener switches to the main app once the server confirms
     } catch (e2) {

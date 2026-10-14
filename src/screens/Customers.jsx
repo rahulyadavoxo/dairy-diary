@@ -1,27 +1,24 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useLang } from '../i18n.js';
 import { saveCustomer, saveOrder } from '../db.js';
-import { sortCustomers } from './Register.jsx';
-import { dmy, fmtQty, paiseToInput, rupees, toPaise } from '../format.js';
+import { sortCustomers, isPaused } from './Register.jsx';
+import { dmy, fmtQty, paiseToInput, rupees, toPaise, todayISO } from '../format.js';
+import { pushBackHandler } from '../backStack.js';
 import ImportCustomers from './ImportCustomers.jsx';
+import { usualMorning, usualEvening } from '../entry.js';
 
 const EMPTY = { name: '', phone: '', area: '', usualMorningL: 0.5, usualEveningL: 0.5, customRate: false, rateOverride: '', openingDue: '', pauseFrom: '', pauseTo: '', active: true, isSupplier: false };
 
 const round3 = (n) => Math.max(0, Math.round(Number(n || 0) * 1000) / 1000);
 
-/** Usual morning litres for a customer (falls back to half of legacy usualL). */
-// Number(null) and Number('') are 0 (finite), so a null/empty field used to count as "set to 0"
-// and the legacy usualL fallback was never used.
-const isSet = (v) => v !== null && v !== undefined && v !== '' && Number.isFinite(Number(v));
+export { usualMorning, usualEvening }; // moved to entry.js (also used by the day editor)
 
-export function usualMorning(c) {
-  if (isSet(c.usualMorningL)) return round3(c.usualMorningL);
-  return round3((Number(c.usualL) || 0) / 2);
-}
-/** Usual evening litres for a customer (falls back to half of legacy usualL). */
-export function usualEvening(c) {
-  if (isSet(c.usualEveningL)) return round3(c.usualEveningL);
-  return round3((Number(c.usualL) || 0) / 2);
+/** Pause label for the list: only a current or upcoming pause (an old one is just history). */
+export function pauseLabel(c, today, t) {
+  if (!c.pauseFrom && !c.pauseTo) return '';
+  if (isPaused(c, today)) return c.pauseTo ? `${t('paused')} → ${dmy(c.pauseTo)}` : t('paused');
+  if (c.pauseFrom && c.pauseFrom > today) return `${t('pauseScheduled')} ${dmy(c.pauseFrom)}${c.pauseTo ? '–' + dmy(c.pauseTo) : ''}`;
+  return '';
 }
 
 export default function Customers({ fb, customers, settings, openCustomer }) {
@@ -45,6 +42,10 @@ export default function Customers({ fb, customers, settings, openCustomer }) {
 
   const toggleSelect = (id) => setSelected((s) => ({ ...s, [id]: !s[id] }));
   const selectedIds = Object.keys(selected).filter((id) => selected[id]);
+  // Hardware back closes the open sub-screen (form / bulk add) instead of leaving the tab.
+  useEffect(() => (editing ? pushBackHandler(() => setEditing(null)) : undefined), [editing]);
+  useEffect(() => (importing ? pushBackHandler(() => setImporting(false)) : undefined), [importing]);
+
   const tagSelected = (val) => {
     selectedIds.forEach((id) => saveCustomer(fb, id, { isSupplier: val }));
     setSelected({});
@@ -128,7 +129,7 @@ export default function Customers({ fb, customers, settings, openCustomer }) {
               <span className="small">
                 {fmtQty(c.usualL || 0)} {t('litre')}
                 {c.rateOverridePaise ? ` · ${rupees(c.rateOverridePaise)}/${t('litre')}` : ''}
-                {c.pauseFrom || c.pauseTo ? ` · ${t('paused')} ${dmy(c.pauseFrom)}–${dmy(c.pauseTo)}` : ''}
+                {pauseLabel(c, todayISO(), t) ? ` · ${pauseLabel(c, todayISO(), t)}` : ''}
               </span>
             </button>
             <button className="btn small ghost" onClick={() => openCustomer(c.id)}>
@@ -161,7 +162,7 @@ export default function Customers({ fb, customers, settings, openCustomer }) {
   );
 }
 
-function CustomerForm({ fb, initial, nextOrder, onDone }) {
+export function CustomerForm({ fb, initial, nextOrder, onDone }) {
   const { t } = useLang();
   const [f, setF] = useState(() =>
     initial
@@ -189,6 +190,12 @@ function CustomerForm({ fb, initial, nextOrder, onDone }) {
     e.preventDefault();
     if (!f.name.trim()) return setErr(t('nameRequired'));
     if (f.pauseFrom && f.pauseTo && f.pauseFrom > f.pauseTo) return setErr(`${t('pauseFrom')} > ${t('pauseTo')}`);
+    const badQty = (v) => v !== '' && v != null && (!Number.isFinite(Number(v)) || Number(v) < 0);
+    if (badQty(f.usualMorningL) || badQty(f.usualEveningL)) return setErr(t('qtyInvalid'));
+    const rate = toPaise(f.rateOverride);
+    if (f.customRate && !(rate > 0)) return setErr(t('rateRequired'));
+    const due = toPaise(f.openingDue);
+    if (f.openingDue !== '' && due === null) return setErr(t('amountInvalid'));
     const data = {
       name: f.name.trim(),
       phone: f.phone.trim(),
@@ -196,8 +203,8 @@ function CustomerForm({ fb, initial, nextOrder, onDone }) {
       usualMorningL: round3(f.usualMorningL),
       usualEveningL: round3(f.usualEveningL),
       usualL: round3(round3(f.usualMorningL) + round3(f.usualEveningL)),
-      rateOverridePaise: f.customRate ? toPaise(f.rateOverride) || null : null,
-      openingDuePaise: toPaise(f.openingDue) || 0,
+      rateOverridePaise: f.customRate ? rate : null,
+      openingDuePaise: due || 0,
       pauseFrom: f.pauseFrom || '',
       pauseTo: f.pauseTo || '',
       active: !!f.active,
@@ -211,7 +218,8 @@ function CustomerForm({ fb, initial, nextOrder, onDone }) {
   const stepUsual = (k, d) => setF({ ...f, [k]: Math.max(0, (Math.round(Number(f[k] || 0) * 1000) + d) / 1000) });
 
   return (
-    <form className="screen form" onSubmit={submit}>
+    // noValidate: the WebView's tiny validation bubbles were the only feedback; show our own errors.
+    <form className="screen form" onSubmit={submit} noValidate>
       <header className="screen-head">
         <button type="button" className="btn small ghost" onClick={onDone}>
           ← {t('back')}
@@ -270,14 +278,14 @@ function CustomerForm({ fb, initial, nextOrder, onDone }) {
       {f.customRate ? (
         <label>
           {t('customRateLabel')}
-          <input type="number" inputMode="decimal" min="0" step="0.5" value={f.rateOverride} onChange={set('rateOverride')} />
+          <input type="number" inputMode="decimal" min="0" step="any" value={f.rateOverride} onChange={set('rateOverride')} />
         </label>
       ) : (
         <p className="muted small">{t('usesDefaultRate')}</p>
       )}
       <label>
         {t('openingDue')}
-        <input type="number" inputMode="decimal" step="1" value={f.openingDue} onChange={set('openingDue')} />
+        <input type="number" inputMode="decimal" step="any" value={f.openingDue} onChange={set('openingDue')} />
       </label>
       <div className="two">
         <label>
@@ -306,6 +314,7 @@ function CustomerForm({ fb, initial, nextOrder, onDone }) {
           type="button"
           className="btn danger"
           onClick={() => {
+            if (!window.confirm(t('confirmDeactivate'))) return;
             saveCustomer(fb, initial.id, { active: false });
             onDone();
           }}

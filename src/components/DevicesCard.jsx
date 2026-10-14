@@ -10,6 +10,7 @@ import {
   renameDevice,
   secondsLeft,
   PairingError,
+  cleanDeviceName,
 } from '../devices.js';
 
 function fmtDate(ms, lang) {
@@ -77,6 +78,9 @@ export default function DevicesCard({ fb, farm, farmId, uid, online, now: nowPro
 
   const saveName = (e) => {
     e.preventDefault();
+    // A blank name keeps the form open with the error; a good name clears any old error.
+    if (!cleanDeviceName(newName)) return setErr(t('errInvalidName'));
+    setErr('');
     renameDevice(fb, farmId, uid, newName).catch(() => setErr(t('errInvalidName')));
     setRenaming(false);
   };
@@ -112,7 +116,7 @@ export default function DevicesCard({ fb, farm, farmId, uid, online, now: nowPro
             <input value={newName} maxLength={40} onChange={(e) => setNewName(e.target.value)} />
           </label>
           <div className="chips">
-            <button type="button" className="btn small" onClick={() => setRenaming(false)}>
+            <button type="button" className="btn small" onClick={() => { setErr(''); setRenaming(false); }}>
               {t('cancel')}
             </button>
             <button type="submit" className="btn small primary">

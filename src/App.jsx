@@ -18,7 +18,7 @@ import SetupFarm from './screens/SetupFarm.jsx';
 import Removed from './screens/Removed.jsx';
 import { listenFarm, deviceStatus, loadFarmId, wipeLocalData } from './devices.js';
 import { App as CapApp } from '@capacitor/app';
-import { handleBack, pushBackHandler } from './backStack.js';
+import { handleBack } from './backStack.js';
 import { migrateLegacyPin, legacyPinCleared } from './pinLock.js';
 import { IMPORT_DATES } from './octoberImport.js';
 
@@ -199,6 +199,13 @@ function FarmGate({ fb, user, farmId, onRemoved }) {
   );
 }
 
+/** Dairy name typed at setup was stored only on the farm doc (1.9.7 and earlier): use it until
+    a name is saved in Settings, so bills and the Settings field are not empty. */
+export function withFarmName(settings, farm) {
+  if ((settings && settings.farmName) || !farm || !farm.name) return settings;
+  return { ...settings, farmName: farm.name };
+}
+
 function Main({ fb, user, farm, farmId }) {
   const { t } = useLang();
   const [tab, setTab] = useState('register');
@@ -278,7 +285,9 @@ function Main({ fb, user, farm, farmId }) {
     };
   }, []);
 
-  const data = { fb, user, settings, customers, days, pendingDays, payments, displayName, setDisplayName, online, farm, farmId };
+  const farmName = farm && farm.name;
+  const effSettings = useMemo(() => withFarmName(settings, farmName ? { name: farmName } : null), [settings, farmName]);
+  const data = { fb, user, settings: effSettings, customers, days, pendingDays, payments, displayName, setDisplayName, online, farm, farmId };
 
   let screen;
   if (delivery) {

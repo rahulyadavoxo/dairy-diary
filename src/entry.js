@@ -14,6 +14,10 @@ export function normaliseEntry(customer, raw, settings) {
   const sessionsGiven = raw.milkMorningL != null || raw.milkEveningL != null;
   const hasSessions = sessionsGiven && (morn > 0 || eve > 0 || !hasMilkL);
   const total = hasSessions ? Math.round((morn + eve) * 1000) / 1000 : q3(raw.milkL);
+  // Snapshot a rate only when one is actually set (> 0). null = "no rate yet": billing then uses
+  // the customer / settings rate, so milk delivered before the rate was entered is not ₹0 forever.
+  const mr = milkRateFor(customer, settings, null);
+  const pr = paneerRateFor(settings, null);
   return {
     milkL: total,
     milkMorningL: morn,
@@ -21,16 +25,23 @@ export function normaliseEntry(customer, raw, settings) {
     paneerKg: q3(raw.paneerKg),
     skip: !!raw.skip,
     note: raw.note || '',
-    milkRatePaise: milkRateFor(customer, settings, null),
-    paneerRatePaise: paneerRateFor(settings, null),
+    milkRatePaise: mr > 0 ? mr : null,
+    paneerRatePaise: pr > 0 ? pr : null,
   };
 }
 
-/** Build an "as usual" entry for a customer (usual morning/evening quantities). */
-export function usualEntry(customer, settings, usualMorning, usualEvening) {
-  return normaliseEntry(
-    customer,
-    { milkMorningL: usualMorning, milkEveningL: usualEvening, paneerKg: 0, skip: false, note: '' },
-    settings,
-  );
+const round3 = (n) => Math.max(0, Math.round(Number(n || 0) * 1000) / 1000);
+// Number(null) and Number('') are 0 (finite), so a null/empty field used to count as "set to 0"
+// and the legacy usualL fallback was never used.
+const isSet = (v) => v !== null && v !== undefined && v !== '' && Number.isFinite(Number(v));
+
+/** Usual morning litres for a customer (falls back to half of legacy usualL). */
+export function usualMorning(c) {
+  if (isSet(c.usualMorningL)) return round3(c.usualMorningL);
+  return round3((Number(c.usualL) || 0) / 2);
+}
+/** Usual evening litres for a customer (falls back to half of legacy usualL). */
+export function usualEvening(c) {
+  if (isSet(c.usualEveningL)) return round3(c.usualEveningL);
+  return round3((Number(c.usualL) || 0) / 2);
 }

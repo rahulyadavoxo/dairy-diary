@@ -201,9 +201,9 @@ hr.sep { border: 0; border-top: 1px solid var(--line); margin: 1rem 0; }
 .delivery-cta { width: 100%; margin-top: 0.6rem; }
 .cust-card { width: 100%; text-align: left; display: block; margin-bottom: 0.6rem; cursor: pointer; }
 .week-strip { display: flex; gap: 0.3rem; margin-top: 0.5rem; overflow-x: auto; }
-.wk { flex: 1; min-width: 3.2rem; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 0.25rem 0.1rem; text-align: center; display: flex; flex-direction: column; }
+.wk { flex: 1; min-width: 0; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 0.25rem 0.1rem; text-align: center; display: flex; flex-direction: column; }
 .wk.cur { border-color: var(--green); background: #eef7ee; }
-.wk-d { font-size: 0.65rem; color: var(--muted); }
+.wk-d { font-size: 0.65rem; color: var(--muted); line-height: 1.15; overflow-wrap: anywhere; white-space: pre-line; }
 .wk-m { font-size: 0.85rem; font-weight: 700; }
 .bill-preview-img { width: 100%; border-radius: 8px; border: 1px solid var(--line); margin: 0.5rem 0; }
 .totals-head { display: flex; justify-content: flex-end; margin-bottom: 0.3rem; }
@@ -215,7 +215,8 @@ hr.sep { border: 0; border-top: 1px solid var(--line); margin: 1rem 0; }
 .cal-nav { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
 .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 0.25rem; }
 .cal-wd { text-align: center; font-size: 0.7rem; color: var(--muted); font-weight: 700; }
-.cal-cell { border: 1px solid var(--line); border-radius: 8px; min-height: 2.6rem; padding: 0.15rem; display: flex; flex-direction: column; align-items: center; }
+.cal-cell { font: inherit; color: var(--text); background: #fff; cursor: pointer; border: 1px solid var(--line); border-radius: 8px; min-height: 2.6rem; padding: 0.15rem; display: flex; flex-direction: column; align-items: center; }
+.cal-cell:disabled { opacity: 0.45; cursor: default; }
 .cal-cell.today { border-color: var(--green); }
 .cal-cell.has { background: #eef7ee; }
 .cal-d { font-size: 0.75rem; }
@@ -227,8 +228,14 @@ hr.sep { border: 0; border-top: 1px solid var(--line); margin: 1rem 0; }
 .select-check { width: 1.4rem; height: 1.4rem; flex-shrink: 0; }
 /* Full-screen overlay (keeps underlying list mounted → scroll position kept) */
 .full-overlay { position: fixed; inset: 0; z-index: 40; background: var(--bg); overflow-y: auto; }
-.full-overlay .screen { min-height: 100%; padding-top: env(safe-area-inset-top); padding-bottom: 5rem; }
+.full-overlay .screen { min-height: 100%; padding: calc(env(safe-area-inset-top) + 8px) 12px 5.5rem; max-width: 720px; margin: 0 auto; }
 /* In full overlay there is no tab bar, so savebar sits at the very bottom */
 .full-overlay .savebar { bottom: 0; padding-bottom: calc(0.5rem + env(safe-area-inset-bottom)); }
 .cust-card.just-edited { border-color: var(--green); background: #eef7ee; }
 .edited-tag { background: #d6ecd6; color: #1a6b1a; border: 1px solid #8fce8f; border-radius: 6px; padding: 0.05rem 0.35rem; font-size: 0.7rem; font-weight: 700; white-space: nowrap; }
+/* Customer form: the two usual-litre steppers must fit side by side on 360px phones */
+.form .two { align-items: end; }
+.form .two > label { min-width: 0; }
+.form .two .stepper { min-width: 0; }
+.form .two .stepper .qty { flex: 1; min-width: 0; width: 100%; padding: 0.3rem 0.1rem; }
+.form .two .stepper .btn.step { flex: none; width: 40px; min-width: 40px; }

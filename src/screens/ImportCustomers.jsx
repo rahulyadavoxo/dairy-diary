@@ -1,18 +1,18 @@
-// Bulk import customers: textarea (pre-filled with the September list),
-// one tap adds them all in route order. Skips names already in the app.
+// Bulk import customers: textarea (pre-filled from the private local list, if present),
+// one tap adds them all in route order. Skips names already in the app and repeats in the paste.
 import { useMemo, useState } from 'react';
 import { useLang } from '../i18n.js';
 import { saveCustomer } from '../db.js';
-import { DEFAULT_IMPORT_LIST, parseImportList } from '../importList.js';
+import { DEFAULT_IMPORT_LIST, parseImportList, freshImports } from '../importList.js';
 
 export default function ImportCustomers({ fb, customers, onDone }) {
   const { t } = useLang();
   const [text, setText] = useState(DEFAULT_IMPORT_LIST);
   const [done, setDone] = useState(null);
 
-  const existing = useMemo(() => new Set(customers.map((c) => String(c.name || '').trim().toLowerCase())), [customers]);
   const parsed = useMemo(() => parseImportList(text), [text]);
-  const fresh = useMemo(() => parsed.filter((p) => !existing.has(p.name.toLowerCase())), [parsed, existing]);
+  const fresh = useMemo(() => freshImports(parsed, customers), [parsed, customers]);
+  const bad = parsed.filter((p) => p.bad);
 
   const doImport = () => {
     const base = customers.length;
@@ -68,7 +68,12 @@ export default function ImportCustomers({ fb, customers, onDone }) {
       <p className="small">
         {parsed.length} {t('importNames')} · {fresh.length} {t('importNew')}
       </p>
-      <button type="button" className="btn primary big" disabled={fresh.length === 0} onClick={doImport}>
+      {bad.length > 0 && (
+        <p className="error small" role="alert">
+          {t('importBadQty')}: {bad.map((p) => p.name).join(', ')}
+        </p>
+      )}
+      <button type="button" className="btn primary big" disabled={fresh.length === 0 || bad.length > 0} onClick={doImport}>
         + {t('importAdd')} ({fresh.length})
       </button>
     </div>

@@ -85,7 +85,7 @@ export function firstWeekday(ym) {
   return new Date(y, m - 1, 1).getDay();
 }
 
-const MONTHS = {
+export const MONTHS = {
   en: ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'],
   hi: ['जनवरी', 'फ़रवरी', 'मार्च', 'अप्रैल', 'मई', 'जून', 'जुलाई', 'अगस्त', 'सितंबर', 'अक्टूबर', 'नवंबर', 'दिसंबर'],
 };
@@ -93,6 +93,28 @@ const MONTHS = {
 export function monthName(ym, lang = 'en') {
   const [y, m] = ym.split('-').map(Number);
   return `${(MONTHS[lang] || MONTHS.en)[m - 1]} ${y}`;
+}
+
+/** Weekday letters, Sunday first (index = Date#getDay()). */
+export const WEEK = { hi: ['र', 'सो', 'मं', 'बु', 'गु', 'शु', 'श'], en: ['S', 'M', 'T', 'W', 'T', 'F', 'S'] };
+
+/** Weekday letters, Monday first — every calendar in the app (and the bill photo) is Monday-first. */
+export function weekdaysMonFirst(lang = 'en') {
+  const w = WEEK[lang] || WEEK.en;
+  return [...w.slice(1), w[0]];
+}
+
+/** Blank cells before the 1st in a Monday-first month grid. */
+export function mondayOffset(ym) {
+  return (firstWeekday(ym) + 6) % 7;
+}
+
+const SHORT_MONTHS_EN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** "14 Oct" / "14 अक्टूबर" */
+export function shortDate(iso, lang = 'en') {
+  const [, m, d] = iso.split('-').map(Number);
+  return `${d} ${lang === 'hi' ? MONTHS.hi[m - 1] : SHORT_MONTHS_EN[m - 1]}`;
 }
 
 export function timeHM(ms) {

@@ -28,7 +28,7 @@ export default function BillSender({ fb, customers, days, payments, settings, on
   const targets = useMemo(
     () =>
       res.rows.filter(
-        (r) => r.customer.phone && r.customer.active !== false && (r.balancePaise !== 0 || r.hasActivity),
+        (r) => r.customer.phone && r.customer.active !== false && !r.customer.isSupplier && (r.balancePaise !== 0 || r.hasActivity),
       ),
     [res],
   );
