@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLang } from '../i18n.js';
 import { computeMonth, sortByDue } from '../billing.js';
-import { getPinHash, verifyPin } from '../pinLock.js';
+import { getPinHash, verifyPin, pinWaitSeconds } from '../pinLock.js';
 import { preGenerateBillPhotos } from '../billPreGen.js';
 import { addMonths, fmtQty, monthDates, monthName, rupees, todayISO, monthOf } from '../format.js';
 import BillSender, { shouldPromptBills } from './BillSender.jsx';
@@ -40,6 +40,9 @@ export default function Hisaab({ fb, customers, days, payments, settings, month,
   const [sending, setSending] = useState(false);
   const [photos, setPhotos] = useState(false);
   const [showTotals, setShowTotals] = useState(() => {
+    // With a PIN set, totals must be hidden on the very first paint. The effect below runs
+    // after paint, so starting from the saved '1' flashed the totals for a moment.
+    if (getPinHash()) return false;
     try {
       return localStorage.getItem('dd_show_totals') !== '0';
     } catch {
@@ -59,15 +62,16 @@ export default function Hisaab({ fb, customers, days, payments, settings, month,
     } catch {}
   };
 
-  // Lock enforcement: whenever this screen mounts/shows with a PIN set,
-  // totals start hidden.
+  // Lock enforcement: whenever this screen mounts/shows with a PIN set, totals start hidden.
+  // Also re-runs when the lock appears while the screen is open (old synced PIN copied to this
+  // phone after settings load), which the mount-only [] version missed.
   useEffect(() => {
-    if (getPinHash()) {
+    if (pinLocked) {
       doHideShow(false);
       setPinOpen(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [pinLocked]);
 
   const toggleTotals = () => {
     if (showTotals) {
@@ -90,7 +94,8 @@ export default function Hisaab({ fb, customers, days, payments, settings, month,
       setPinOpen(false);
       doHideShow(true);
     } else {
-      setPinErr(t('pinWrong'));
+      const w = pinWaitSeconds();
+      setPinErr(w > 0 ? t('pinWait').replace('{s}', w) : t('pinWrong'));
     }
   };
   const res = useMemo(() => computeMonth({ customers, days, payments, settings, month }), [customers, days, payments, settings, month]);
@@ -162,7 +167,7 @@ export default function Hisaab({ fb, customers, days, payments, settings, month,
                 ✕
               </button>
             </form>
-            {pinErr && <p className="err small">{pinErr}</p>}
+            {pinErr && <p className="error small">{pinErr}</p>}
           </div>
         )}
         {showTotals && (

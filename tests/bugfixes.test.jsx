@@ -1,5 +1,5 @@
 // Regression tests for the bugs listed in BUG_REPORT.txt
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { render, cleanup } from '@testing-library/react';
 import { normaliseEntry } from '../src/entry.js';
 import { usualMorning } from '../src/screens/Customers.jsx';
@@ -66,5 +66,47 @@ describe('BUG-02/03 Rules of Hooks crashes', () => {
     const r = render(wrap(<BillSender {...props} customers={[c]} />));
     // customer becomes inactive -> targets empty -> early return path; must not crash
     expect(() => r.rerender(wrap(<BillSender {...props} customers={[{ ...c, active: false }]} />))).not.toThrow();
+  });
+});
+
+// ---- 1.9.4 review ----
+import { migrateLegacyPin, getPinHash as _getPin, savePinHash as _savePin } from '../src/pinLock.js';
+describe('1.9.4 PIN move to localStorage', () => {
+  beforeEach(() => localStorage.clear());
+  it('copies an old Firestore PIN to this phone once', () => {
+    expect(migrateLegacyPin({ totalsPinHash: 'abc' })).toBe(true);
+    expect(_getPin()).toBe('abc');
+  });
+  it('does not bring back a PIN the user removed on this phone', () => {
+    migrateLegacyPin({ totalsPinHash: 'abc' });
+    _savePin('');
+    migrateLegacyPin({ totalsPinHash: 'abc' });
+    expect(_getPin()).toBe('');
+  });
+  it('waits for settings to load before deciding', () => {
+    expect(migrateLegacyPin({})).toBe(false);
+    expect(migrateLegacyPin({ totalsPinHash: 'x' })).toBe(true);
+    expect(_getPin()).toBe('x');
+  });
+});
+
+// ---- 1.9.5 review ----
+import { verifyPin as _verify, hashPin as _hash, pinWaitSeconds as _wait } from '../src/pinLock.js';
+describe('1.9.5 wrong-PIN throttle', () => {
+  beforeEach(() => localStorage.clear());
+  it('blocks guessing after 5 wrong PINs, even the right one, until the wait ends', async () => {
+    _savePin(await _hash('4321'));
+    for (let i = 0; i < 5; i++) expect(await _verify('0000')).toBe(false);
+    expect(_wait()).toBe(0); // 5 free tries
+    expect(await _verify('1111')).toBe(false);
+    expect(_wait()).toBeGreaterThan(0);
+    expect(await _verify('4321')).toBe(false);
+  });
+  it('a correct PIN resets the counter', async () => {
+    _savePin(await _hash('4321'));
+    for (let i = 0; i < 4; i++) await _verify('0000');
+    expect(await _verify('4321')).toBe(true);
+    for (let i = 0; i < 5; i++) await _verify('0000');
+    expect(_wait()).toBe(0);
   });
 });

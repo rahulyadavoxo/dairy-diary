@@ -19,6 +19,7 @@ import Removed from './screens/Removed.jsx';
 import { listenFarm, deviceStatus, loadFarmId, wipeLocalData } from './devices.js';
 import { App as CapApp } from '@capacitor/app';
 import { handleBack, pushBackHandler } from './backStack.js';
+import { migrateLegacyPin } from './pinLock.js';
 
 const REMOVED_KEY = 'dd_removed';
 const flagGet = () => {
@@ -218,7 +219,10 @@ function Main({ fb, user, farm, farmId }) {
   useEffect(
     () =>
       listenAll(fb, {
-        settings: setSettings,
+        settings: (s) => {
+          migrateLegacyPin(s); // before render, so Hisaab sees the PIN in the same update
+          setSettings(s);
+        },
         customers: setCustomers,
         days: (d, p) => {
           setDays(d);

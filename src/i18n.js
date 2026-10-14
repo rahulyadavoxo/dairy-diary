@@ -259,6 +259,7 @@ export const STRINGS = {
     pinUnlock: 'Unlock',
     pinFailed: 'PIN set nahi ho paya',
     pinCurrent: 'Purana PIN daalo',
+    pinWait: 'Bahut galat PIN. {s} second baad try karo',
   },
   en: {
     appName: 'Dairy Diary',
@@ -517,6 +518,7 @@ export const STRINGS = {
     pinUnlock: 'Unlock',
     pinFailed: 'Could not set PIN',
     pinCurrent: 'Enter current PIN',
+    pinWait: 'Too many wrong PINs. Try again in {s} seconds',
   },
 };
 

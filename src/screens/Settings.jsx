@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useLang } from '../i18n.js';
 import { saveSettings } from '../db.js';
 import { paiseToInput, toPaise } from '../format.js';
-import { getPinHash, hashPin, savePinHash, verifyPin } from '../pinLock.js';
+import { getPinHash, hashPin, savePinHash, verifyPin, pinWaitSeconds } from '../pinLock.js';
 import DevicesCard from '../components/DevicesCard.jsx';
 
 // Single source of truth for the version (package.json, injected by vite.config.js).
@@ -16,6 +16,7 @@ export default function Settings({ fb, user, settings, displayName, setDisplayNa
   const [msg, setMsg] = useState('');
   const [pin, setPin] = useState('');
   const [pinMsg, setPinMsg] = useState('');
+  const [pinMsgErr, setPinMsgErr] = useState(false); // errors were shown in green ('ok' style)
   const [hasPin, setHasPin] = useState(() => !!getPinHash());
   const [pinVerified, setPinVerified] = useState(false);
 
@@ -27,7 +28,9 @@ export default function Settings({ fb, user, settings, displayName, setDisplayNa
       setPin('');
       setPinMsg('');
     } else {
-      setPinMsg(t('pinWrong'));
+      const w = pinWaitSeconds();
+      setPinMsgErr(true);
+      setPinMsg(w > 0 ? t('pinWait').replace('{s}', w) : t('pinWrong'));
       setTimeout(() => setPinMsg(''), 2500);
     }
   };
@@ -36,6 +39,7 @@ export default function Settings({ fb, user, settings, displayName, setDisplayNa
     e.preventDefault();
     const p = pin.trim();
     if (p.length < 4) {
+      setPinMsgErr(true);
       setPinMsg(t('pinTooShort'));
       return;
     }
@@ -45,9 +49,11 @@ export default function Settings({ fb, user, settings, displayName, setDisplayNa
       setHasPin(true);
       setPinVerified(false);
       setPin('');
+      setPinMsgErr(false);
       setPinMsg(t('pinSaved'));
     } catch (err) {
       console.error('[pin]', err);
+      setPinMsgErr(true);
       setPinMsg(t('pinFailed'));
     }
     setTimeout(() => setPinMsg(''), 2500);
@@ -60,6 +66,7 @@ export default function Settings({ fb, user, settings, displayName, setDisplayNa
     setHasPin(false);
     setPinVerified(false);
     setPin('');
+    setPinMsgErr(false);
     setPinMsg(t('pinRemoved'));
     setTimeout(() => setPinMsg(''), 2500);
   };
@@ -183,7 +190,7 @@ export default function Settings({ fb, user, settings, displayName, setDisplayNa
             </form>
           </>
         )}
-        {pinMsg && <p className="ok small">{pinMsg}</p>}
+        {pinMsg && <p className={(pinMsgErr ? 'error' : 'ok') + ' small'}>{pinMsg}</p>}
       </div>
 
       {farm && <DevicesCard fb={fb} farm={farm} farmId={farmId} uid={user.uid} online={online} />}
