@@ -122,7 +122,8 @@ describe('format helpers', () => {
     expect(toPaise('')).toBe(null);
   });
   it('dates and phones', () => {
-    expect(dmy('2026-10-13')).toBe('13-10-2026');
+    expect(dmy('2026-10-13')).toBe('13 October 2026');
+    expect(dmy('2026-10-05', 'hi')).toBe('5 अक्टूबर 2026');
     expect(addMonths('2026-12', 1)).toBe('2027-01');
     expect(daysInMonth('2028-02')).toBe(29);
     expect(waNumber('98765 43210')).toBe('919876543210');

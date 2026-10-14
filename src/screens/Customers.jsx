@@ -33,10 +33,10 @@ const round3 = (n) => Math.max(0, Math.round(Number(n || 0) * 1000) / 1000);
 export { usualMorning, usualEvening }; // moved to entry.js (also used by the day editor)
 
 /** Pause label for the list: only a current or upcoming pause (an old one is just history). */
-export function pauseLabel(c, today, t) {
+export function pauseLabel(c, today, t, lang = 'en') {
   if (!c.pauseFrom && !c.pauseTo) return '';
-  if (isPaused(c, today)) return c.pauseTo ? `${t('paused')} → ${dmy(c.pauseTo)}` : t('paused');
-  if (c.pauseFrom && c.pauseFrom > today) return `${t('pauseScheduled')} ${dmy(c.pauseFrom)}${c.pauseTo ? '–' + dmy(c.pauseTo) : ''}`;
+  if (isPaused(c, today)) return c.pauseTo ? `${t('paused')} → ${dmy(c.pauseTo, lang)}` : t('paused');
+  if (c.pauseFrom && c.pauseFrom > today) return `${t('pauseScheduled')} ${dmy(c.pauseFrom, lang)}${c.pauseTo ? '–' + dmy(c.pauseTo, lang) : ''}`;
   return '';
 }
 
@@ -47,7 +47,7 @@ export function resetCustomersView() {
 }
 
 export default function Customers({ fb, customers, settings, openCustomer }) {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const [editing, setEditing] = useState(null); // null | 'new' | customer
   const [importing, setImporting] = useState(false);
   const [showInactive, setShowInactive] = useState(false);
@@ -185,7 +185,7 @@ export default function Customers({ fb, customers, settings, openCustomer }) {
               <span className="small">
                 {fmtQty(c.usualL || 0)} {t('litre')}
                 {c.rateOverridePaise ? ` · ${rupees(c.rateOverridePaise)}/${t('litre')}` : ''}
-                {pauseLabel(c, todayISO(), t) ? ` · ${pauseLabel(c, todayISO(), t)}` : ''}
+                {pauseLabel(c, todayISO(), t, lang) ? ` · ${pauseLabel(c, todayISO(), t, lang)}` : ''}
               </span>
             </button>
             <button className="btn small ghost" onClick={() => openCustomer(c.id)}>

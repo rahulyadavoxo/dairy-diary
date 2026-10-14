@@ -51,10 +51,12 @@ export function monthOf(iso) {
 }
 
 /** 'yyyy-mm-dd' -> 'dd-mm-yyyy' */
-export function dmy(iso) {
+/** Full date for the screen: "15 October 2026" (Hindi: "15 अक्टूबर 2026"). */
+export function dmy(iso, lang = 'en') {
   if (!iso) return '';
-  const [y, m, d] = iso.split('-');
-  return `${d}-${m}-${y}`;
+  const [y, m, d] = iso.split('-').map(Number);
+  if (!y || !m || !d) return '';
+  return `${d} ${(MONTHS[lang] || MONTHS.en)[m - 1]} ${y}`;
 }
 
 export function addDays(iso, n) {

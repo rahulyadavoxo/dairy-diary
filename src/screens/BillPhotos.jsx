@@ -1,5 +1,6 @@
 // Bill photos: render every customer's monthly bill as a PNG image,
 // preview them, and share/download one by one or all together.
+import { firstDeliveryMonth } from '../firstMonth.js';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLang } from '../i18n.js';
 import { computeMonth } from '../billing.js';
@@ -102,7 +103,7 @@ export default function BillPhotos({ customers, days, payments, settings, month:
           ← {t('back')}
         </button>
         <h1>{t('billPhotos')}</h1>
-        <MonthNav month={month} setMonth={setMonth} />
+        <MonthNav month={month} setMonth={setMonth} minMonth={firstDeliveryMonth(days)} />
         <p className="muted small">{t('billPhotosHint')}</p>
       </header>
       {photos.length === 0 ? (

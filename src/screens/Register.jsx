@@ -52,7 +52,7 @@ export function defaultSession() {
 const AUTOSAVE_MS = 1200;
 
 export default function DayEditor({ fb, customers, days, pendingDays = {}, settings, displayName, date: initialDate, customerId, onClose }) {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const [date, setDate] = useState(() => (initialDate && initialDate <= todayISO() ? initialDate : todayISO()));
   const [drafts, setDrafts] = useState({});
   const [query, setQuery] = useState('');
@@ -189,14 +189,14 @@ export default function DayEditor({ fb, customers, days, pendingDays = {}, setti
             ← {t('back')}
           </button>
           <h1>
-            ✏️ {only ? only.name : t('editDayTitle')} · {dmy(date)}
+            ✏️ {only ? only.name : t('editDayTitle')} · {dmy(date, lang)}
           </h1>
           <div className="date-nav">
             <button className="btn icon" onClick={() => changeDate(addDays(date, -1))} aria-label={t('prevDay')}>
               ◀
             </button>
             <label className="date-pick">
-              <span>{dmy(date)}</span>
+              <span>{dmy(date, lang)}</span>
               <input
                 type="date"
                 value={date}

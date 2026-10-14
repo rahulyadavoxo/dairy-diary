@@ -299,3 +299,11 @@ hr.sep { border: 0; border-top: 1px solid var(--line); margin: 1rem 0; }
   .splash-milk { animation: none; transform: translateY(70px); }
   .splash-drop { display: none; }
 }
+
+/* --- 1.10.10: icon buttons in the Hisaab tool row --- */
+.tool-row .btn.icon-only { flex: 0 0 3.4rem; display: inline-flex; align-items: center; justify-content: center; padding: 0.25rem; }
+.tool-row .btn.icon-btn { display: inline-flex; align-items: center; justify-content: center; gap: 0.35rem; }
+.tool-row .btn svg { flex: 0 0 auto; display: block; }
+/* long dates ("30 September 2026") stay on one line in the date box */
+.date-pick { min-width: 0; }
+.date-pick span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 0.35rem; font-size: clamp(0.85rem, 3.9vw, 1.05rem); }

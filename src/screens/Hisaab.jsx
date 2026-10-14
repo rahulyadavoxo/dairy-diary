@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
+import { firstDeliveryMonth } from '../firstMonth.js';
+import { WhatsAppIcon, BillIcon } from '../components/Icons.jsx';
 import { pushBackHandler } from '../backStack.js';
 import { useLang } from '../i18n.js';
 import { computeMonth, sortByDue } from '../billing.js';
@@ -142,7 +144,7 @@ export default function Hisaab({ fb, customers, days, payments, settings, month,
     <div className="screen">
       <header className="screen-head">
         <h1>{t('hisaabTitle')}</h1>
-        <MonthNav month={month} setMonth={setMonth} />
+        <MonthNav month={month} setMonth={setMonth} minMonth={firstDeliveryMonth(days)} />
         {shouldPromptBills(settings) && (
           <div className="card warn">
             <p><b>{t('waBillsTitle')}</b></p>
@@ -153,11 +155,17 @@ export default function Hisaab({ fb, customers, days, payments, settings, month,
           </div>
         )}
         <div className="tool-row">
-          <button type="button" className="btn small" onClick={() => setSending(true)}>
-            📲 {t('waBillsShort')}
+          <button
+            type="button"
+            className="btn small icon-only"
+            onClick={() => setSending(true)}
+            aria-label={t('waBillsShort')}
+            title={t('waBillsShort')}
+          >
+            <WhatsAppIcon />
           </button>
-          <button type="button" className={'btn small' + (isLastDay ? ' on' : '')} onClick={() => setPhotos(true)}>
-            🖼️ {t('billPhotosShort')}
+          <button type="button" className={'btn small icon-btn' + (isLastDay ? ' on' : '')} onClick={() => setPhotos(true)}>
+            <BillIcon /> {t('billPhotosShort')}
           </button>
           <button type="button" className="btn small ghost" onClick={toggleTotals}>
             {showTotals ? '👁️' : pinLocked ? '🔒' : '👁️‍🗨️'} {showTotals ? t('hide') : t('show')}

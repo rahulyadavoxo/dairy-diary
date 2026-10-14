@@ -1,6 +1,7 @@
 // Register: each customer card shows the name and the last 7 days (date + milk). Tapping a card
 // opens a calendar with date-wise milk; tapping a date there opens the day editor for that
 // customer. Daily entry happens in Delivery mode; "Edit this day" corrects any past day.
+import { firstDeliveryMonth } from '../firstMonth.js';
 import { useMemo, useState, useEffect } from 'react';
 import { useLang } from '../i18n.js';
 import DayEditor, { sortCustomers, isPaused, matchesQuery } from './Register.jsx';
@@ -99,7 +100,7 @@ function CalendarModal({ customer, days, onClose, onEditDay }) {
                 key={i}
                 disabled={c.iso > now}
                 onClick={() => onEditDay(c.iso)}
-                aria-label={dmy(c.iso)}
+                aria-label={dmy(c.iso, lang)}
                 className={'cal-cell' + (c.iso === now ? ' today' : '') + (c.milk > 0 ? ' has' : '')}
               >
                 <span className="cal-d">{c.d}</span>
@@ -145,7 +146,8 @@ export default function RegisterView({ fb, customers, days, pendingDays, setting
   const byId = useMemo(() => Object.fromEntries(customers.map((c) => [c.id, c])), [customers]);
   const week = useMemo(() => last7(date), [date]);
 
-  const changeDate = (d) => setDate(d > todayISO() ? todayISO() : d);
+  const minDate = useMemo(() => firstDeliveryMonth(days) + '-01', [days]);
+  const changeDate = (d) => setDate(d > todayISO() ? todayISO() : d < minDate ? minDate : d);
 
   const visible = active.filter((c) => matchesQuery(c, query));
 
@@ -176,16 +178,17 @@ export default function RegisterView({ fb, customers, days, pendingDays, setting
   return (
     <div className="screen register">
       <header className="screen-head">
-        <h1>{date === todayISO() ? t('registerTitle') : dmy(date)}</h1>
+        <h1>{date === todayISO() ? t('registerTitle') : dmy(date, lang)}</h1>
         <div className="date-nav">
-          <button className="btn icon" onClick={() => changeDate(addDays(date, -1))} aria-label={t('prevDay')}>
+          <button className="btn icon" disabled={date <= minDate} onClick={() => changeDate(addDays(date, -1))} aria-label={t('prevDay')}>
             ◀
           </button>
           <label className="date-pick">
-            <span>{dmy(date)}</span>
+            <span>{dmy(date, lang)}</span>
             <input
               type="date"
               value={date}
+              min={minDate}
               max={todayISO()}
               onChange={(e) => {
                 const v = e.target.value;
@@ -221,7 +224,7 @@ export default function RegisterView({ fb, customers, days, pendingDays, setting
           </button>
         )}
         <button type="button" className="btn big delivery-cta" onClick={() => setEditing({ date })}>
-          ✏️ {t('editDay')} ({dmy(date)})
+          ✏️ {t('editDay')} ({dmy(date, lang)})
         </button>
       </header>
 

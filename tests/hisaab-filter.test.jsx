@@ -52,7 +52,7 @@ describe('Hisaab search + paid/unpaid', () => {
     const { container } = view();
     const row = container.querySelector('.tool-row');
     expect(row.querySelectorAll('button')).toHaveLength(3);
-    expect(row.textContent).toContain(en.waBillsShort);
+    expect(row.querySelector(`[aria-label="${en.waBillsShort}"] .icon-wa`)).toBeTruthy();
     expect(row.textContent).toContain(en.billPhotosShort);
   });
 });

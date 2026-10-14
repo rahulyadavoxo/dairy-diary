@@ -379,3 +379,43 @@ describe('start-up animation', () => {
     expect(readFileSync('src/styles.css', 'utf8')).toContain('prefers-reduced-motion');
   });
 });
+
+describe('1.10.10 icons and launch screen', () => {
+  it('Hisaab: WhatsApp button is only the WhatsApp logo, Bill photos has the bill icon', () => {
+    const src = readFileSync('src/screens/Hisaab.jsx', 'utf8');
+    expect(src).toContain('<WhatsAppIcon />');
+    expect(src).toContain('<BillIcon />');
+    expect(src).not.toContain("📲 {t('waBillsShort')}");
+    expect(src).not.toContain('🖼️');
+  });
+  it('Android launch screen has no logo (blank icon, cream background)', () => {
+    const st = readFileSync('android/app/src/main/res/values/styles.xml', 'utf8');
+    expect(st).toContain('@drawable/splash_blank');
+    expect(st).toContain('@drawable/splash_bg');
+    expect(st).not.toContain('@drawable/splash<');
+  });
+});
+
+describe('1.10.10 dates and first month', () => {
+  it('dates read "15 October 2026"', async () => {
+    const { dmy } = await import('../src/format.js');
+    expect(dmy('2026-10-15')).toBe('15 October 2026');
+    expect(dmy('2026-09-01', 'hi')).toBe('1 सितंबर 2026');
+  });
+  it('first delivery month ignores empty and skipped days', async () => {
+    const { firstDeliveryMonth } = await import('../src/firstMonth.js');
+    const days = {
+      '2026-08-20': { entries: { a: { skip: true, milkL: 2 } } },
+      '2026-09-30': { entries: { a: { milkL: 0 } } },
+      '2026-10-01': { entries: { a: { milkL: 1.5 } } },
+    };
+    expect(firstDeliveryMonth(days)).toBe('2026-10');
+    expect(firstDeliveryMonth({ ...days, '2026-09-05': { entries: { b: { paneerKg: 0.5 } } } })).toBe('2026-09');
+  });
+  it('the ◀ month arrow stops at the first delivery month', async () => {
+    const { default: MonthNav } = await import('../src/components/MonthNav.jsx');
+    const set = vi.fn();
+    render(<MonthNav month="2026-09" setMonth={set} minMonth="2026-09" />);
+    expect(screen.getAllByRole('button')[0].disabled).toBe(true);
+  });
+});

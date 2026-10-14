@@ -1,3 +1,4 @@
+import { dmy } from '../src/format.js';
 // Regression tests for the 1.9.8 UI-audit fixes (one block per audit item that has logic).
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -299,7 +300,7 @@ describe('#5 any past day can be edited from Register', () => {
     const y = addDays(todayISO(), -1);
     const [yy, mm, dd] = y.split('-');
     if (y.slice(0, 7) !== todayISO().slice(0, 7)) fireEvent.click(screen.getByText('◀', { selector: '.cal-nav button' }));
-    fireEvent.click(screen.getByLabelText(`${dd}-${mm}-${yy}`));
+    fireEvent.click(screen.getByLabelText(dmy(y)));
     const ed = screen.getByTestId('day-editor');
     expect(within(ed).getByRole('heading', { level: 1 }).textContent).toContain('Asha');
     expect(within(ed).queryByText(/Bablu/)).toBeNull();
@@ -314,7 +315,7 @@ describe('#5 any past day can be edited from Register', () => {
     const t = addDays(todayISO(), 1);
     if (t.slice(0, 7) === todayISO().slice(0, 7)) {
       const [yy, mm, dd] = t.split('-');
-      expect(screen.getByLabelText(`${dd}-${mm}-${yy}`).disabled).toBe(true);
+      expect(screen.getByLabelText(dmy(t)).disabled).toBe(true);
     }
   });
 });
@@ -422,7 +423,7 @@ describe('#10 hardware back closes sub-screens', () => {
   });
   it('bill sender (Hisaab)', () => {
     render(wrap(<Hisaab fb={mkFb()} customers={[c1]} days={{}} payments={[]} settings={settings} month={todayISO().slice(0, 7)} setMonth={() => {}} openCustomer={() => {}} />));
-    fireEvent.click(screen.getByText(`📲 ${en.waBillsShort}`));
+    fireEvent.click(screen.getByLabelText(en.waBillsShort));
     expect(screen.queryByText(en.hisaabTitle)).toBeNull();
     act(() => {
       expect(handleBack()).toBe(true);
@@ -584,8 +585,8 @@ describe('#24 pause label, #26 ✕ only on recorded days, #28 search', () => {
   const t = makeT('en');
   it('pause label only for a current or upcoming pause', () => {
     expect(pauseLabel({ pauseFrom: '2026-01-01', pauseTo: '2026-01-05' }, '2026-10-14', t)).toBe('');
-    expect(pauseLabel({ pauseFrom: '2026-10-10', pauseTo: '2026-10-20' }, '2026-10-14', t)).toBe('Paused → 20-10-2026');
-    expect(pauseLabel({ pauseFrom: '2026-11-01', pauseTo: '' }, '2026-10-14', t)).toBe('Pause from 01-11-2026');
+    expect(pauseLabel({ pauseFrom: '2026-10-10', pauseTo: '2026-10-20' }, '2026-10-14', t)).toBe('Paused → 20 October 2026');
+    expect(pauseLabel({ pauseFrom: '2026-11-01', pauseTo: '' }, '2026-10-14', t)).toBe('Pause from 1 November 2026');
   });
   it('a day without any entry is not a ✕', () => {
     const days = { '2026-10-02': { entries: { c1: { milkL: 0, skip: true } } } };

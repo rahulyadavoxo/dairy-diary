@@ -61,7 +61,7 @@ function allRegNames() {
 }
 
 function CustomerDays({ fb, customer, regName, days, settings, displayName, onDone, onSaved }) {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const dates = useMemo(() => getReviewDates(), []);
   const [vals, setVals] = useState(() => {
     const init = {};
@@ -88,7 +88,7 @@ function CustomerDays({ fb, customer, regName, days, settings, displayName, onDo
 
   const removeDay = async (d) => {
     if (deleting) return;
-    if (!window.confirm(t('confirmDeleteDay').replace('{d}', dmy(d)))) return;
+    if (!window.confirm(t('confirmDeleteDay').replace('{d}', dmy(d, lang)))) return;
     setDeleting(d);
     try {
       deleteEntry(fb, d, customer.id, displayName); // not awaited: would hang forever offline
@@ -179,7 +179,7 @@ function CustomerDays({ fb, customer, regName, days, settings, displayName, onDo
           return (
             <li key={d} className="row">
               <div className="who" style={{ flex: 1 }}>
-                <b>{dmy(d)}</b>
+                <b>{dmy(d, lang)}</b>
                 {raw !== undefined && <span className="muted small"> · {t('register')}: {raw === 'X' ? 'X' : String(raw)}</span>}
                 {isSaved && <span className="tag"> ✓</span>}
               </div>

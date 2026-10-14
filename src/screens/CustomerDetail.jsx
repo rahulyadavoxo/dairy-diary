@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { firstDeliveryMonth } from '../firstMonth.js';
 import { saveFeedback } from '../feedback.js';
 import { useLang } from '../i18n.js';
 import { computeMonth, fullPaymentPaise } from '../billing.js';
@@ -104,7 +105,7 @@ export default function CustomerDetail({ fb, customers, days, payments, settings
         </button>
         <h1>{customer.name}</h1>
         <p className="muted small">{[customer.area, customer.phone].filter(Boolean).join(' · ')}</p>
-        <MonthNav month={month} setMonth={setMonth} />
+        <MonthNav month={month} setMonth={setMonth} minMonth={firstDeliveryMonth(days)} />
       </header>
 
       <div className="card summary">
@@ -196,7 +197,7 @@ export default function CustomerDetail({ fb, customers, days, payments, settings
         </div>
         <p className="field-label">{t('date')}</p>
         <label className="date-pick">
-          <span>{dmy(payDate)}</span>
+          <span>{dmy(payDate, lang)}</span>
           <input type="date" value={payDate} max={todayISO()} onChange={(e) => e.target.value && setPayDate(e.target.value)} />
         </label>
         {err && <p className="error">{err}</p>}
@@ -214,7 +215,7 @@ export default function CustomerDetail({ fb, customers, days, payments, settings
               <b>{rupees(p.amountPaise)}</b> · {p.mode === 'upi' ? t('upi') : t('cash')}
               <br />
               <span className="muted small">
-                {dmy(p.date)}
+                {dmy(p.date, lang)}
                 {p.createdBy ? ` · ${p.createdBy}` : ''}
                 {p._pending ? ` · ${t('pendingSync')}` : ''}
               </span>
