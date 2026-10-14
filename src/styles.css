@@ -251,3 +251,14 @@ hr.sep { border: 0; border-top: 1px solid var(--line); margin: 1rem 0; }
 .filter-chips .btn { min-height: 40px; font-size: 0.9rem; }
 .wa-help { margin-top: 0.4rem; }
 .wa-help .btn { margin-top: 0.3rem; }
+
+/* Delivery: red "Absent" (filled, like Delivered) and on/off toggle bars */
+.btn.absent { background: var(--red); color: #fff; border-color: var(--red); font-weight: 700; }
+.toggle-bar { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 52px; margin: 0.4rem 0; padding: 0.4rem 0.9rem; border: 1.5px solid var(--line, #ddd); border-radius: 12px; background: #fff; font: inherit; font-size: 1.05rem; font-weight: 600; color: inherit; cursor: pointer; }
+.toggle-bar.on { border-color: var(--green); background: #e8f3ec; color: var(--green); }
+.toggle-bar .switch { position: relative; width: 50px; height: 28px; border-radius: 14px; background: #c9c9c9; flex: none; transition: background 0.15s; }
+.toggle-bar.on .switch { background: var(--green); }
+.toggle-bar .knob { position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,0.3); transition: left 0.15s; }
+.toggle-bar.on .knob { left: 25px; }
+.deli-card .deli-qty { display: block; margin-top: 0.5rem; }
+.deli-total { font-size: 1.15rem; margin: 0.7rem 0 0.4rem; }

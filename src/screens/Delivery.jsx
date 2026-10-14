@@ -1,11 +1,11 @@
 // Delivery mode: walk through today's customers in route order, marking each
 // delivered. Tapping "Delivered" instantly advances to the next customer.
-// "As usual" fills the customer's usual quantity for the chosen round.
-// Morning and evening are separate rounds: a customer who got morning milk is still due
-// in the evening round. The back button re-opens an earlier customer for corrections.
+// One card per customer for the whole day: paneer toggle, morning, evening, total.
+// "As usual" fills the usual quantities; "Absent" records that the customer didn't take milk.
+// The back button re-opens an earlier customer for corrections.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLang } from '../i18n.js';
-import { saveEntries } from '../db.js';
+import { saveEntries, deleteEntry } from '../db.js';
 import { normaliseEntry } from '../entry.js';
 import { sortCustomers, isPaused } from './Register.jsx';
 import { usualMorning, usualEvening } from './Customers.jsx';
@@ -17,31 +17,6 @@ const step = (v, d) => Math.max(0, (Math.round(Number(v || 0) * 1000) + d) / 100
 
 /** A second tap within this time after the card changed is ignored (double-tap guard). */
 export const TAP_GUARD_MS = 600;
-
-const SESSIONS = ['morning', 'evening', 'total'];
-const DELI_SESSION_KEY = 'dd_deli_session';
-
-/** Round to open with: the round picked earlier in this half of the day, else by the clock
-    (morning before 1 pm, evening after). "Total" (one round a day) is remembered for good. */
-export function deliverySession(now = new Date()) {
-  const half = now.getHours() < 13 ? 'morning' : 'evening';
-  try {
-    const v = JSON.parse(localStorage.getItem(DELI_SESSION_KEY) || 'null');
-    if (v && v.s === 'total') return 'total';
-    if (v && SESSIONS.includes(v.s) && v.slot === `${todayISO()}-${half}`) return v.s;
-  } catch {
-    /* ignore */
-  }
-  return half;
-}
-function rememberSession(s) {
-  const half = new Date().getHours() < 13 ? 'morning' : 'evening';
-  try {
-    localStorage.setItem(DELI_SESSION_KEY, JSON.stringify({ s, slot: `${todayISO()}-${half}` }));
-  } catch {
-    /* ignore */
-  }
-}
 
 /** Is this saved entry already delivered for the given round? A total-only entry (no
     morning/evening split) covers the whole day. */
@@ -120,25 +95,36 @@ function QtyEdit({ label, value, onChange }) {
   );
 }
 
-function DeliveryCard({ c, session, initM, initE, initPaneer, onDelivered, onSkip, onBack, canGoBack }) {
+/** A big on/off bar (used for Paneer and "Everyone's usual"). */
+export function ToggleBar({ label, on, onChange, testId }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      data-testid={testId}
+      className={'toggle-bar' + (on ? ' on' : '')}
+      onClick={() => onChange(!on)}
+    >
+      <span>{label}</span>
+      <span className="switch" aria-hidden="true">
+        <span className="knob" />
+      </span>
+    </button>
+  );
+}
+
+// One card per customer for the whole day: Paneer (toggle, rarely sold) on top, then morning,
+// evening and the day's total. "As usual" (left) / "Delivered" (right); "Absent" = didn't take today.
+function DeliveryCard({ c, initM, initE, initPaneer, onDelivered, onAbsent, onBack, canGoBack }) {
   const { t } = useLang();
   const [m, setM] = useState(initM);
   const [e, setE] = useState(initE);
+  const [paneerOn, setPaneerOn] = useState(initPaneer > 0);
   const [paneer, setPaneer] = useState(initPaneer);
-
-  const qty = session === 'morning' ? m : session === 'evening' ? e : m + e;
-  const setQty = (v) => {
-    if (session === 'morning') setM(v);
-    else if (session === 'evening') setE(v);
-    else {
-      // Total: keep it simple — all in morning, evening 0
-      setM(v);
-      setE(0);
-    }
-  };
-  const asUsualQty = usualFor(c, session);
-
-  const deliverNow = (mm, ee, pp) => onDelivered({ milkMorningL: mm, milkEveningL: ee, paneerKg: pp });
+  const pp = paneerOn ? paneer : 0;
+  const total = Math.round((Number(m || 0) + Number(e || 0)) * 1000) / 1000;
+  const usual = usualMorning(c) + usualEvening(c);
 
   return (
     <div className="card deli-card">
@@ -146,27 +132,20 @@ function DeliveryCard({ c, session, initM, initE, initPaneer, onDelivered, onSki
         {c.name}
         {c.area && <span className="muted small"> · {c.area}</span>}
       </h2>
-      <div className="two">
-        <QtyEdit label={t('session_' + session)} value={qty} onChange={setQty} />
-        <QtyEdit label={t('paneer')} value={paneer} onChange={setPaneer} />
-      </div>
-      <p className="muted small">
-        {t('asUsual')}: {fmtQty(asUsualQty)} {t('litre')}
+      <ToggleBar label={'🧀 ' + t('paneer')} on={paneerOn} onChange={setPaneerOn} testId="paneer-toggle" />
+      {paneerOn && <QtyEdit label={t('paneer') + ' (kg)'} value={paneer} onChange={setPaneer} />}
+      <QtyEdit label={t('session_morning')} value={m} onChange={setM} />
+      <QtyEdit label={t('session_evening')} value={e} onChange={setE} />
+      <p className="deli-total" data-testid="deli-total">
+        {t('session_total')}: <b>{fmtQty(total)} {t('litre')}</b>
+        <span className="muted small"> · {t('asUsual')}: {fmtQty(usual)} {t('litre')}</span>
       </p>
       <div className="form-actions">
-        <button type="button" className="btn primary big" onClick={() => deliverNow(session === 'evening' ? 0 : m, session === 'morning' ? 0 : e, paneer)}>
-          {t('delivered')}
-        </button>
-        <button
-          type="button"
-          className="btn big"
-          onClick={() => {
-            if (session === 'morning') deliverNow(usualMorning(c), 0, paneer);
-            else if (session === 'evening') deliverNow(0, usualEvening(c), paneer);
-            else deliverNow(usualMorning(c), usualEvening(c), paneer);
-          }}
-        >
+        <button type="button" className="btn big" onClick={() => onDelivered({ milkMorningL: usualMorning(c), milkEveningL: usualEvening(c), paneerKg: pp })}>
           {t('asUsual')}
+        </button>
+        <button type="button" className="btn primary big" onClick={() => onDelivered({ milkMorningL: m, milkEveningL: e, paneerKg: pp })}>
+          {t('delivered')}
         </button>
       </div>
       <div className="form-actions">
@@ -175,26 +154,44 @@ function DeliveryCard({ c, session, initM, initE, initPaneer, onDelivered, onSki
             ← {t('back')}
           </button>
         )}
-        <button type="button" className="btn ghost" onClick={onSkip}>
-          {t('skipDelivery')}
+        <button type="button" className="btn absent big" onClick={onAbsent}>
+          {t('absent')}
         </button>
       </div>
     </div>
   );
 }
 
-export default function Delivery(props) {
-  const { t } = useLang();
-  const [session, setSession] = useState(() => deliverySession());
-  const pick = (s) => {
-    rememberSession(s);
-    setSession(s);
-  };
-  // Each round has its own list / history / skips: remount the round when the session changes.
-  return <DeliveryRound key={session} {...props} session={session} setSession={pick} t={t} />;
+// "Everyone's usual" can be switched off again: what it wrote is undone from this snapshot
+// ({customerId: previous entry | null}), kept on this phone for today.
+const allUsualKey = (date) => `dd_deli_allusual_${date}`;
+function loadAllUsual(date) {
+  try {
+    return JSON.parse(localStorage.getItem(allUsualKey(date)) || 'null');
+  } catch {
+    return null;
+  }
+}
+function saveAllUsual(date, snap) {
+  try {
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith('dd_deli_allusual_') && k !== allUsualKey(date)) localStorage.removeItem(k);
+    }
+    if (snap) localStorage.setItem(allUsualKey(date), JSON.stringify(snap));
+    else localStorage.removeItem(allUsualKey(date));
+  } catch {
+    /* ignore */
+  }
 }
 
-function DeliveryRound({ fb, customers, days, settings, displayName, onBack, session, setSession, t }) {
+export default function Delivery(props) {
+  const { t } = useLang();
+  // One round for the whole day (morning + evening on the same card), per Rahul 2026-10-14.
+  return <DeliveryRound {...props} session="total" t={t} />;
+}
+
+function DeliveryRound({ fb, customers, days, settings, displayName, onBack, session, t }) {
   const date = todayISO();
   const day = days[date] || null;
   const saved = (day && day.entries) || {};
@@ -238,9 +235,10 @@ function DeliveryRound({ fb, customers, days, settings, displayName, onBack, ses
   useEffect(() => {
     if (history.length === 0) {
       const seeded = list
-        .filter((c) => deliveredFor(saved[c.id], session))
+        .filter((c) => deliveredFor(saved[c.id], session) || !!(saved[c.id] && saved[c.id].skip))
         .map((c) => {
           const en = saved[c.id] || {};
+          if (en.skip) return { id: c.id, m: 0, e: 0, p: 0, total: 0, absent: true };
           return { id: c.id, m: en.milkMorningL || 0, e: en.milkEveningL || 0, p: en.paneerKg || 0, total: en.milkL || 0 };
         });
       if (seeded.length) setHistory(seeded);
@@ -277,30 +275,67 @@ function DeliveryRound({ fb, customers, days, settings, displayName, onBack, ses
     setReview(null);
   };
 
+  // Absent: didn't take milk today (the register's "didn't take" for the whole day).
+  const markAbsent = (c) => {
+    const prev = saved[c.id] || {};
+    const entry = normaliseEntry(c, { milkMorningL: 0, milkEveningL: 0, paneerKg: 0, skip: true, note: prev.note || '' }, settings);
+    saveEntries(fb, date, { [c.id]: entry }, displayName);
+    const item = { id: c.id, m: 0, e: 0, p: 0, total: 0, absent: true };
+    if (review) setHistory((h) => h.map((x, i) => (i === review.pos ? item : x)));
+    else {
+      setDoneNow((d) => ({ ...d, [c.id]: true }));
+      setHistory((h) => [...h, item]);
+    }
+    setReview(null);
+  };
+
   const goBack = () => {
     const pos = review ? review.pos - 1 : history.length - 1;
     if (pos < 0 || !history[pos]) return;
     setReview({ ...history[pos], pos });
   };
 
+  const [allUsual, setAllUsualState] = useState(() => loadAllUsual(date));
+  const setAllUsual = (snap) => {
+    saveAllUsual(date, snap);
+    setAllUsualState(snap);
+  };
+
   const deliverAllUsual = () => {
     const rows = {};
     const now = {};
+    const snap = {};
     remaining.forEach((c) => {
       const prev = saved[c.id] || {};
-      const raw =
-        session === 'morning'
-          ? { milkMorningL: usualMorning(c), milkEveningL: Number(prev.milkEveningL) || 0 }
-          : session === 'evening'
-            ? { milkMorningL: Number(prev.milkMorningL) || 0, milkEveningL: usualEvening(c) }
-            : { milkMorningL: usualMorning(c), milkEveningL: usualEvening(c) };
+      snap[c.id] = saved[c.id] || null;
+      const raw = { milkMorningL: usualMorning(c), milkEveningL: usualEvening(c) };
       rows[c.id] = normaliseEntry(c, { ...raw, paneerKg: prev.paneerKg || 0, skip: false, note: prev.note || '' }, settings);
       now[c.id] = true;
     });
     if (Object.keys(rows).length) {
       saveEntries(fb, date, rows, displayName);
       setDoneNow((d) => ({ ...d, ...now }));
+      setAllUsual(snap);
     }
+  };
+
+  // Switching "Everyone's usual" off puts back exactly what was there before it.
+  const undoAllUsual = () => {
+    const snap = allUsual || {};
+    const restore = {};
+    Object.entries(snap).forEach(([id, prev]) => {
+      if (prev) restore[id] = prev;
+      else deleteEntry(fb, date, id, displayName);
+    });
+    if (Object.keys(restore).length) saveEntries(fb, date, restore, displayName);
+    setDoneNow((d) => {
+      const n = { ...d };
+      Object.keys(snap).forEach((id) => delete n[id]);
+      return n;
+    });
+    const ids = new Set(Object.keys(snap));
+    setHistory((h) => h.filter((x) => !ids.has(x.id)));
+    setAllUsual(null);
   };
 
   return (
@@ -312,25 +347,14 @@ function DeliveryRound({ fb, customers, days, settings, displayName, onBack, ses
         <h1>
           🚚 {t('deliveryTitle')} <span className="muted small">({done}/{list.length})</span>
         </h1>
-        <div className="chips session-chips" role="tablist" aria-label={t('session')}>
-          {SESSIONS.map((s) => (
-            <button
-              key={s}
-              type="button"
-              role="tab"
-              aria-selected={session === s}
-              className={'btn chip' + (session === s ? ' on' : '')}
-              onClick={() => s !== session && setSession(s)}
-            >
-              {t('session_' + s)}
-            </button>
-          ))}
-        </div>
         {!settings.milkRatePaise && <p className="card warn small">{t('rateMissing')}</p>}
-        {remaining.length > 0 && !review && (
-          <button type="button" className="btn primary big" onClick={guarded(deliverAllUsual)}>
-            {t('markAllUsual')}
-          </button>
+        {!review && (remaining.length > 0 || allUsual) && (
+          <ToggleBar
+            label={t('markAllUsual')}
+            on={!!allUsual}
+            onChange={guarded((v) => (v ? deliverAllUsual() : undoAllUsual()))}
+            testId="all-usual-toggle"
+          />
         )}
       </header>
       {list.length === 0 ? (
@@ -357,15 +381,11 @@ function DeliveryRound({ fb, customers, days, settings, displayName, onBack, ses
           <DeliveryCard
             key={current.id + (review ? '-review-' + review.pos : '')}
             c={current}
-            session={session}
-            initM={review ? (session === 'total' && !(review.m + review.e) ? review.total || 0 : review.m) : usualMorning(current)}
+            initM={review ? (!(review.m + review.e) ? review.total || 0 : review.m) : usualMorning(current)}
             initE={review ? review.e : usualEvening(current)}
             initPaneer={review ? review.p || 0 : 0}
             onDelivered={guarded((raw) => deliver(current, raw))}
-            onSkip={guarded(() => {
-              setReview(null);
-              setSkipped((s) => ({ ...s, [current.id]: true }));
-            })}
+            onAbsent={guarded(() => markAbsent(current))}
             onBack={guarded(goBack)}
             canGoBack={canGoBack}
           />

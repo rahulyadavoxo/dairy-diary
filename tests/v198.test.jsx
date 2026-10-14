@@ -179,26 +179,31 @@ describe('#4 morning and evening are separate rounds', () => {
     expect(deliveredFor({ milkL: 2, milkMorningL: 0, milkEveningL: 0 }, 'evening')).toBe(true);
     expect(deliveredFor({ milkL: 2, skip: true }, 'total')).toBe(false);
   });
-  it('the evening round lists a customer who got morning milk, and keeps the morning litres', () => {
-    setRound('evening');
+  it('one card for the day keeps an earlier morning entry editable and saves both rounds', () => {
     const fb = mkFb();
-    const days = { [todayISO()]: { entries: { c1: { milkL: 1, milkMorningL: 1, milkEveningL: 0 } } } };
+    const days = { [todayISO()]: { entries: { c2: { milkL: 1, milkMorningL: 1, milkEveningL: 0 } } } };
     render(wrap(<Delivery {...deliProps(fb, { days })} />));
     expect(screen.getByText('Asha')).toBeTruthy();
-    expect(screen.queryByText('Bablu')).toBeNull(); // no evening milk usually
     fireEvent.click(screen.getByText(en.asUsual, { selector: 'button' }));
     const e = dayWrites(fb)[0].data.entries.c1;
     expect([e.milkMorningL, e.milkEveningL, e.milkL]).toEqual([1, 1, 2]);
   });
-  it('"Everyone\'s usual" in the morning round writes only morning milk', () => {
-    setRound('morning');
+  it('"Everyone\'s usual" is a toggle: on writes both rounds, off puts things back', () => {
     const fb = mkFb();
-    render(wrap(<Delivery {...deliProps(fb)} />));
-    fireEvent.click(screen.getByText(en.markAllUsual));
+    const days = { [todayISO()]: { entries: {} } };
+    render(wrap(<Delivery {...deliProps(fb, { days })} />));
+    const tog = screen.getByTestId('all-usual-toggle');
+    expect(tog.getAttribute('aria-checked')).toBe('false');
+    fireEvent.click(tog);
     const entries = dayWrites(fb)[0].data.entries;
     expect(Object.keys(entries).sort()).toEqual(['c1', 'c2', 'c3']);
-    expect(entries.c1.milkEveningL).toBe(0);
-    expect(entries.c1.milkL).toBe(1);
+    expect(entries.c1.milkL).toBe(2);
+    expect(screen.getByTestId('all-usual-toggle').getAttribute('aria-checked')).toBe('true');
+    vi.spyOn(Date, 'now').mockImplementation(() => 99_999_999_999_999);
+    fireEvent.click(screen.getByTestId('all-usual-toggle'));
+    const dels = fb.writes.filter((w) => w.update);
+    expect(dels.map((w) => Object.keys(w.data).find((k) => k.startsWith('entries.'))).sort()).toEqual(['entries.c1', 'entries.c2', 'entries.c3']);
+    expect(screen.getByText('Asha')).toBeTruthy();
   });
 });
 
@@ -232,20 +237,26 @@ describe('#15 Back / review keeps the history', () => {
   });
 });
 
-describe('#16 Skip survives leaving delivery; empty list says so', () => {
-  it('a skipped customer stays skipped after re-opening', () => {
-    setRound('total');
+describe('#16 Absent; empty list says so', () => {
+  it('Absent writes "didn\'t take" for the day and moves on; it stays done after re-opening', () => {
     const fb = mkFb();
     render(wrap(<Delivery {...deliProps(fb)} />));
-    fireEvent.click(screen.getByText(en.skipDelivery));
-    cleanup();
-    render(wrap(<Delivery {...deliProps(fb)} />));
-    expect(screen.queryByText('Asha')).toBeNull();
+    fireEvent.click(screen.getByText(en.absent));
+    const e = dayWrites(fb)[0].data.entries.c1;
+    expect([e.skip, e.milkL]).toEqual([true, 0]);
     expect(screen.getByText('Bablu')).toBeTruthy();
-    expect(dayWrites(fb)).toHaveLength(0); // skip is not written as an entry
+  });
+  it('paneer is a toggle on top, off by default; morning, evening and total below', () => {
+    const fb = mkFb();
+    render(wrap(<Delivery {...deliProps(fb)} />));
+    expect(screen.getByTestId('paneer-toggle').getAttribute('aria-checked')).toBe('false');
+    expect(screen.getByTestId('deli-total').textContent).toContain('2');
+    fireEvent.click(screen.getByTestId('paneer-toggle'));
+    expect(screen.getByTestId('paneer-toggle').getAttribute('aria-checked')).toBe('true');
+    const btns = [...document.querySelectorAll('.deli-card .form-actions')[0].querySelectorAll('button')].map((b) => b.textContent);
+    expect(btns).toEqual([en.asUsual, en.delivered]);
   });
   it('a customer marked "didn\'t take" for the day in the register is not on the round', () => {
-    setRound('total');
     const days = { [todayISO()]: { entries: { c1: { milkL: 0, skip: true } } } };
     render(wrap(<Delivery {...deliProps(mkFb(), { days })} />));
     expect(screen.queryByText('Asha')).toBeNull();
