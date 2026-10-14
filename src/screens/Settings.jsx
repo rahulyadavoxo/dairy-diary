@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { saveFeedback } from '../feedback.js';
 import { useLang } from '../i18n.js';
 import { saveSettings } from '../db.js';
 import { paiseToInput, toPaise } from '../format.js';
@@ -44,6 +45,7 @@ export default function Settings({ fb, user, settings, displayName, setDisplayNa
     if (p.length < 4) {
       setPinMsgErr(true);
       setPinMsg(t('pinTooShort'));
+      saveFeedback(false);
       return;
     }
     try {
@@ -54,6 +56,7 @@ export default function Settings({ fb, user, settings, displayName, setDisplayNa
       setPin('');
       setPinMsgErr(false);
       setPinMsg(t('pinSaved'));
+      saveFeedback(true);
     } catch (err) {
       console.error('[pin]', err);
       setPinMsgErr(true);
@@ -93,6 +96,7 @@ export default function Settings({ fb, user, settings, displayName, setDisplayNa
     if (upiRaw && !validUpiId(upiRaw)) {
       setMsg(t('upiInvalid'));
       setTimeout(() => setMsg(''), 2500);
+      saveFeedback(false);
       return;
     }
     const data = { farmName: f.farmName.trim(), phone: f.phone.trim(), upiId: upiRaw };
@@ -113,6 +117,7 @@ export default function Settings({ fb, user, settings, displayName, setDisplayNa
     }
     setMsg(online ? t('saved') : t('savedOffline'));
     setTimeout(() => setMsg(''), 2500);
+    saveFeedback(true);
   };
 
   return (

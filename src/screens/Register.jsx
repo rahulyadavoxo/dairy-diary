@@ -3,6 +3,7 @@
 // Rows: milk for the chosen session (morning / evening / total), skip, paneer, note. Edits
 // autosave after a short pause and are flushed when the editor closes or the date changes.
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { saveFeedback } from '../feedback.js';
 import { useLang } from '../i18n.js';
 import { saveEntries } from '../db.js';
 import { toMilli } from '../billing.js';
@@ -160,6 +161,7 @@ export default function DayEditor({ fb, customers, days, pendingDays = {}, setti
       dirty.current[c.id] = rowFor(c);
     });
     flush();
+    saveFeedback(true);
   };
 
   const visible = active.filter((c) => matchesQuery(c, query));

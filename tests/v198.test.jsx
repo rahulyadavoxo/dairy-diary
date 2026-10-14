@@ -148,7 +148,7 @@ describe('#2 payments with paise, #17 no future payment date', () => {
 const c1 = { id: 'c1', name: 'Asha', order: 10, usualMorningL: 1, usualEveningL: 1 };
 const c2 = { id: 'c2', name: 'Bablu', order: 20, usualMorningL: 1, usualEveningL: 0 };
 const c3 = { id: 'c3', name: 'Chandan', order: 30, usualMorningL: 0.5, usualEveningL: 0.5 };
-const sup = { id: 's1', name: 'Supplier Sharma', order: 5, usualMorningL: 20, usualEveningL: 0, isSupplier: true, phone: '9999999999' };
+const sup = { id: 's1', name: 'Supplier Sharma', order: 40, usualMorningL: 20, usualEveningL: 0, isSupplier: true, phone: '9999999999' };
 const deliProps = (fb, extra = {}) => ({ fb, customers: [sup, c1, c2, c3], days: {}, settings, displayName: 'x', onBack: () => {}, ...extra });
 const setRound = (s) =>
   localStorage.setItem('dd_deli_session', JSON.stringify({ s, slot: `${todayISO()}-${new Date().getHours() < 13 ? 'morning' : 'evening'}` }));
@@ -196,13 +196,13 @@ describe('#4 morning and evening are separate rounds', () => {
     expect(tog.getAttribute('aria-checked')).toBe('false');
     fireEvent.click(tog);
     const entries = dayWrites(fb)[0].data.entries;
-    expect(Object.keys(entries).sort()).toEqual(['c1', 'c2', 'c3']);
+    expect(Object.keys(entries).sort()).toEqual(['c1', 'c2', 'c3', 's1']);
     expect(entries.c1.milkL).toBe(2);
     expect(screen.getByTestId('all-usual-toggle').getAttribute('aria-checked')).toBe('true');
     vi.spyOn(Date, 'now').mockImplementation(() => 99_999_999_999_999);
     fireEvent.click(screen.getByTestId('all-usual-toggle'));
     const dels = fb.writes.filter((w) => w.update);
-    expect(dels.map((w) => Object.keys(w.data).find((k) => k.startsWith('entries.'))).sort()).toEqual(['entries.c1', 'entries.c2', 'entries.c3']);
+    expect(dels.map((w) => Object.keys(w.data).find((k) => k.startsWith('entries.'))).sort()).toEqual(['entries.c1', 'entries.c2', 'entries.c3', 'entries.s1']);
     expect(screen.getByText('Asha')).toBeTruthy();
   });
 });
@@ -321,8 +321,9 @@ describe('#5 any past day can be edited from Register', () => {
 
 // ---- 6 ----
 describe('#6 suppliers stay out of customer flows', () => {
-  it('not in the delivery round', () => {
-    expect(deliveryList([sup, c1], {}, todayISO(), 'total').map((c) => c.id)).toEqual(['c1']);
+  it('in the delivery round, in route order (1.10.5)', () => {
+    expect(deliveryList([sup, c1], {}, todayISO(), 'total').map((c) => c.id)).toEqual(['c1', 's1']);
+    expect(deliveryList([{ ...sup, order: 5 }, c1], {}, todayISO(), 'total').map((c) => c.id)).toEqual(['s1', 'c1']);
   });
   it('not in the Register day total', () => {
     const days = { [todayISO()]: { entries: { s1: { milkL: 20 }, c1: { milkL: 2 } } } };

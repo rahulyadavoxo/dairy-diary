@@ -6,6 +6,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLang } from '../i18n.js';
 import { saveEntries, deleteEntry } from '../db.js';
+import { playSound } from '../feedback.js';
 import { normaliseEntry } from '../entry.js';
 import { sortCustomers, isPaused } from './Register.jsx';
 import { usualMorning, usualEvening } from './Customers.jsx';
@@ -30,17 +31,27 @@ export function deliveredFor(en, session) {
   return total > 0;
 }
 
+/** Whole-day card: done when every round the customer usually takes has milk, or it is a
+    total-only entry. A morning entered in the Register keeps the customer on the list for evening. */
+export function dayComplete(en, c) {
+  if (!en || en.skip) return false;
+  const m = Number(en.milkMorningL) || 0;
+  const e = Number(en.milkEveningL) || 0;
+  if (m <= 0 && e <= 0) return (Number(en.milkL) || 0) > 0;
+  return (m > 0 || usualMorning(c) <= 0) && (e > 0 || usualEvening(c) <= 0);
+}
+
 const usualFor = (c, session) =>
   session === 'morning' ? usualMorning(c) : session === 'evening' ? usualEvening(c) : usualMorning(c) + usualEvening(c);
 
-/** Customers on today's round: active, not paused, not suppliers (milk is bought from them),
-    and for a morning/evening round only those who take milk in that round (or already got some). */
+/** Customers on today's round, in route order: active and not paused. Suppliers are included
+    (their milk is recorded the same way; billing treats it as milk bought). For a morning/evening
+    round only those who take milk in that round (or already got some). */
 export function deliveryList(customers, saved, date, session) {
   return sortCustomers(
     customers.filter(
       (c) =>
         c.active !== false &&
-        !c.isSupplier &&
         !isPaused(c, date) &&
         (session === 'total' || usualFor(c, session) > 0 || deliveredFor(saved[c.id], session)),
     ),
@@ -70,9 +81,9 @@ function saveSkips(date, session, map) {
   }
 }
 
-function QtyEdit({ label, value, onChange }) {
+function QtyEdit({ label, value, onChange, testId }) {
   return (
-    <label className="deli-qty">
+    <label className="deli-qty" data-testid={testId}>
       {label}
       <div className="stepper">
         <button type="button" className="btn step" onClick={() => onChange(step(value, -250))}>
@@ -116,35 +127,59 @@ export function ToggleBar({ label, on, onChange, testId }) {
 
 // One card per customer for the whole day: Paneer (toggle, rarely sold) on top, then morning,
 // evening and the day's total. "As usual" (left) / "Delivered" (right); "Absent" = didn't take today.
-function DeliveryCard({ c, initM, initE, initPaneer, onDelivered, onAbsent, onBack, canGoBack }) {
+function DeliveryCard({ c, initM, initE, initT, initPaneer, onDelivered, onAbsent, onBack, canGoBack }) {
   const { t } = useLang();
   const [m, setM] = useState(initM);
   const [e, setE] = useState(initE);
+  // Total box: > 0 means "total only" (morning and evening are 0). Editing morning or evening
+  // clears it again and the day is morning + evening.
+  const [tot, setTot] = useState(initT || 0);
   const [paneerOn, setPaneerOn] = useState(initPaneer > 0);
   const [paneer, setPaneer] = useState(initPaneer);
   const pp = paneerOn ? paneer : 0;
-  const total = Math.round((Number(m || 0) + Number(e || 0)) * 1000) / 1000;
+  const editM = (v) => {
+    setM(v);
+    setTot(0);
+  };
+  const editE = (v) => {
+    setE(v);
+    setTot(0);
+  };
+  const editT = (v) => {
+    setTot(v);
+    setM(0);
+    setE(0);
+  };
+  const sum = Math.round((Number(m || 0) + Number(e || 0)) * 1000) / 1000;
+  const total = tot > 0 ? tot : sum;
   const usual = usualMorning(c) + usualEvening(c);
+  const deliverNow = () =>
+    onDelivered(
+      tot > 0 ? { milkMorningL: 0, milkEveningL: 0, milkL: tot, paneerKg: pp } : { milkMorningL: m, milkEveningL: e, paneerKg: pp },
+      'delivered',
+    );
 
   return (
     <div className="card deli-card">
       <h2>
         {c.name}
+        {c.isSupplier && <span className="tag supplier-tag"> 🏷️ {t('supplier')}</span>}
         {c.area && <span className="muted small"> · {c.area}</span>}
       </h2>
       <ToggleBar label={'🧀 ' + t('paneer')} on={paneerOn} onChange={setPaneerOn} testId="paneer-toggle" />
       {paneerOn && <QtyEdit label={t('paneer') + ' (kg)'} value={paneer} onChange={setPaneer} />}
-      <QtyEdit label={t('session_morning')} value={m} onChange={setM} />
-      <QtyEdit label={t('session_evening')} value={e} onChange={setE} />
+      <QtyEdit label={t('session_morning')} value={m} onChange={editM} testId="qty-morning" />
+      <QtyEdit label={t('session_evening')} value={e} onChange={editE} testId="qty-evening" />
+      <QtyEdit label={t('session_total')} value={tot} onChange={editT} testId="qty-total" />
       <p className="deli-total" data-testid="deli-total">
         {t('session_total')}: <b>{fmtQty(total)} {t('litre')}</b>
         <span className="muted small"> · {t('asUsual')}: {fmtQty(usual)} {t('litre')}</span>
       </p>
       <div className="form-actions">
-        <button type="button" className="btn big" onClick={() => onDelivered({ milkMorningL: usualMorning(c), milkEveningL: usualEvening(c), paneerKg: pp })}>
+        <button type="button" className="btn big" onClick={() => onDelivered({ milkMorningL: usualMorning(c), milkEveningL: usualEvening(c), paneerKg: pp }, 'usual')}>
           {t('asUsual')}
         </button>
-        <button type="button" className="btn primary big" onClick={() => onDelivered({ milkMorningL: m, milkEveningL: e, paneerKg: pp })}>
+        <button type="button" className="btn primary big" onClick={deliverNow}>
           {t('delivered')}
         </button>
       </div>
@@ -225,7 +260,8 @@ function DeliveryRound({ fb, customers, days, settings, displayName, onBack, ses
   }, [review]);
 
   // Done for this round: delivered now or earlier, or marked "didn't take" for the whole day in the register.
-  const isDelivered = (c) => !!doneNow[c.id] || deliveredFor(saved[c.id], session) || !!(saved[c.id] && saved[c.id].skip);
+  const isDelivered = (c) =>
+    !!doneNow[c.id] || dayComplete(saved[c.id], c) || !!(saved[c.id] && (saved[c.id].skip || (saved[c.id].paneerKg || 0) > 0));
   const remaining = list.filter((c) => !isDelivered(c) && !skipped[c.id]);
   const done = list.length - remaining.length;
   const current = review ? byId[review.id] : remaining[0];
@@ -235,7 +271,7 @@ function DeliveryRound({ fb, customers, days, settings, displayName, onBack, ses
   useEffect(() => {
     if (history.length === 0) {
       const seeded = list
-        .filter((c) => deliveredFor(saved[c.id], session) || !!(saved[c.id] && saved[c.id].skip))
+        .filter((c) => dayComplete(saved[c.id], c) || !!(saved[c.id] && (saved[c.id].skip || (saved[c.id].paneerKg || 0) > 0)))
         .map((c) => {
           const en = saved[c.id] || {};
           if (en.skip) return { id: c.id, m: 0, e: 0, p: 0, total: 0, absent: true };
@@ -262,7 +298,7 @@ function DeliveryRound({ fb, customers, days, settings, displayName, onBack, ses
     const entry = normaliseEntry(c, { ...merged, skip: false, note: prev.note || '' }, settings);
     saveEntries(fb, date, { [c.id]: entry }, displayName);
     const item = { id: c.id, m: entry.milkMorningL, e: entry.milkEveningL, p: entry.paneerKg || 0, total: entry.milkL };
-    if (!deliveredFor(entry, session)) {
+    if (!deliveredFor(entry, session) && !((entry.paneerKg || 0) > 0)) {
       // Nothing delivered in this round (0 L): move on instead of showing the same customer forever.
       setSkipped((s) => ({ ...s, [c.id]: true }));
       if (review) setHistory((h) => h.filter((_, i) => i !== review.pos));
@@ -307,9 +343,9 @@ function DeliveryRound({ fb, customers, days, settings, displayName, onBack, ses
     const snap = {};
     remaining.forEach((c) => {
       const prev = saved[c.id] || {};
-      snap[c.id] = saved[c.id] || null;
       const raw = { milkMorningL: usualMorning(c), milkEveningL: usualEvening(c) };
       rows[c.id] = normaliseEntry(c, { ...raw, paneerKg: prev.paneerKg || 0, skip: false, note: prev.note || '' }, settings);
+      snap[c.id] = { prev: saved[c.id] || null, wrote: rows[c.id] };
       now[c.id] = true;
     });
     if (Object.keys(rows).length) {
@@ -321,7 +357,26 @@ function DeliveryRound({ fb, customers, days, settings, displayName, onBack, ses
 
   // Switching "Everyone's usual" off puts back exactly what was there before it.
   const undoAllUsual = () => {
-    const snap = allUsual || {};
+    const all = allUsual || {};
+    const same = (a, b) =>
+      !!a &&
+      !!b &&
+      !a.skip &&
+      !b.skip &&
+      Number(a.milkL || 0) === Number(b.milkL || 0) &&
+      Number(a.milkMorningL || 0) === Number(b.milkMorningL || 0) &&
+      Number(a.milkEveningL || 0) === Number(b.milkEveningL || 0) &&
+      Number(a.paneerKg || 0) === Number(b.paneerKg || 0);
+    // Only undo customers still exactly as the toggle wrote them: a correction made since then
+    // (Back + edit, Absent, or on another phone) stays.
+    const snap = {};
+    Object.entries(all).forEach(([id, v]) => {
+      const rec = v && typeof v === 'object' && 'wrote' in v ? v : { prev: v, wrote: null }; // 1.10.4 snapshots
+      const now = saved[id];
+      // (!now / same as prev: the listener has not caught up with the toggle's write yet)
+      const untouched = !rec.wrote || same(now, rec.wrote) || (!now && !rec.prev) || same(now, rec.prev);
+      if (untouched) snap[id] = rec.prev;
+    });
     const restore = {};
     Object.entries(snap).forEach(([id, prev]) => {
       if (prev) restore[id] = prev;
@@ -341,9 +396,6 @@ function DeliveryRound({ fb, customers, days, settings, displayName, onBack, ses
   return (
     <div className="screen">
       <header className="screen-head">
-        <button type="button" className="btn small ghost" onClick={onBack}>
-          ← {t('back')}
-        </button>
         <h1>
           🚚 {t('deliveryTitle')} <span className="muted small">({done}/{list.length})</span>
         </h1>
@@ -381,11 +433,18 @@ function DeliveryRound({ fb, customers, days, settings, displayName, onBack, ses
           <DeliveryCard
             key={current.id + (review ? '-review-' + review.pos : '')}
             c={current}
-            initM={review ? (!(review.m + review.e) ? review.total || 0 : review.m) : usualMorning(current)}
-            initE={review ? review.e : usualEvening(current)}
-            initPaneer={review ? review.p || 0 : 0}
-            onDelivered={guarded((raw) => deliver(current, raw))}
-            onAbsent={guarded(() => markAbsent(current))}
+            initM={review ? review.m || 0 : Number(saved[current.id]?.milkMorningL) || usualMorning(current)}
+            initE={review ? review.e || 0 : Number(saved[current.id]?.milkEveningL) || usualEvening(current)}
+            initT={review && !((review.m || 0) + (review.e || 0)) ? review.total || 0 : 0}
+            initPaneer={review ? review.p || 0 : Number(saved[current.id]?.paneerKg) || 0}
+            onDelivered={guarded((raw, kind) => {
+              playSound(kind || 'delivered');
+              deliver(current, raw);
+            })}
+            onAbsent={guarded(() => {
+              playSound('absent');
+              markAbsent(current);
+            })}
             onBack={guarded(goBack)}
             canGoBack={canGoBack}
           />

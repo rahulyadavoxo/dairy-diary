@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { saveFeedback } from '../feedback.js';
 import { useLang } from '../i18n.js';
 import { computeMonth, fullPaymentPaise } from '../billing.js';
 import { addPayment, deletePayment } from '../db.js';
@@ -43,10 +44,11 @@ export default function CustomerDetail({ fb, customers, days, payments, settings
   const record = (e) => {
     e.preventDefault();
     const p = toPaise(amount);
-    if (!p || p <= 0) return setErr(t('amountInvalid'));
-    if (!payDate || payDate > todayISO()) return setErr(t('dateFuture'));
+    if (!p || p <= 0) return saveFeedback(false), setErr(t('amountInvalid'));
+    if (!payDate || payDate > todayISO()) return saveFeedback(false), setErr(t('dateFuture'));
     setErr('');
     addPayment(fb, { customerId, date: payDate, amountPaise: p, mode, createdBy: displayName });
+    saveFeedback(true);
     setAmount('');
   };
 

@@ -9,16 +9,34 @@ import BillSender, { shouldPromptBills } from './BillSender.jsx';
 import BillPhotos, { defaultPhotoMonth } from './BillPhotos.jsx';
 import MonthNav from '../components/MonthNav.jsx';
 import { matchesQuery } from './Register.jsx';
+import { useScrollKeep } from '../scrollKeep.js';
 
 export { MonthNav };
+
+const hisaabView = { query: '', payFilter: 'all' };
+/** Clear the remembered search/filter (tests, sign-out). */
+export function resetHisaabView() {
+  hisaabView.query = '';
+  hisaabView.payFilter = 'all';
+}
 
 export default function Hisaab({ fb, customers, days, payments, settings, month, setMonth, openCustomer }) {
   const { t } = useLang();
   const [sending, setSending] = useState(false);
   const [photos, setPhotos] = useState(false);
-  const [query, setQuery] = useState('');
+  useScrollKeep(sending || photos);
+  // Search + filter survive opening a customer (the screen unmounts), so Back returns to the same list.
+  const [query, setQueryState] = useState(() => hisaabView.query);
   // 'all' | 'unpaid' (balance due > 0) | 'paid' (nothing due / advance)
-  const [payFilter, setPayFilter] = useState('all');
+  const [payFilter, setPayFilterState] = useState(() => hisaabView.payFilter);
+  const setQuery = (v) => {
+    hisaabView.query = v;
+    setQueryState(v);
+  };
+  const setPayFilter = (v) => {
+    hisaabView.payFilter = v;
+    setPayFilterState(v);
+  };
   const [showTotals, setShowTotals] = useState(() => {
     // With a PIN set, totals must be hidden on the very first paint. The effect below runs
     // after paint, so starting from the saved '1' flashed the totals for a moment.

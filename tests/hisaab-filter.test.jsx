@@ -5,7 +5,7 @@ import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 vi.mock('../src/billPreGen.js', () => ({ preGenerateBillPhotos: vi.fn() }));
 vi.mock('../src/billImage.js', async (orig) => ({ ...(await orig()), renderBillImage: vi.fn(), shareImage: vi.fn() }));
 
-import Hisaab from '../src/screens/Hisaab.jsx';
+import Hisaab, { resetHisaabView } from '../src/screens/Hisaab.jsx';
 import { LangContext, makeT, STRINGS } from '../src/i18n.js';
 
 const en = STRINGS.en;
@@ -22,6 +22,7 @@ const view = () =>
 const names = () => ['Aadil G', 'Mini singh', 'Ravi'].filter((n) => screen.queryByText(n));
 
 beforeEach(() => {
+  resetHisaabView();
   cleanup();
   localStorage.clear();
 });

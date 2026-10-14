@@ -7,6 +7,7 @@ import DayEditor, { sortCustomers, isPaused, matchesQuery } from './Register.jsx
 import { addDays, dmy, fmtQty, timeHM, todayISO, monthName as fmtMonthName, shortDate, weekdaysMonFirst } from '../format.js';
 import { toMilli } from '../billing.js';
 import { pushBackHandler } from '../backStack.js';
+import { useScrollKeep } from '../scrollKeep.js';
 
 export { sortCustomers, isPaused };
 
@@ -128,6 +129,7 @@ export default function RegisterView({ fb, customers, days, pendingDays, setting
   const [query, setQuery] = useState('');
   const [calId, setCalId] = useState(null);
   const [editing, setEditing] = useState(null); // { date, customerId? } — day editor open
+  useScrollKeep(!!editing);
 
   // Hardware back button closes the calendar modal first
   useEffect(() => {

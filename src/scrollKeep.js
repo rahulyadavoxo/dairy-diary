@@ -1,0 +1,31 @@
+// Keep a list's scroll position while a sub-screen (edit form, detail, bill sender...) replaces it.
+// The page scrolls the window. The position is recorded continuously while the list is shown
+// (a layout-effect listener, removed before the sub-screen's layout can clamp scrollY), the
+// sub-screen opens at the top, and closing it puts the list back exactly where it was.
+import { useLayoutEffect, useRef } from 'react';
+
+export function useScrollKeep(open) {
+  const y = useRef(0);
+  const wasOpen = useRef(false);
+  useLayoutEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    if (open) {
+      wasOpen.current = true;
+      window.scrollTo(0, 0);
+      return undefined;
+    }
+    if (wasOpen.current) {
+      wasOpen.current = false;
+      const target = y.current;
+      window.scrollTo(0, target);
+      // Late layout (fonts, images) can shorten the page for a frame; try once more.
+      if (window.requestAnimationFrame) window.requestAnimationFrame(() => window.scrollTo(0, target));
+    }
+    const on = () => {
+      y.current = window.scrollY || window.pageYOffset || 0;
+    };
+    on();
+    window.addEventListener('scroll', on, { passive: true });
+    return () => window.removeEventListener('scroll', on);
+  }, [open]);
+}

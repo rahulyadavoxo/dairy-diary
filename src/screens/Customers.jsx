@@ -6,6 +6,25 @@ import { dmy, fmtQty, paiseToInput, rupees, toPaise, todayISO } from '../format.
 import { pushBackHandler } from '../backStack.js';
 import ImportCustomers from './ImportCustomers.jsx';
 import { usualMorning, usualEvening } from '../entry.js';
+import { useScrollKeep } from '../scrollKeep.js';
+import { saveFeedback } from '../feedback.js';
+
+// The customer saved last stays lightly green in the list (on this phone) until another is saved.
+const LAST_EDITED_KEY = 'dd_last_edited_customer';
+export function loadLastEdited() {
+  try {
+    return localStorage.getItem(LAST_EDITED_KEY) || '';
+  } catch {
+    return '';
+  }
+}
+function storeLastEdited(id) {
+  try {
+    if (id) localStorage.setItem(LAST_EDITED_KEY, id);
+  } catch {
+    /* ignore */
+  }
+}
 
 const EMPTY = { name: '', phone: '', area: '', usualMorningL: 0.5, usualEveningL: 0.5, customRate: false, rateOverride: '', openingDue: '', pauseFrom: '', pauseTo: '', active: true, isSupplier: false };
 
@@ -28,6 +47,8 @@ export default function Customers({ fb, customers, settings, openCustomer }) {
   const [showInactive, setShowInactive] = useState(false);
   const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState({});
+  const [lastEdited, setLastEdited] = useState(loadLastEdited);
+  useScrollKeep(!!editing || importing);
   const sorted = useMemo(() => sortCustomers(customers), [customers]);
   const active = sorted.filter((c) => c.active !== false);
   const inactive = sorted.filter((c) => c.active === false);
@@ -63,7 +84,13 @@ export default function Customers({ fb, customers, settings, openCustomer }) {
         initial={editing === 'new' ? null : editing}
         nextOrder={(active.length + inactive.length + 1) * 10}
         settings={settings}
-        onDone={() => setEditing(null)}
+        onDone={(savedId) => {
+          if (savedId) {
+            storeLastEdited(savedId);
+            setLastEdited(savedId);
+          }
+          setEditing(null);
+        }}
       />
     );
   }
@@ -99,7 +126,7 @@ export default function Customers({ fb, customers, settings, openCustomer }) {
       {active.length === 0 && <p className="empty">{t('noCustomers')}</p>}
       <ul className="rows">
         {active.map((c, i) => (
-          <li key={c.id} className="row cust-row">
+          <li key={c.id} className={'row cust-row' + (c.id === lastEdited ? ' last-edited' : '')} data-testid={c.id === lastEdited ? 'last-edited' : undefined}>
             {selecting ? (
               <input
                 type="checkbox"
@@ -188,14 +215,18 @@ export function CustomerForm({ fb, initial, nextOrder, onDone }) {
 
   const submit = (e) => {
     e.preventDefault();
-    if (!f.name.trim()) return setErr(t('nameRequired'));
-    if (f.pauseFrom && f.pauseTo && f.pauseFrom > f.pauseTo) return setErr(`${t('pauseFrom')} > ${t('pauseTo')}`);
+    const fail = (m) => {
+      saveFeedback(false);
+      setErr(m);
+    };
+    if (!f.name.trim()) return fail(t('nameRequired'));
+    if (f.pauseFrom && f.pauseTo && f.pauseFrom > f.pauseTo) return fail(`${t('pauseFrom')} > ${t('pauseTo')}`);
     const badQty = (v) => v !== '' && v != null && (!Number.isFinite(Number(v)) || Number(v) < 0);
-    if (badQty(f.usualMorningL) || badQty(f.usualEveningL)) return setErr(t('qtyInvalid'));
+    if (badQty(f.usualMorningL) || badQty(f.usualEveningL)) return fail(t('qtyInvalid'));
     const rate = toPaise(f.rateOverride);
-    if (f.customRate && !(rate > 0)) return setErr(t('rateRequired'));
+    if (f.customRate && !(rate > 0)) return fail(t('rateRequired'));
     const due = toPaise(f.openingDue);
-    if (f.openingDue !== '' && due === null) return setErr(t('amountInvalid'));
+    if (f.openingDue !== '' && due === null) return fail(t('amountInvalid'));
     const data = {
       name: f.name.trim(),
       phone: f.phone.trim(),
@@ -211,8 +242,9 @@ export function CustomerForm({ fb, initial, nextOrder, onDone }) {
       isSupplier: !!f.isSupplier,
     };
     if (!initial) data.order = nextOrder;
-    saveCustomer(fb, initial ? initial.id : null, data);
-    onDone();
+    const savedId = saveCustomer(fb, initial ? initial.id : null, data);
+    saveFeedback(true);
+    onDone(savedId);
   };
 
   const stepUsual = (k, d) => setF({ ...f, [k]: Math.max(0, (Math.round(Number(f[k] || 0) * 1000) + d) / 1000) });
@@ -221,7 +253,7 @@ export function CustomerForm({ fb, initial, nextOrder, onDone }) {
     // noValidate: the WebView's tiny validation bubbles were the only feedback; show our own errors.
     <form className="screen form" onSubmit={submit} noValidate>
       <header className="screen-head">
-        <button type="button" className="btn small ghost" onClick={onDone}>
+        <button type="button" className="btn small ghost" onClick={() => onDone(null)}>
           ← {t('back')}
         </button>
         <h1>{initial ? t('editCustomer') : t('addCustomer')}</h1>
@@ -302,7 +334,7 @@ export function CustomerForm({ fb, initial, nextOrder, onDone }) {
       </label>
       {err && <p className="error">{err}</p>}
       <div className="form-actions">
-        <button type="button" className="btn big" onClick={onDone}>
+        <button type="button" className="btn big" onClick={() => onDone(null)}>
           {t('cancel')}
         </button>
         <button type="submit" className="btn primary big">
@@ -316,7 +348,7 @@ export function CustomerForm({ fb, initial, nextOrder, onDone }) {
           onClick={() => {
             if (!window.confirm(t('confirmDeactivate'))) return;
             saveCustomer(fb, initial.id, { active: false });
-            onDone();
+            onDone(null);
           }}
         >
           {t('deactivate')}

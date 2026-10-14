@@ -16,6 +16,7 @@ import Welcome from './screens/Welcome.jsx';
 import JoinFarm from './screens/JoinFarm.jsx';
 import SetupFarm from './screens/SetupFarm.jsx';
 import Removed from './screens/Removed.jsx';
+import { useScrollKeep } from './scrollKeep.js';
 import { listenFarm, deviceStatus, loadFarmId, wipeLocalData } from './devices.js';
 import { App as CapApp } from '@capacitor/app';
 import { handleBack } from './backStack.js';
@@ -212,6 +213,8 @@ function Main({ fb, user, farm, farmId }) {
   const [detail, setDetail] = useState(null); // { customerId, month }
   const [delivery, setDelivery] = useState(false);
   const [importReview, setImportReview] = useState(false);
+  // Customer detail / delivery / import review replace the tab's list: keep its scroll position.
+  useScrollKeep(!!detail || delivery || importReview);
   const [settings, setSettings] = useState({});
   const [customers, setCustomers] = useState([]);
   const [days, setDays] = useState({});
