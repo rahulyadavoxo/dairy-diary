@@ -9,7 +9,7 @@ import { addDays, dmy, fmtQty, timeHM, todayISO, monthName as fmtMonthName, shor
 import { toMilli } from '../billing.js';
 import { pushBackHandler } from '../backStack.js';
 import { useScrollKeep } from '../scrollKeep.js';
-import { dayFilled, lockedBy } from '../reminders.js';
+import { dayFilled, lockedBy, ringTimes } from '../reminders.js';
 
 export { sortCustomers, isPaused };
 
@@ -41,6 +41,9 @@ function CalendarModal({ customer, days, onClose, onEditDay }) {
   const { t, lang } = useLang();
   const now = todayISO();
   const [ym, setYm] = useState(now.slice(0, 7)); // "2026-10"
+  // Dates open the editor only while this switch is ON (always starts OFF, so a stray tap while
+  // looking at the month can't open/change a day).
+  const [editOn, setEditOn] = useState(false);
   const [y, m] = ym.split('-').map(Number);
 
   const cells = useMemo(() => {
@@ -100,9 +103,11 @@ function CalendarModal({ customer, days, onClose, onEditDay }) {
                 type="button"
                 key={i}
                 disabled={c.iso > now}
-                onClick={() => onEditDay(c.iso)}
+                onClick={() => {
+                  if (editOn) onEditDay(c.iso);
+                }}
                 aria-label={dmy(c.iso, lang)}
-                className={'cal-cell' + (c.iso === now ? ' today' : '') + (c.milk > 0 ? ' has' : '')}
+                className={'cal-cell' + (c.iso === now ? ' today' : '') + (c.milk > 0 ? ' has' : '') + (editOn ? ' editable' : '')}
               >
                 <span className="cal-d">{c.d}</span>
                 {c.milk > 0 ? (
@@ -119,7 +124,18 @@ function CalendarModal({ customer, days, onClose, onEditDay }) {
         <p className="muted small">
           {t('monthTotal')}: <b>{fmtQty(monthTotal)} {t('litre')}</b>
         </p>
-        <p className="muted small">✏️ {t('tapDayToEdit')}</p>
+        <div className="switch-row cal-edit-row">
+          <span>✏️ {t('calEditToggle')}</span>
+          <input
+            type="checkbox"
+            role="switch"
+            className="switch"
+            aria-label={t('calEditToggle')}
+            checked={editOn}
+            onChange={(e) => setEditOn(e.target.checked)}
+          />
+        </div>
+        {editOn && <p className="muted small">{t('tapDayToEdit')}</p>}
       </div>
     </div>
   );
@@ -159,7 +175,7 @@ export default function RegisterView({ fb, customers, days, pendingDays, setting
     return () => clearInterval(id);
   }, []);
   const isToday = date === todayISO();
-  const lockAll = lockedBy({ now, days, pendingDays, hasCustomers: active.length > 0 });
+  const lockAll = lockedBy({ now, days, pendingDays, hasCustomers: active.length > 0, times: ringTimes(settings) });
   const lockDay = isToday ? lockAll : null;
   // "Edit this day" only while nobody has an entry on that day; after that, "Edit old records".
   const dayHasEntries = dayFilled(days, pendingDays, date);

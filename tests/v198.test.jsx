@@ -302,6 +302,12 @@ describe('#5 any past day can be edited from Register', () => {
     const y = addDays(todayISO(), -1);
     const [yy, mm, dd] = y.split('-');
     if (y.slice(0, 7) !== todayISO().slice(0, 7)) fireEvent.click(screen.getByText('◀', { selector: '.cal-nav button' }));
+    // 1.10.13: dates open the editor only with the Edit switch ON (starts OFF)
+    fireEvent.click(screen.getByLabelText(dmy(y)));
+    expect(screen.queryByTestId('day-editor')).toBeNull();
+    const sw = screen.getByRole('switch', { name: en.calEditToggle });
+    expect(sw.checked).toBe(false);
+    fireEvent.click(sw);
     fireEvent.click(screen.getByLabelText(dmy(y)));
     const ed = screen.getByTestId('day-editor');
     expect(within(ed).getByRole('heading', { level: 1 }).textContent).toContain('Asha');
@@ -858,5 +864,36 @@ describe('1.10.12 rings, lock, payment animation, total-first day editor', () =>
     expect(anim.textContent).toContain('250');
     fireEvent.click(anim);
     expect(screen.queryByTestId('payment-received')).toBeNull();
+  });
+});
+
+import { ringTimes, validRingTimes } from '../src/reminders.js';
+describe('1.10.13 ring times from Settings', () => {
+  it('custom times move the rings and the lock', () => {
+    const T = '2026-10-15';
+    const days = { [addDays(T, -10)]: { entries: { c1: { milkL: 1 } } } };
+    const times = ringTimes({ ringNight: '21:30', ringMorning: '06:45' });
+    const p = planRings({ now: new Date(2026, 9, 15, 6, 0), days, times });
+    expect(p.find((x) => x.kind === 'night' && x.day === T).at).toEqual(new Date(2026, 9, 15, 21, 30));
+    expect(p.find((x) => x.kind === 'morning' && x.day === addDays(T, -1)).at).toEqual(new Date(2026, 9, 15, 6, 45));
+    expect(lockedBy({ now: new Date(2026, 9, 15, 6, 44), days, times })).toBe(null);
+    expect(lockedBy({ now: new Date(2026, 9, 15, 6, 45), days, times })).toBe(addDays(T, -1));
+  });
+  it('bad or crossed times fall back to 22:00 / 08:00', () => {
+    expect(ringTimes({})).toEqual({ night: [22, 0], morning: [8, 0] });
+    expect(ringTimes({ ringNight: '07:00', ringMorning: '09:00' })).toEqual({ night: [22, 0], morning: [8, 0] });
+    expect(validRingTimes('21:00', '07:00')).toBe(true);
+    expect(validRingTimes('07:00', '09:00')).toBe(false);
+  });
+  it('Settings saves the ring times for every phone', () => {
+    const fb = mkFb();
+    render(wrap(<Settings fb={fb} user={{ uid: 'u1', email: 'o@x.in' }} settings={settings} displayName="x" setDisplayName={() => {}} online farm={null} farmId="f" />));
+    const night = screen.getByLabelText(new RegExp(en.ringNightLabel));
+    expect(night.value).toBe('22:00');
+    fireEvent.change(night, { target: { value: '21:00' } });
+    fireEvent.change(screen.getByLabelText(new RegExp(en.ringMorningLabel)), { target: { value: '07:30' } });
+    fireEvent.click(screen.getByText(en.ringSave));
+    const w = fb.writes.find((x) => x.path === 'farms/f/settings/main');
+    expect(w.data).toEqual({ ringNight: '21:00', ringMorning: '07:30' });
   });
 });

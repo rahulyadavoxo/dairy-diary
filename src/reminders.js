@@ -1,6 +1,7 @@
 // Register reminders and the "fill yesterday first" lock.
 //
 // Rules (user, 15 Oct 2026):
+//  - (times are set in Settings; defaults shown)
 //  - 22:00 every day: if that day's register has not been filled from ANY phone, every logged-in
 //    phone rings once (15 s sound, notification with a Close button). Filled before 22:00 = no ring.
 //  - Still not filled: every phone rings once more at 08:00 the next morning.
@@ -43,42 +44,66 @@ export function firstEntryDay(days) {
   return first;
 }
 
-const at = (iso, hour) => {
+// Ring times come from farm settings (Settings -> Register ring), the same on every phone:
+//   settings.ringNight "HH:MM" (default 22:00), settings.ringMorning "HH:MM" (default 08:00).
+// The morning ring is on the next day and must be earlier in the day than the night ring.
+export const TIME_RE = /^([01][0-9]|2[0-3]):([0-5][0-9])$/;
+const hm = (s, def) => {
+  const m = TIME_RE.exec(String(s || ''));
+  return m ? [Number(m[1]), Number(m[2])] : def;
+};
+export function ringTimes(settings) {
+  let night = hm(settings && settings.ringNight, [NIGHT_HOUR, 0]);
+  let morning = hm(settings && settings.ringMorning, [MORNING_HOUR, 0]);
+  if (morning[0] * 60 + morning[1] >= night[0] * 60 + night[1]) {
+    night = [NIGHT_HOUR, 0];
+    morning = [MORNING_HOUR, 0];
+  }
+  return { night, morning };
+}
+export const validRingTimes = (night, morning) => {
+  const n = TIME_RE.exec(night || '');
+  const m = TIME_RE.exec(morning || '');
+  return !!(n && m && Number(m[1]) * 60 + Number(m[2]) < Number(n[1]) * 60 + Number(n[2]));
+};
+const DEF_TIMES = { night: [NIGHT_HOUR, 0], morning: [MORNING_HOUR, 0] };
+
+const at = (iso, [hour, min]) => {
   const [y, m, d] = iso.split('-').map(Number);
-  return new Date(y, m - 1, d, hour, 0, 0, 0);
+  return new Date(y, m - 1, d, hour, min, 0, 0);
 };
 
 /**
  * Which earlier day blocks today's register? From 08:00, today is locked while yesterday is empty.
  * Returns yesterday's ISO date, or null. Nothing locks before the farm's first entry.
  */
-export function lockedBy({ now = new Date(), days, pendingDays, hasCustomers = true }) {
+export function lockedBy({ now = new Date(), days, pendingDays, hasCustomers = true, times = DEF_TIMES }) {
   if (!hasCustomers) return null;
   const first = firstEntryDay(days);
   if (!first) return null;
   const today = isoDate(now);
   const y = addDays(today, -1);
   if (y < first) return null;
-  if (now.getHours() < MORNING_HOUR) return null;
+  if (now < at(today, times.morning)) return null;
   return dayFilled(days, pendingDays, y) ? null : y;
 }
 
 /** The rings this phone should have pending right now. */
-export function planRings({ now = new Date(), days, pendingDays, hasCustomers = true }) {
+export function planRings({ now = new Date(), days, pendingDays, hasCustomers = true, times = DEF_TIMES }) {
   if (!hasCustomers) return [];
   const today = isoDate(now);
   const first = firstEntryDay(days);
   const out = [];
   // yesterday still empty -> 08:00 today
   const y = addDays(today, -1);
-  const ym = at(today, MORNING_HOUR);
+  const ym = at(today, times.morning);
   if (first && y >= first && ym > now && !dayFilled(days, pendingDays, y)) out.push({ id: MORNING_BASE, kind: 'morning', day: y, at: ym });
   for (let k = 0; k < AHEAD; k++) {
     const d = addDays(today, k);
     if (dayFilled(days, pendingDays, d)) continue;
-    const night = at(d, NIGHT_HOUR);
+    const night = at(d, times.night);
     if (night > now) out.push({ id: NIGHT_BASE + k, kind: 'night', day: d, at: night });
-    const morn = at(addDays(d, 1), MORNING_HOUR);
+    const morn = at(addDays(d, 1), times.morning);
     if (morn > now) out.push({ id: MORNING_BASE + 1 + k, kind: 'morning', day: d, at: morn });
   }
   return out;
@@ -146,9 +171,9 @@ async function setup(t) {
 }
 
 /** Bring this phone's pending rings in line with the register. Safe to call often. */
-export async function syncRings({ days, pendingDays, hasCustomers, t, dmy, now = new Date() }) {
+export async function syncRings({ days, pendingDays, hasCustomers, t, dmy, now = new Date(), times = DEF_TIMES }) {
   if (!native()) return;
-  const plan = planRings({ now, days, pendingDays, hasCustomers });
+  const plan = planRings({ now, days, pendingDays, hasCustomers, times });
   const sig = plan.map((p) => `${p.id}@${p.at.getTime()}`).join(',');
   if (sig === lastSig) return;
   lastSig = sig;

@@ -359,3 +359,6 @@ input.switch:focus-visible { outline: 3px solid #9fd3b2; outline-offset: 2px; }
 .lock-card { margin: 0.5rem 0; }
 .lock-card p { margin: 0 0 0.5rem; }
 .total-only { display: block; width: 100%; }
+.ring-times { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 0.5rem; }
+.ring-times label { flex: 1 1 8rem; }
+.cal-edit-row { margin-top: 0.4rem; }

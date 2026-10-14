@@ -23,7 +23,7 @@ import { App as CapApp } from '@capacitor/app';
 import { handleBack } from './backStack.js';
 import { migrateLegacyPin, legacyPinCleared } from './pinLock.js';
 import { IMPORT_DATES } from './octoberImport.js';
-import { syncRings } from './reminders.js';
+import { syncRings, ringTimes } from './reminders.js';
 
 const REMOVED_KEY = 'dd_removed';
 const flagGet = () => {
@@ -259,8 +259,8 @@ function Main({ fb, user, farm, farmId }) {
   const hasCustomers = customers.some((c) => c.active !== false);
   useEffect(() => {
     if (!loaded.days || !loaded.customers) return;
-    syncRings({ days, pendingDays, hasCustomers, t, dmy: (iso) => dmy(iso, lang) });
-  }, [loaded, days, pendingDays, hasCustomers, lang]); // eslint-disable-line react-hooks/exhaustive-deps
+    syncRings({ days, pendingDays, hasCustomers, t, dmy: (iso) => dmy(iso, lang), times: ringTimes(settings) });
+  }, [loaded, days, pendingDays, hasCustomers, lang, settings.ringNight, settings.ringMorning]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const on = () => setOnline(true);

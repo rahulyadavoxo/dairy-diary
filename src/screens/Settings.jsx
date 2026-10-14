@@ -8,6 +8,7 @@ import { getPinHash, hashPin, savePinHash, verifyPin, pinWaitSeconds } from '../
 import DevicesCard from '../components/DevicesCard.jsx';
 import { signOutAndWipe } from '../devices.js';
 import { clearCachedPhotos } from '../billCache.js';
+import { ringTimes, validRingTimes } from '../reminders.js';
 
 // Single source of truth for the version (package.json, injected by vite.config.js).
 // eslint-disable-next-line no-undef
@@ -23,6 +24,26 @@ export default function Settings({ fb, user, settings, displayName, setDisplayNa
   const [pinMsgErr, setPinMsgErr] = useState(false); // errors were shown in green ('ok' style)
   const [hasPin, setHasPin] = useState(() => !!getPinHash());
   const [pinVerified, setPinVerified] = useState(false);
+  // Register ring times (farm-wide, synced to every phone)
+  const pad = (n) => String(n).padStart(2, '0');
+  const curTimes = ringTimes(settings);
+  const nightStr = `${pad(curTimes.night[0])}:${pad(curTimes.night[1])}`;
+  const morningStr = `${pad(curTimes.morning[0])}:${pad(curTimes.morning[1])}`;
+  const [ring, setRing] = useState({ night: nightStr, morning: morningStr });
+  const [ringMsg, setRingMsg] = useState({ text: '', err: false });
+  useEffect(() => setRing({ night: nightStr, morning: morningStr }), [nightStr, morningStr]);
+  const saveRing = (e) => {
+    e.preventDefault();
+    if (!validRingTimes(ring.night, ring.morning)) {
+      setRingMsg({ text: t('ringTimesInvalid'), err: true });
+      saveFeedback(false);
+    } else {
+      saveSettings(fb, { ringNight: ring.night, ringMorning: ring.morning });
+      setRingMsg({ text: t('ringTimesSaved'), err: false });
+      saveFeedback(true);
+    }
+    setTimeout(() => setRingMsg({ text: '', err: false }), 2500);
+  };
 
   const verifyCurrentPin = async (e) => {
     e.preventDefault();
@@ -172,6 +193,27 @@ export default function Settings({ fb, user, settings, displayName, setDisplayNa
           </button>
         </div>
       </div>
+
+      <form className="card ring-card" onSubmit={saveRing} noValidate>
+        <p>
+          <b>⏰ {t('ringSettings')}</b>
+        </p>
+        <p className="muted small">{t('ringSettingsHint')}</p>
+        <div className="ring-times">
+          <label>
+            🌙 {t('ringNightLabel')}
+            <input type="time" value={ring.night} onChange={(e) => setRing({ ...ring, night: e.target.value })} />
+          </label>
+          <label>
+            🌅 {t('ringMorningLabel')}
+            <input type="time" value={ring.morning} onChange={(e) => setRing({ ...ring, morning: e.target.value })} />
+          </label>
+        </div>
+        {ringMsg.text && <p className={(ringMsg.err ? 'error' : 'ok') + ' small'}>{ringMsg.text}</p>}
+        <button type="submit" className="btn small primary">
+          {t('ringSave')}
+        </button>
+      </form>
 
       <div className="card">
         <p>
