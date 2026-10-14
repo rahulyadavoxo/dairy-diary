@@ -329,3 +329,33 @@ input.switch:focus-visible { outline: 3px solid #9fd3b2; outline-offset: 2px; }
 .day-total-row { display: flex; align-items: stretch; gap: 0.5rem; }
 .day-total-row .day-total { flex: 1; margin: 0; display: flex; align-items: center; }
 .day-total-row .btn { flex: 0 0 auto; white-space: nowrap; font-size: 0.85rem; padding: 0.3rem 0.6rem; }
+
+/* --- 1.10.12: payment received animation, lock card --- */
+.paid-overlay {
+  position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center;
+  background: rgba(20, 40, 28, 0.45); animation: paid-fade 0.2s ease-out;
+}
+.paid-card {
+  background: #fff; border-radius: 22px; padding: 1.6rem 2.2rem 1.3rem; text-align: center; min-width: 230px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25); animation: paid-pop 0.45s cubic-bezier(0.2, 1.4, 0.4, 1);
+}
+.paid-tick { width: 84px; height: 84px; display: block; margin: 0 auto 0.5rem; }
+.paid-tick-circle { stroke: var(--green); stroke-width: 3; stroke-dasharray: 151; stroke-dashoffset: 151; animation: paid-draw 0.5s 0.1s ease-out forwards; }
+.paid-tick-check { stroke: var(--green); stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 40; stroke-dashoffset: 40; animation: paid-draw 0.35s 0.5s ease-out forwards; }
+.paid-amount { font-size: 2.2rem; font-weight: 800; color: var(--green); animation: paid-pop 0.5s 0.55s both cubic-bezier(0.2, 1.4, 0.4, 1); }
+.paid-label { font-size: 1.15rem; font-weight: 700; margin-top: 0.2rem; }
+.paid-coins { display: flex; justify-content: center; gap: 0.8rem; margin-top: 0.6rem; font-size: 1.5rem; }
+.paid-coins span { animation: paid-coin 0.9s ease-out both; }
+.paid-coins span:nth-child(2) { animation-delay: 0.12s; }
+.paid-coins span:nth-child(3) { animation-delay: 0.24s; }
+@keyframes paid-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes paid-pop { from { transform: scale(0.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@keyframes paid-draw { to { stroke-dashoffset: 0; } }
+@keyframes paid-coin { 0% { transform: translateY(-26px); opacity: 0; } 60% { transform: translateY(4px); opacity: 1; } 100% { transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) {
+  .paid-overlay, .paid-card, .paid-amount, .paid-coins span { animation: none; }
+  .paid-tick-circle, .paid-tick-check { animation: none; stroke-dashoffset: 0; }
+}
+.lock-card { margin: 0.5rem 0; }
+.lock-card p { margin: 0 0 0.5rem; }
+.total-only { display: block; width: 100%; }

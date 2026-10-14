@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { firstDeliveryMonth } from '../firstMonth.js';
-import { saveFeedback } from '../feedback.js';
+import { saveFeedback, playSound } from '../feedback.js';
 import { useLang } from '../i18n.js';
 import { computeMonth, fullPaymentPaise } from '../billing.js';
 import { addPayment, deletePayment } from '../db.js';
@@ -31,6 +31,13 @@ export default function CustomerDetail({ fb, customers, days, payments, settings
   const [sharing, setSharing] = useState(false);
   const [shareErr, setShareErr] = useState('');
   const [noNumber, setNoNumber] = useState(false);
+  // "Payment received" animation with the amount, after Add payment (closes by itself or on tap).
+  const [paidAnim, setPaidAnim] = useState(null); // { paise, key }
+  useEffect(() => {
+    if (!paidAnim) return undefined;
+    const id = setTimeout(() => setPaidAnim(null), 2600);
+    return () => clearTimeout(id);
+  }, [paidAnim]);
 
   if (!customer || !row) {
     return (
@@ -49,7 +56,8 @@ export default function CustomerDetail({ fb, customers, days, payments, settings
     if (!payDate || payDate > todayISO()) return saveFeedback(false), setErr(t('dateFuture'));
     setErr('');
     addPayment(fb, { customerId, date: payDate, amountPaise: p, mode, createdBy: displayName });
-    saveFeedback(true);
+    playSound('payment');
+    setPaidAnim({ paise: p, key: Date.now() });
     setAmount('');
   };
 
@@ -99,6 +107,23 @@ export default function CustomerDetail({ fb, customers, days, payments, settings
 
   return (
     <div className="screen detail">
+      {paidAnim && (
+        <div key={paidAnim.key} className="paid-overlay" role="status" data-testid="payment-received" onClick={() => setPaidAnim(null)}>
+          <div className="paid-card">
+            <svg className="paid-tick" viewBox="0 0 52 52" aria-hidden="true">
+              <circle className="paid-tick-circle" cx="26" cy="26" r="24" fill="none" />
+              <path className="paid-tick-check" fill="none" d="M14 27 l8 8 l16 -17" />
+            </svg>
+            <div className="paid-amount">{rupees(paidAnim.paise)}</div>
+            <div className="paid-label">{t('paymentReceived')}</div>
+            <div className="paid-coins" aria-hidden="true">
+              <span>🪙</span>
+              <span>💵</span>
+              <span>🪙</span>
+            </div>
+          </div>
+        </div>
+      )}
       <header className="screen-head">
         <button className="btn small ghost" onClick={onBack}>
           ← {t('back')}

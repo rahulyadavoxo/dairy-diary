@@ -635,7 +635,8 @@ describe('1.10.11 customer form, special paneer rate, day editor', () => {
   const regProps = (fb) => ({
     fb,
     customers: [c1, c2],
-    days: { [addDays(todayISO(), -40)]: { entries: { c1: { milkL: 1 } } } },
+    // yesterday filled, so today's register isn't locked (1.10.12)
+    days: { [addDays(todayISO(), -40)]: { entries: { c1: { milkL: 1 } } }, [addDays(todayISO(), -1)]: { entries: { c1: { milkL: 1 } } } },
     pendingDays: {},
     settings,
     displayName: 'x',
@@ -747,5 +748,115 @@ describe('1.10.11 customer form, special paneer rate, day editor', () => {
     expect(within(ed).getByLabelText(en.prevDay)).toBeTruthy();
     fireEvent.click(within(ed).getByLabelText(en.prevDay));
     expect(within(ed).getByRole('heading', { level: 1 }).textContent).toContain(dmy(addDays(todayISO(), -2)));
+  });
+});
+
+// ---- 1.10.12 ----
+import { planRings, lockedBy, dayFilled, firstEntryDay } from '../src/reminders.js';
+import DayEditor from '../src/screens/Register.jsx';
+
+describe('1.10.12 rings, lock, payment animation, total-first day editor', () => {
+  const T = '2026-10-15';
+  const D = (iso, h, m = 0) => {
+    const [y, mo, d] = iso.split('-').map(Number);
+    return new Date(y, mo - 1, d, h, m);
+  };
+  const filled = { [addDays(T, -10)]: { entries: { c1: { milkL: 1 } } } };
+
+  it('22:00 ring only while the day is empty; filled before 22:00 = no ring', () => {
+    const empty = planRings({ now: D(T, 18), days: filled });
+    expect(empty.find((p) => p.kind === 'night' && p.day === T).at).toEqual(D(T, 22));
+    const done = planRings({ now: D(T, 18), days: { ...filled, [T]: { entries: { c1: { milkL: 2 } } } } });
+    expect(done.find((p) => p.day === T)).toBeUndefined();
+  });
+  it('still empty -> one more ring at 08:00 next day; nothing in the past is scheduled', () => {
+    const p = planRings({ now: D(T, 23), days: filled });
+    expect(p.find((x) => x.kind === 'night' && x.day === T)).toBeUndefined(); // 22:00 already gone
+    expect(p.find((x) => x.kind === 'morning' && x.day === T).at).toEqual(D(addDays(T, 1), 8));
+    // yesterday empty, before 08:00 -> 08:00 today
+    const early = planRings({ now: D(T, 6), days: filled });
+    expect(early.find((x) => x.kind === 'morning' && x.day === addDays(T, -1)).at).toEqual(D(T, 8));
+    // ids unique, every ring in the future
+    expect(new Set(early.map((x) => x.id)).size).toBe(early.length);
+    early.forEach((x) => expect(x.at > D(T, 6)).toBe(true));
+  });
+  it('no customers or no entries ever -> no rings, no lock', () => {
+    expect(planRings({ now: D(T, 18), days: filled, hasCustomers: false })).toEqual([]);
+    expect(lockedBy({ now: D(T, 9), days: {} })).toBe(null);
+    expect(firstEntryDay(filled)).toBe(addDays(T, -10));
+  });
+  it('from 08:00 today is locked while yesterday is empty', () => {
+    expect(lockedBy({ now: D(T, 7, 59), days: filled })).toBe(null);
+    expect(lockedBy({ now: D(T, 8), days: filled })).toBe(addDays(T, -1));
+    const y = { ...filled, [addDays(T, -1)]: { entries: { c2: { milkL: 0, skip: true } } } };
+    expect(dayFilled(y, {}, addDays(T, -1))).toBe(true);
+    expect(lockedBy({ now: D(T, 9), days: y })).toBe(null);
+  });
+
+  const regProps = (fb, days) => ({ fb, customers: [c1, c2], days, pendingDays: {}, settings, displayName: 'x', onDelivery: () => {} });
+  it('locked: Delivery and Edit this day are off, the lock card opens yesterday', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(D(todayISO(), 9));
+    try {
+      const days = { [addDays(todayISO(), -10)]: { entries: { c1: { milkL: 1 } } } };
+      render(wrap(<RegisterView {...regProps(mkFb(), days)} />));
+      const card = screen.getByTestId('lock-card');
+      expect(screen.getByText(new RegExp(en.delivery)).closest('button').disabled).toBe(true);
+      expect(screen.getByText(new RegExp(en.editDay)).closest('button').disabled).toBe(true);
+      fireEvent.click(within(card).getByText(new RegExp(en.fillYesterday)));
+      const ed = screen.getByTestId('day-editor');
+      expect(within(ed).getByRole('heading', { level: 1 }).textContent).toContain(dmy(addDays(todayISO(), -1)));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+  it('Edit this day is off once the day has any entry', () => {
+    const days = { [addDays(todayISO(), -1)]: { entries: { c1: { milkL: 1 } } }, [todayISO()]: { entries: { c2: { milkL: 1 } } } };
+    render(wrap(<RegisterView {...regProps(mkFb(), days)} />));
+    expect(screen.getByText(new RegExp(en.editDay)).closest('button').disabled).toBe(true);
+    expect(screen.getByText(en.editDayDone)).toBeTruthy();
+    expect(screen.queryByTestId('lock-card')).toBeNull();
+  });
+  it('the day editor opens on Total, and a total clears morning/evening', () => {
+    localStorage.setItem('dd_session', 'morning');
+    const fb = mkFb();
+    render(wrap(<DayEditor fb={fb} customers={[c1]} days={{}} settings={settings} displayName="x" date={todayISO()} lockDate onClose={() => {}} />));
+    const tabs = screen.getAllByRole('tab');
+    expect(tabs.find((b) => b.getAttribute('aria-selected') === 'true').textContent).toBe(en.session_total);
+    fireEvent.change(document.querySelector('[data-testid="day-editor"] input.qty'), { target: { value: '3' } });
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    fireEvent.click(screen.getByText(en.saveAll));
+    const w = fb.writes.filter((x) => x.path.includes('/days/'));
+    const e = Object.assign({}, ...w.map((x) => x.data.entries)).c1;
+    expect(e.milkL).toBe(3);
+    expect(e.milkMorningL).toBe(0);
+    expect(e.milkEveningL).toBe(0);
+    localStorage.removeItem('dd_session');
+  });
+  it('Add payment shows "Payment received" with the amount', () => {
+    const fb = mkFb();
+    render(
+      wrap(
+        <CustomerDetail
+          fb={fb}
+          days={{}}
+          payments={[]}
+          settings={settings}
+          displayName="x"
+          customerId="c1"
+          month={todayISO().slice(0, 7)}
+          setMonth={() => {}}
+          onBack={() => {}}
+          customers={[{ id: 'c1', name: 'Ram', openingDuePaise: 66050 }]}
+        />,
+      ),
+    );
+    fireEvent.change(screen.getByLabelText(en.amount), { target: { value: '250' } });
+    fireEvent.click(screen.getByText(en.addPayment));
+    const anim = screen.getByTestId('payment-received');
+    expect(anim.textContent).toContain(en.paymentReceived);
+    expect(anim.textContent).toContain('250');
+    fireEvent.click(anim);
+    expect(screen.queryByTestId('payment-received')).toBeNull();
   });
 });

@@ -9,6 +9,7 @@ import { addDays, dmy, fmtQty, timeHM, todayISO, monthName as fmtMonthName, shor
 import { toMilli } from '../billing.js';
 import { pushBackHandler } from '../backStack.js';
 import { useScrollKeep } from '../scrollKeep.js';
+import { dayFilled, lockedBy } from '../reminders.js';
 
 export { sortCustomers, isPaused };
 
@@ -151,6 +152,18 @@ export default function RegisterView({ fb, customers, days, pendingDays, setting
 
   const visible = active.filter((c) => matchesQuery(c, query));
 
+  // From 08:00, today stays locked while yesterday's register is empty (reminders.js).
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 60 * 1000);
+    return () => clearInterval(id);
+  }, []);
+  const isToday = date === todayISO();
+  const lockAll = lockedBy({ now, days, pendingDays, hasCustomers: active.length > 0 });
+  const lockDay = isToday ? lockAll : null;
+  // "Edit this day" only while nobody has an entry on that day; after that, "Edit old records".
+  const dayHasEntries = dayFilled(days, pendingDays, date);
+
   // Day total = milk delivered to customers. Supplier rows are milk bought, not sold.
   let totalMl = 0;
   active.forEach((c) => {
@@ -171,6 +184,7 @@ export default function RegisterView({ fb, customers, days, pendingDays, setting
         date={editing.date}
         customerId={editing.customerId}
         lockDate={!editing.oldRecords}
+        maxDate={lockAll || undefined}
         minDate={minDate}
         onClose={() => setEditing(null)}
       />
@@ -228,8 +242,16 @@ export default function RegisterView({ fb, customers, days, pendingDays, setting
             🗂️ {t('editOldRecords')}
           </button>
         </div>
+        {lockDay && (
+          <div className="card warn lock-card" data-testid="lock-card">
+            <p>🔒 {t('lockedYesterday').replace('{date}', dmy(lockDay, lang))}</p>
+            <button type="button" className="btn primary" onClick={() => setEditing({ date: lockDay })}>
+              ✏️ {t('fillYesterday')}
+            </button>
+          </div>
+        )}
         {onDelivery && (
-          <button type="button" className="btn primary big delivery-cta" onClick={onDelivery}>
+          <button type="button" className="btn primary big delivery-cta" disabled={!!lockDay} onClick={onDelivery}>
             🚚 {t('delivery')}
           </button>
         )}
@@ -238,9 +260,10 @@ export default function RegisterView({ fb, customers, days, pendingDays, setting
             📥 {t('importReviewTitle')}
           </button>
         )}
-        <button type="button" className="btn big delivery-cta" onClick={() => setEditing({ date })}>
+        <button type="button" className="btn big delivery-cta" disabled={!!lockDay || dayHasEntries} onClick={() => setEditing({ date })}>
           ✏️ {t('editDay')} ({dmy(date, lang)})
         </button>
+        {dayHasEntries && <p className="muted small">{t('editDayDone')}</p>}
       </header>
 
       {!settings.milkRatePaise && <p className="card warn small">{t('rateMissing')}</p>}
@@ -294,6 +317,7 @@ export default function RegisterView({ fb, customers, days, pendingDays, setting
           days={days}
           onClose={() => setCalId(null)}
           onEditDay={(iso) => {
+            if (lockAll && iso === todayISO()) return; // fill yesterday first
             setCalId(null);
             setEditing({ date: iso, customerId: calCustomer.id });
           }}

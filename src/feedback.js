@@ -31,6 +31,14 @@ const SOUNDS = {
     [660, 0.13, 0.09, 'square'],
   ],
   absent: [[330, 0, 0.32, 'sawtooth', 180]],
+  // "cha-ching": a quick metallic double hit, then a bright bell that rings out
+  payment: [
+    [2637, 0, 0.07, 'square'],
+    [3136, 0.07, 0.08, 'square'],
+    [1568, 0.2, 0.55, 'sine'],
+    [2093, 0.2, 0.7, 'sine'],
+    [2637, 0.32, 0.8, 'triangle'],
+  ],
 };
 
 export function playSound(name) {

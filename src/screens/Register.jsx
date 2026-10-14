@@ -52,14 +52,16 @@ export function defaultSession() {
 const AUTOSAVE_MS = 1200;
 
 /** lockDate: "Edit this day" edits only that day (no ◀ ▶). "Edit old records" passes lockDate=false. */
-export default function DayEditor({ fb, customers, days, pendingDays = {}, settings, displayName, date: initialDate, customerId, lockDate = false, minDate, onClose }) {
+export default function DayEditor({ fb, customers, days, pendingDays = {}, settings, displayName, date: initialDate, customerId, lockDate = false, minDate, maxDate, onClose }) {
   const { t, lang } = useLang();
-  const [date, setDate] = useState(() => (initialDate && initialDate <= todayISO() ? initialDate : todayISO()));
+  const maxD = maxDate && maxDate < todayISO() ? maxDate : todayISO();
+  const [date, setDate] = useState(() => (initialDate && initialDate <= maxD ? initialDate : maxD));
   const [drafts, setDrafts] = useState({});
   const [query, setQuery] = useState('');
   const [openPaneer, setOpenPaneer] = useState({});
   const [flash, setFlash] = useState('');
-  const [session, setSession] = useState(defaultSession);
+  // Always opens on Total (user, 15 Oct 2026); Morning / Evening are one tap away.
+  const [session, setSession] = useState('total');
   const dirty = useRef({}); // cid -> row awaiting autosave
   const timer = useRef(null);
   const ctx = useRef({});
@@ -146,8 +148,9 @@ export default function DayEditor({ fb, customers, days, pendingDays = {}, setti
       const m = toMilli(r.milkMorningL) / 1000;
       update(c, { milkEveningL: val, milkL: Math.round((m + val) * 1000) / 1000 });
     } else {
-      // Total mode: sessions not tracked (null), milkL is the whole day's quantity.
-      update(c, { milkL: val, milkMorningL: null, milkEveningL: null });
+      // Total mode: either Total OR Morning + Evening, never both (same as the Delivery card).
+      // Total set -> morning and evening are 0; editing morning/evening later makes the day m + e.
+      update(c, { milkL: val, milkMorningL: 0, milkEveningL: 0 });
     }
   };
 
@@ -211,19 +214,19 @@ export default function DayEditor({ fb, customers, days, pendingDays = {}, setti
                   type="date"
                   value={date}
                   min={minDate || undefined}
-                  max={todayISO()}
+                  max={maxD}
                   onChange={(e) => {
                     const v = e.target.value;
-                    if (v) changeDate(v > todayISO() ? todayISO() : minDate && v < minDate ? minDate : v);
+                    if (v) changeDate(v > maxD ? maxD : minDate && v < minDate ? minDate : v);
                   }}
                 />
               </label>
               <button
                 className="btn icon"
-                disabled={date >= todayISO()}
+                disabled={date >= maxD}
                 onClick={() => {
                   const n = addDays(date, 1);
-                  if (n <= todayISO()) changeDate(n);
+                  if (n <= maxD) changeDate(n);
                 }}
                 aria-label={t('nextDay')}
               >
@@ -311,6 +314,9 @@ export default function DayEditor({ fb, customers, days, pendingDays = {}, setti
                     +
                   </button>
                 </div>
+                {session !== 'total' && !r.skip && Number(r.milkL) > 0 && !(Number(r.milkMorningL) > 0) && !(Number(r.milkEveningL) > 0) && (
+                  <span className="muted small total-only">{t('totalOnlyHint').replace('{q}', `${fmtQty(r.milkL)} ${t('litre')}`)}</span>
+                )}
                 {showPaneer ? (
                   <label className="paneer">
                     {t('paneer')}

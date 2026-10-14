@@ -232,8 +232,10 @@ describe('Customers: last edited + save feedback', () => {
     expect(fx.sounds).toEqual([]);
   });
   it('every Save button is wired to the feedback', () => {
-    const src = ['Customers', 'CustomerDetail', 'Settings', 'Register'].map((f) => readFileSync(`src/screens/${f}.jsx`, 'utf8'));
+    const src = ['Customers', 'Settings', 'Register'].map((f) => readFileSync(`src/screens/${f}.jsx`, 'utf8'));
     src.forEach((s) => expect(s).toContain('saveFeedback(true)'));
+    // Add payment has its own "cha-ching" + animation (1.10.12)
+    expect(readFileSync('src/screens/CustomerDetail.jsx', 'utf8')).toContain("playSound('payment')");
     expect(readFileSync('src/db.js', 'utf8')).toContain('vibrateFail()');
     expect(readFileSync('android/app/src/main/AndroidManifest.xml', 'utf8')).toContain('android.permission.VIBRATE');
   });

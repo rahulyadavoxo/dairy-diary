@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { LangContext, loadLang, saveLang, makeT, useLang } from './i18n.js';
 import { isFirebaseConfigured, getFirebase } from './firebase.js';
 import { listenAll, saveSettings } from './db.js';
-import { todayISO, monthOf } from './format.js';
+import { todayISO, monthOf, dmy } from './format.js';
 import NotConfigured from './screens/NotConfigured.jsx';
 import Login from './screens/Login.jsx';
 import Register from './screens/RegisterView.jsx';
@@ -23,6 +23,7 @@ import { App as CapApp } from '@capacitor/app';
 import { handleBack } from './backStack.js';
 import { migrateLegacyPin, legacyPinCleared } from './pinLock.js';
 import { IMPORT_DATES } from './octoberImport.js';
+import { syncRings } from './reminders.js';
 
 const REMOVED_KEY = 'dd_removed';
 const flagGet = () => {
@@ -206,7 +207,7 @@ export function withFarmName(settings, farm) {
 }
 
 function Main({ fb, user, farm, farmId }) {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const [tab, setTab] = useState('register');
   const [detail, setDetail] = useState(null); // { customerId, month }
   const [delivery, setDelivery] = useState(false);
@@ -218,6 +219,7 @@ function Main({ fb, user, farm, farmId }) {
   const [days, setDays] = useState({});
   const [pendingDays, setPendingDays] = useState({});
   const [payments, setPayments] = useState([]);
+  const [loaded, setLoaded] = useState({ days: false, customers: false });
   const [online, setOnline] = useState(typeof navigator === 'undefined' ? true : navigator.onLine);
   const [month, setMonth] = useState(monthOf(todayISO()));
   const myDevice = farm && farm.devices ? farm.devices[user.uid] : null;
@@ -237,16 +239,28 @@ function Main({ fb, user, farm, farmId }) {
           }
           setSettings(s);
         },
-        customers: setCustomers,
+        customers: (c) => {
+          setCustomers(c);
+          setLoaded((l) => (l.customers ? l : { ...l, customers: true }));
+        },
         days: (d, p) => {
           setDays(d);
           setPendingDays(p);
+          setLoaded((l) => (l.days ? l : { ...l, days: true }));
         },
         payments: setPayments,
         error: (e) => console.error('[listen]', e),
       }),
     [fb],
   );
+
+  // 22:00 / 08:00 register rings on this phone (see reminders.js). Only once both lists loaded,
+  // so an empty first render never cancels or schedules the wrong rings.
+  const hasCustomers = customers.some((c) => c.active !== false);
+  useEffect(() => {
+    if (!loaded.days || !loaded.customers) return;
+    syncRings({ days, pendingDays, hasCustomers, t, dmy: (iso) => dmy(iso, lang) });
+  }, [loaded, days, pendingDays, hasCustomers, lang]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const on = () => setOnline(true);

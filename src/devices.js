@@ -8,6 +8,8 @@
 // The pure helpers below are unit-tested (tests/devices.test.js); the Firestore rules in
 // firestore.rules enforce the same constraints server-side (tests/rules/*.test.js).
 
+import { cancelAllRings } from './reminders.js';
+
 export const CODE_TTL_MS = 10 * 60 * 1000;
 export const CODE_RE = /^[0-9]{6}$/;
 export const NAME_MAX = 40;
@@ -266,6 +268,7 @@ export function listenFarm(fb, farmId, cb) {
  */
 export async function wipeLocalData(fb) {
   clearFarmId();
+  cancelAllRings();
   try {
     await fb.fsMod.terminate(fb.db);
     await fb.fsMod.clearIndexedDbPersistence(fb.db);
