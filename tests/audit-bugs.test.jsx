@@ -145,3 +145,22 @@ describe('BUG 8 (Low): a customer with only paneer saved for today drops off the
     expect(screen.getByRole('heading', { level: 2 }).textContent).toContain('Asha'); // v1.10.21: skips to Bablu
   });
 });
+
+describe('1.10.28: editing a customer saves a changed old due / special rates', () => {
+  const custWrites = (fb) => fb.writes.filter((w) => w.path.includes('customers/'));
+  const field = (label) => screen.getByText(label, { exact: false }).closest('label').querySelector('input');
+  it('old due changed from 0 to 500 is written', () => {
+    const fb = mkFb();
+    render(wrap(<CustomerForm fb={fb} initial={{ ...c1, openingDuePaise: 0 }} nextOrder={30} settings={settings} onDone={() => {}} />));
+    fireEvent.change(field(en.openingDue), { target: { value: '500' } });
+    fireEvent.click(screen.getByText(en.save, { selector: 'button' }));
+    expect(custWrites(fb).at(-1).data.openingDuePaise).toBe(50000);
+  });
+  it('old due changed from 200 to 350 is written', () => {
+    const fb = mkFb();
+    render(wrap(<CustomerForm fb={fb} initial={{ ...c1, openingDuePaise: 20000 }} nextOrder={30} settings={settings} onDone={() => {}} />));
+    fireEvent.change(field(en.openingDue), { target: { value: '350' } });
+    fireEvent.click(screen.getByText(en.save, { selector: 'button' }));
+    expect(custWrites(fb).at(-1).data.openingDuePaise).toBe(35000);
+  });
+});

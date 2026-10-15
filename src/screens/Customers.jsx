@@ -303,6 +303,8 @@ export function CustomerForm({ fb, initial, nextOrder, onDone }) {
     if (f.customPaneerRate && !(pRate > 0)) return fail(t('paneerRateRequired'));
     const due = toPaise(f.openingDue);
     if (f.openingDue !== '' && due === null) return fail(t('amountInvalid'));
+    // Parse the money fields from the form passed in (not the current one): toData(f0.current)
+    // used to get the NEW due / rates, so a changed due or rate never counted as a change.
     const toData = (f) => ({
       name: f.name.trim(),
       phone: f.phone.trim(),
@@ -310,9 +312,9 @@ export function CustomerForm({ fb, initial, nextOrder, onDone }) {
       usualMorningL: round3(f.usualMorningL),
       usualEveningL: round3(f.usualEveningL),
       usualL: round3(round3(f.usualMorningL) + round3(f.usualEveningL)),
-      rateOverridePaise: f.customRate ? rate : null,
-      paneerRateOverridePaise: f.customPaneerRate ? pRate : null,
-      openingDuePaise: due || 0,
+      rateOverridePaise: f.customRate ? toPaise(f.rateOverride) : null,
+      paneerRateOverridePaise: f.customPaneerRate ? toPaise(f.paneerRateOverride) : null,
+      openingDuePaise: toPaise(f.openingDue) || 0,
       pauseFrom: f.pauseFrom || '',
       pauseTo: f.pauseTo || '',
       active: !!f.active,
