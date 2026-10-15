@@ -35,6 +35,8 @@ import java.util.Set;
 @CapacitorPlugin(name = "ApkUpdater")
 public class ApkUpdaterPlugin extends Plugin {
     private static final String FILE_NAME = "dd-update.apk";
+    static final int CONNECT_TIMEOUT_MS = 4000;
+    static final int CONNECT_TRIES = 4;
     private volatile boolean busy = false;
 
     private File apkFile() {
@@ -120,13 +122,24 @@ public class ApkUpdaterPlugin extends Plugin {
             try {
                 String next = url;
                 int hops = 0;
+                int tries = 0;
                 while (true) {
                     con = (HttpURLConnection) new URL(next).openConnection();
                     con.setInstanceFollowRedirects(false);
-                    con.setConnectTimeout(20000);
+                    // Short connect timeout: a host can resolve to an address the phone's network can't
+                    // reach (often IPv6). Android then waits this long before trying the next address,
+                    // so 20 s here meant ~20 s stuck at 0%. 4 s per address, plus retries below.
+                    con.setConnectTimeout(CONNECT_TIMEOUT_MS);
                     con.setReadTimeout(30000);
                     con.setRequestProperty("User-Agent", "DairyDiary-Updater");
-                    int st = con.getResponseCode();
+                    int st;
+                    try {
+                        st = con.getResponseCode();
+                    } catch (java.io.IOException ce) {
+                        con.disconnect();
+                        if (++tries >= CONNECT_TRIES) throw ce;
+                        continue; // same URL again (a fresh connection may pick a working address)
+                    }
                     if (st >= 300 && st < 400) {
                         String loc = con.getHeaderField("Location");
                         con.disconnect();

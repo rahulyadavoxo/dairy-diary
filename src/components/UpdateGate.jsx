@@ -54,7 +54,7 @@ export default function UpdateGate({ children, api = real, native = Capacitor.is
   const start = async () => {
     if (!upd || statusRef.current === 'downloading') return;
     if (downloaded.current === upd.version) return install();
-    setPct(0);
+    setPct(-1); // -1 = connecting (no bytes yet); the first chunk reports 0
     setStatus('downloading');
     try {
       await api.download(upd.url, setPct);
@@ -117,10 +117,10 @@ export default function UpdateGate({ children, api = real, native = Capacitor.is
       {cur && <p className="muted small">{t('updCurrent').replace('{v}', cur)}</p>}
       {busy && (
         <div className="upd-progress" aria-label={t('updDownloading')}>
-          <div className="upd-bar" style={{ width: pct + '%' }} />
+          <div className="upd-bar" style={{ width: Math.max(pct, 0) + '%' }} />
         </div>
       )}
-      {busy && <p className="small">{t('updDownloading') + ' ' + pct + '%'}</p>}
+      {busy && <p className="small" data-testid="update-pct">{pct < 0 ? t('updConnecting') : t('updDownloading') + ' ' + pct + '%'}</p>}
       {status === 'installing' && <p className="small">{t('updInstallHint')}</p>}
       {status === 'perm' && <p className="small">{t('updPermHint')}</p>}
       {status === 'error' && <p className="error small">{t('updFailed')}</p>}
