@@ -67,3 +67,10 @@ describe('1.10.20 swipe between tabs', () => {
     document.body.innerHTML = '';
   });
 });
+
+import { CHECK_EVERY_MS } from '../src/appUpdate.js';
+describe('1.10.21 resume check', () => {
+  it('coming back to the app re-checks GitHub after just 1 minute', () => {
+    expect(CHECK_EVERY_MS).toBe(60 * 1000);
+  });
+});

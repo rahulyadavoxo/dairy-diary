@@ -1,6 +1,6 @@
 // Full-screen "Update" wall: shown when GitHub has a newer APK than the one installed.
 // The app can't be used until the new APK is installed (user, 15 Oct 2026).
-// Checked on start, on resume (30 min throttle), every 10 min while open, and when internet returns.
+// Checked on start, on resume (1 min throttle), every 10 min while open, and when internet returns.
 import { useEffect, useRef, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { useLang } from '../i18n.js';
