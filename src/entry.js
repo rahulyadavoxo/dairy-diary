@@ -49,8 +49,22 @@ export function takesTwice(c) {
 /** Is this customer's day fully recorded? Morning + evening (or a total, or Absent / 0 L).
     A morning-only save from Delivery (half: 'morning') is not complete yet, unless the customer
     takes milk only once a day (pass the customer) and some milk was recorded. */
+/** A morning-only save that recorded no milk and no paneer (morning 0, evening left empty).
+    It means nothing was really filled: treated like no entry at all (user, 15 Oct 2026). */
+export function emptyHalf(en) {
+  return !!en && !!en.half && !en.skip &&
+    (Number(en.milkMorningL) || 0) + (Number(en.milkEveningL) || 0) + (Number(en.milkL) || 0) <= 0 &&
+    !((Number(en.paneerKg) || 0) > 0);
+}
+
+/** Show "Evening left" only for a twice-a-day customer whose morning milk is saved. */
+export function eveningLeft(en, c) {
+  return !!en && en.half === 'morning' && !emptyHalf(en) && !entryComplete(en, c);
+}
+
 export function entryComplete(en, c) {
   if (!en) return false;
+  if (emptyHalf(en)) return false;
   if (!en.half) return true;
   if (c && !takesTwice(c)) return (Number(en.milkMorningL) || 0) + (Number(en.milkEveningL) || 0) + (Number(en.milkL) || 0) > 0;
   return false;

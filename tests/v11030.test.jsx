@@ -98,3 +98,42 @@ describe('1.10.30 once-a-day customers and the evening box', () => {
     expect(screen.getByRole('alert').textContent).toBe(en.editDayNeedsAll.replace('{n}', 1));
   });
 });
+
+describe('1.10.32 empty morning-only saves (morning 0, evening empty)', () => {
+  const stuck = { milkL: 0, milkMorningL: 0, milkEveningL: 0, half: 'morning' };
+  it('is treated as not filled: no tag, not complete', async () => {
+    const { emptyHalf, eveningLeft } = await import('../src/entry.js');
+    expect(emptyHalf(stuck)).toBe(true);
+    expect(eveningLeft(stuck, both)).toBe(false);
+    expect(entryComplete(stuck, eveOnly)).toBe(false);
+    expect(eveningLeft({ milkL: 1, milkMorningL: 1, milkEveningL: 0, half: 'morning' }, both)).toBe(true);
+  });
+  it('comes back on the Delivery round even if this phone skipped it, with the usual filled', () => {
+    localStorage.setItem(`dd_deli_skip_${T}_total`, JSON.stringify({ c3: true }));
+    localStorage.setItem(`dd_deli_skip_${T}_morning`, JSON.stringify({ c3: true }));
+    localStorage.setItem(`dd_deli_skip_${T}_evening`, JSON.stringify({ c3: true }));
+    const fb = mkFb();
+    render(wrap(<Delivery fb={fb} customers={[eveOnly]} days={{ [T]: { entries: { c3: stuck } } }} settings={settings} displayName="x" onBack={() => {}} />));
+    expect(screen.getByRole('heading', { level: 2 }).textContent).toContain('Rinku');
+    expect(input('qty-evening').value).toBe('1.25');
+    tap(screen.getByText(en.delivered));
+    const e = lastEntry(fb, 'c3');
+    expect(e.milkL).toBe(1.25);
+    expect(e.half).toBeFalsy();
+  });
+  it('morning 0 with evening cleared saves a plain 0 L day, never half', () => {
+    const fb = mkFb();
+    render(wrap(<Delivery {...props(fb, [both])} />));
+    fireEvent.change(input('qty-morning'), { target: { value: '0' } });
+    fireEvent.change(input('qty-evening'), { target: { value: '' } });
+    tap(screen.getByText(en.delivered));
+    expect(lastEntry(fb, 'c1').half).toBeFalsy();
+  });
+  it('Register: stuck entry shows no tag and no ✕, still counted as not filled', () => {
+    const days = { [addDays(T, -1)]: { entries: { c1: { milkL: 1 }, c3: { milkL: 1 } } }, [T]: { entries: { c1: { milkL: 2, milkMorningL: 1, milkEveningL: 1 }, c3: stuck } } };
+    render(wrap(<RegisterView fb={mkFb()} customers={[both, eveOnly]} days={days} pendingDays={{}} settings={settings} displayName="x" onDelivery={() => {}} />));
+    expect(screen.queryAllByTestId('eve-pending')).toHaveLength(0);
+    fireEvent.click(screen.getByTestId('edit-day'));
+    expect(screen.getByRole('alert').textContent).toBe(en.editDayNeedsAll.replace('{n}', 1));
+  });
+});

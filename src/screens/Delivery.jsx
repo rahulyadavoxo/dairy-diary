@@ -8,7 +8,7 @@ import PaneerGrams from '../components/PaneerGrams.jsx';
 import { useLang } from '../i18n.js';
 import { saveEntries, deleteEntry } from '../db.js';
 import { playSound } from '../feedback.js';
-import { normaliseEntry, takesTwice } from '../entry.js';
+import { normaliseEntry, takesTwice, emptyHalf } from '../entry.js';
 import { sortCustomers, isPaused } from './Register.jsx';
 import { usualMorning, usualEvening } from './Customers.jsx';
 import { todayISO, fmtQty } from '../format.js';
@@ -177,7 +177,7 @@ function DeliveryCard({ c, initM, initE, initT, initPaneer, morningSaved, onDeli
     onDelivered(
       tot > 0
         ? { milkMorningL: 0, milkEveningL: 0, milkL: tot, paneerKg: pp, half: null }
-        : { milkMorningL: m || 0, milkEveningL: e || 0, paneerKg: pp, half: e == null ? 'morning' : null },
+        : { milkMorningL: m || 0, milkEveningL: e || 0, paneerKg: pp, half: e == null && (m || 0) > 0 && takesTwice(c) ? 'morning' : null },
       'delivered',
     );
   // "As usual" fills the round being delivered now: the morning on the first visit (evening still
@@ -186,7 +186,7 @@ function DeliveryCard({ c, initM, initE, initT, initPaneer, morningSaved, onDeli
     onDelivered(
       morningSaved
         ? { milkMorningL: m || 0, milkEveningL: usualEvening(c), paneerKg: pp, half: null }
-        : { milkMorningL: usualMorning(c), milkEveningL: e == null ? 0 : e, paneerKg: pp, half: e == null ? 'morning' : null },
+        : { milkMorningL: usualMorning(c), milkEveningL: e == null ? 0 : e, paneerKg: pp, half: e == null && usualMorning(c) > 0 && takesTwice(c) ? 'morning' : null },
       'usual',
     );
 
@@ -301,7 +301,7 @@ function DeliveryRound({ fb, customers, days, settings, displayName, onBack, ses
   // Done for this round: delivered now or earlier, or marked "didn't take" for the whole day in the register.
   // Paneer alone is not a milk delivery: a paneer-only "Delivered" is remembered via `skipped`.
   const isDelivered = (c) => !!doneNow[c.id] || dayComplete(saved[c.id], c) || !!(saved[c.id] && saved[c.id].skip);
-  const remaining = list.filter((c) => !isDelivered(c) && !skipped[c.id]);
+  const remaining = list.filter((c) => !isDelivered(c) && (!skipped[c.id] || emptyHalf(saved[c.id])));
   const done = list.length - remaining.length;
   const current = review ? byId[review.id] : remaining[0];
   const canGoBack = review ? review.pos > 0 : history.length > 0;
@@ -480,7 +480,7 @@ function DeliveryRound({ fb, customers, days, settings, displayName, onBack, ses
             c={current}
             initM={review ? review.m || 0 : Number(saved[current.id]?.milkMorningL) || usualMorning(current)}
             initE={review ? review.e ?? null : initEvening(saved[current.id], current)}
-            morningSaved={!review && !!saved[current.id] && saved[current.id].half === 'morning' && takesTwice(current)}
+            morningSaved={!review && !!saved[current.id] && saved[current.id].half === 'morning' && takesTwice(current) && !emptyHalf(saved[current.id])}
             initT={review && !((review.m || 0) + (review.e || 0)) ? review.total || 0 : 0}
             initPaneer={review ? review.p || 0 : Number(saved[current.id]?.paneerKg) || 0}
             onDelivered={guarded((raw, kind) => {

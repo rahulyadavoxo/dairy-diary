@@ -12,7 +12,7 @@ import { useScrollKeep } from '../scrollKeep.js';
 import { lockedBy, ringTimes } from '../reminders.js';
 import { saveFeedback } from '../feedback.js';
 import { deleteEntry } from '../db.js';
-import { entryComplete } from '../entry.js';
+import { entryComplete, emptyHalf, eveningLeft } from '../entry.js';
 import StickySearch from '../components/StickySearch.jsx';
 
 export { sortCustomers, isPaused };
@@ -37,7 +37,7 @@ function milkOn(days, cid, iso) {
     no entry at all (e.g. before the customer started) stays blank. */
 export function isRecordedGap(days, cid, iso) {
   const en = entryOn(days, cid, iso);
-  return !!en && milkOn(days, cid, iso) <= 0 && !(Number(en.paneerKg) > 0);
+  return !!en && !emptyHalf(en) && milkOn(days, cid, iso) <= 0 && !(Number(en.paneerKg) > 0);
 }
 
 /** Calendar modal: month grid with each day's milk for one customer (read-only). */
@@ -349,7 +349,7 @@ export default function RegisterView({ fb, customers, days, daysLive = true, pen
                     <b>{num}. {c.name}</b>
                     {c.area && <span className="muted small"> · {c.area}</span>}
                     {isPaused(c, date) && <span className="tag">{t('paused')}</span>}
-                    {en && en.half === 'morning' && !entryComplete(en, c) && <span className="tag" data-testid="eve-pending">{t('eveningPending')}</span>}
+                    {eveningLeft(en, c) && <span className="tag" data-testid="eve-pending">{t('eveningPending')}</span>}
                     {c.isSupplier && <span className="tag supplier-tag">🏷️ {t('supplier')}</span>}
                   </div>
                   <span className="muted small">{fmtQty(milkOn(days, c.id, date))} {t('litre')}</span>
