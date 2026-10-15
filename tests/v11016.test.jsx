@@ -149,3 +149,18 @@ describe('1.10.16: sync first, then the Update screen', () => {
     expect(readFileSync('src/appUpdate.js', 'utf8')).toContain('waitForPendingWrites');
   });
 });
+
+describe('1.10.18: search pinned at the top on Register, Hisaab, Customers', () => {
+  it('each screen puts its search inside StickySearch, outside the header', () => {
+    for (const f of ['src/screens/RegisterView.jsx', 'src/screens/Hisaab.jsx', 'src/screens/Customers.jsx']) {
+      const s = readFileSync(f, 'utf8');
+      const i = s.indexOf('<StickySearch>');
+      expect(i).toBeGreaterThan(0);
+      expect(s.slice(i, s.indexOf('</StickySearch>'))).toContain('className="search"');
+      // not nested in the header (sticky would stop at the header's end)
+      expect(s.lastIndexOf('</header>', i)).toBeGreaterThan(s.lastIndexOf('<header', i));
+    }
+    const css = readFileSync('src/styles.css', 'utf8');
+    expect(css).toMatch(/\.search-sticky \{ position: sticky; top: env\(safe-area-inset-top\)/);
+  });
+});

@@ -9,6 +9,7 @@ import { usualMorning, usualEvening } from '../entry.js';
 import { useScrollKeep } from '../scrollKeep.js';
 import { saveFeedback } from '../feedback.js';
 import { getPinHash, verifyPin, pinWaitSeconds } from '../pinLock.js';
+import StickySearch from '../components/StickySearch.jsx';
 
 // The customer saved last stays lightly green in the list (on this phone) until another is saved.
 const LAST_EDITED_KEY = 'dd_last_edited_customer';
@@ -128,6 +129,8 @@ export default function Customers({ fb, customers, settings, openCustomer }) {
             {selecting ? t('cancel') : t('selectTag')}
           </button>
         </div>
+      </header>
+      <StickySearch>
         <div className="search-wrap">
           <span className="search-icon" aria-hidden="true">🔍</span>
           <input
@@ -139,8 +142,8 @@ export default function Customers({ fb, customers, settings, openCustomer }) {
             onChange={(e) => setQuery(e.target.value)}
           />
         </div>
-        <p className="muted small">{searching ? t('routeOrderSearch') : `${t('routeOrder')}: ▲ / ▼`}</p>
-      </header>
+      </StickySearch>
+      <p className="muted small">{searching ? t('routeOrderSearch') : `${t('routeOrder')}: ▲ / ▼`}</p>
       {selecting && selectedIds.length > 0 && (
         <div className="select-bar">
           <span className="small">{selectedIds.length} {t('selected')}</span>

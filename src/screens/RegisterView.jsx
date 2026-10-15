@@ -11,6 +11,7 @@ import { pushBackHandler } from '../backStack.js';
 import { useScrollKeep } from '../scrollKeep.js';
 import { lockedBy, ringTimes } from '../reminders.js';
 import { saveFeedback } from '../feedback.js';
+import StickySearch from '../components/StickySearch.jsx';
 
 export { sortCustomers, isPaused };
 
@@ -248,7 +249,11 @@ export default function RegisterView({ fb, customers, days, pendingDays, setting
           {day && day.lastEditedBy ? `${t('lastEdited')}: ${day.lastEditedBy}, ${timeHM(day.lastEditedAt)}` : t('nobodyYet')}
           {pendingDays[date] ? ` · ${t('pendingSync')}` : day ? ` · ${t('synced')}` : ''}
         </p>
-        <input className="search" type="search" placeholder={t('search')} value={query} onChange={(e) => setQuery(e.target.value)} />
+      </header>
+      <StickySearch>
+        <input className="search" type="search" placeholder={t('search')} aria-label={t('search')} value={query} onChange={(e) => setQuery(e.target.value)} />
+      </StickySearch>
+      <div className="screen-head">
         <div className="day-total-row">
           <p className="day-total">
             {t('dayTotal')}: <b>{fmtQty(totalMl / 1000)} {t('litre')}</b>
@@ -301,7 +306,7 @@ export default function RegisterView({ fb, customers, days, pendingDays, setting
             {editMsg}
           </p>
         )}
-      </header>
+      </div>
 
       {!settings.milkRatePaise && <p className="card warn small">{t('rateMissing')}</p>}
       {active.length === 0 && <p className="empty">{t('noCustomers')}</p>}

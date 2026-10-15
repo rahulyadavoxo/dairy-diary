@@ -369,3 +369,8 @@ input.switch:focus-visible { outline: 3px solid #9fd3b2; outline-offset: 2px; }
 .update-gate .update-icon { font-size: 56px; }
 .upd-progress { width: 100%; max-width: 320px; height: 10px; border-radius: 6px; background: #e3ece6; overflow: hidden; }
 .upd-bar { height: 100%; background: var(--green); transition: width 0.2s; }
+/* search pinned at the top while scrolling (Register, Hisaab, Customers) */
+.search-sticky { position: sticky; top: env(safe-area-inset-top); z-index: 6; margin: 0 -12px; padding: 0.15rem 12px; background: transparent; }
+.search-sticky .search { width: 100%; }
+.search-sticky.stuck { background: var(--bg); box-shadow: 0 6px 8px -6px rgba(0, 0, 0, 0.18); }
+.search-sticky.stuck::before { content: ''; position: absolute; left: 0; right: 0; bottom: 100%; height: env(safe-area-inset-top); background: var(--bg); }

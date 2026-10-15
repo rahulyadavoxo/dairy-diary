@@ -12,6 +12,7 @@ import BillPhotos, { defaultPhotoMonth } from './BillPhotos.jsx';
 import MonthNav from '../components/MonthNav.jsx';
 import { matchesQuery } from './Register.jsx';
 import { useScrollKeep } from '../scrollKeep.js';
+import StickySearch from '../components/StickySearch.jsx';
 
 export { MonthNav };
 
@@ -214,7 +215,11 @@ export default function Hisaab({ fb, customers, days, payments, settings, month,
             {t('advance')}: {rupees(res.totals.advancePaise)}
           </p>
         )}
-        <input className="search" type="search" placeholder={t('search')} value={query} onChange={(e) => setQuery(e.target.value)} />
+      </header>
+      <StickySearch>
+        <input className="search" type="search" placeholder={t('search')} aria-label={t('search')} value={query} onChange={(e) => setQuery(e.target.value)} />
+      </StickySearch>
+      <div className="screen-head">
         <div className="chips filter-chips" role="group">
           {[
             ['all', t('filterAll'), customerRows.length],
@@ -227,7 +232,7 @@ export default function Hisaab({ fb, customers, days, payments, settings, month,
           ))}
         </div>
         <p className="muted small">{t('sortedByDue')}</p>
-      </header>
+      </div>
       {customerRows.length === 0 && <p className="empty">{t('noActivity')}</p>}
       {customerRows.length > 0 && rows.length === 0 && <p className="empty">{t('noMatch')}</p>}
       <ul className="rows">
