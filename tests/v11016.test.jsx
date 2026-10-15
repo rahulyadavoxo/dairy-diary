@@ -56,6 +56,7 @@ describe('UpdateGate', () => {
       return { size: 1 };
     }),
     install: vi.fn(async () => ({ started: true })),
+    sync: vi.fn(async () => {}),
     ...over,
   });
 
@@ -114,5 +115,37 @@ describe('native side is wired', () => {
     expect(j).toContain('https://github.com/rahulyadavoxo/dairy-diary/releases/download/');
     for (const k of ['updTitle', 'updBody', 'updNow', 'updDownloading', 'updInstallHint', 'updPermHint', 'updFailed', 'updRetry', 'updCurrent'])
       expect(STRINGS.hi[k] && STRINGS.en[k]).toBeTruthy();
+  });
+});
+
+describe('1.10.16: sync first, then the Update screen', () => {
+  beforeEach(() => cleanup());
+  it('while unsynced entries are uploading the app stays usable; the Update screen comes after', async () => {
+    let done;
+    const api = {
+      current: vi.fn(async () => '1.10.16'),
+      check: vi.fn(async () => ({ version: '1.10.17', url: 'u' })),
+      download: vi.fn(),
+      install: vi.fn(),
+      sync: vi.fn(() => new Promise((r) => (done = r))),
+    };
+    render(wrap(<UpdateGate api={api} native>{<p>APP</p>}</UpdateGate>));
+    await waitFor(() => expect(api.sync).toHaveBeenCalled());
+    expect(screen.getByText('APP')).toBeTruthy();
+    expect(screen.queryByTestId('update-gate')).toBeNull();
+    done();
+    expect(await screen.findByTestId('update-gate')).toBeTruthy();
+    expect(screen.queryByText('APP')).toBeNull();
+  });
+  it('no update -> no sync wait at all', async () => {
+    const api = { current: vi.fn(async () => '1.10.16'), check: vi.fn(async () => null), sync: vi.fn(), download: vi.fn(), install: vi.fn() };
+    render(wrap(<UpdateGate api={api} native>{<p>APP</p>}</UpdateGate>));
+    await waitFor(() => expect(api.check).toHaveBeenCalled());
+    expect(api.sync).not.toHaveBeenCalled();
+  });
+  it('getFirebase shares one init between callers', () => {
+    const src = readFileSync('src/firebase.js', 'utf8');
+    expect(src).toContain('let initing = null;');
+    expect(readFileSync('src/appUpdate.js', 'utf8')).toContain('waitForPendingWrites');
   });
 });

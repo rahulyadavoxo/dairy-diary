@@ -76,6 +76,24 @@ export async function checkForUpdate({ current, fetchImpl = globalThis.fetch, ti
   }
 }
 
+/**
+ * Resolves once every entry saved on this phone (also ones saved offline earlier) has reached
+ * the server. The Update screen is shown only after this (user, 15 Oct 2026), so nothing is
+ * left waiting on the phone when it updates. Never rejects.
+ */
+export async function waitForSync() {
+  try {
+    const { isFirebaseConfigured, getFirebase } = await import('./firebase.js');
+    if (!isFirebaseConfigured()) return;
+    const f = await getFirebase();
+    await f.fsMod.waitForPendingWrites(f.db);
+    // a second pass catches anything saved while the first batch was uploading
+    await f.fsMod.waitForPendingWrites(f.db);
+  } catch {
+    /* Firestore unavailable / terminated: nothing to wait for */
+  }
+}
+
 // ---- native bridge (wrapped: never hand the plugin proxy itself to await) ----
 
 export async function downloadUpdate(url, onPercent) {

@@ -3,9 +3,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { useLang } from '../i18n.js';
-import { checkForUpdate, installedVersion, downloadUpdate, installUpdate, CHECK_EVERY_MS } from '../appUpdate.js';
+import { checkForUpdate, installedVersion, downloadUpdate, installUpdate, waitForSync, CHECK_EVERY_MS } from '../appUpdate.js';
 
-const real = { check: checkForUpdate, current: installedVersion, download: downloadUpdate, install: installUpdate };
+const real = { check: checkForUpdate, current: installedVersion, download: downloadUpdate, install: installUpdate, sync: waitForSync };
 
 export default function UpdateGate({ children, api = real, native = Capacitor.isNativePlatform() }) {
   const { t } = useLang();
@@ -15,6 +15,7 @@ export default function UpdateGate({ children, api = real, native = Capacitor.is
   const [pct, setPct] = useState(0);
   const lastCheck = useRef(0);
   const downloaded = useRef(null); // version already downloaded
+  const syncing = useRef(false);
   const statusRef = useRef(status);
   statusRef.current = status;
 
@@ -25,7 +26,16 @@ export default function UpdateGate({ children, api = real, native = Capacitor.is
     if (!current) return;
     setCur(current);
     const u = await api.check({ current });
-    if (u) setUpd((old) => (old && old.version === u.version ? old : u));
+    if (!u || syncing.current) return;
+    // First let this phone's saved entries reach the server, THEN lock the app for the update.
+    // The app stays usable while that sync runs.
+    syncing.current = true;
+    try {
+      await api.sync();
+    } finally {
+      syncing.current = false;
+    }
+    setUpd((old) => (old && old.version === u.version ? old : u));
   };
 
   const install = async () => {

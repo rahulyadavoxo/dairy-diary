@@ -15,7 +15,20 @@ export function isFirebaseConfigured(cfg = firebaseConfig) {
 let cached = null;
 
 /** Lazily initialise Firebase (only called once config is real). */
-export async function getFirebase() {
+// One shared init even when two callers ask at once (App start + the update check).
+let initing = null;
+export function getFirebase() {
+  if (cached) return Promise.resolve(cached);
+  if (!initing) {
+    initing = initFirebase().catch((e) => {
+      initing = null;
+      throw e;
+    });
+  }
+  return initing;
+}
+
+async function initFirebase() {
   if (cached) return cached;
   const [{ initializeApp }, authMod, fsMod] = await Promise.all([
     import('firebase/app'),
