@@ -118,7 +118,10 @@ export function saveEntries(fb, date, rows, editorName, bases) {
   const entries = {};
   for (const [cid, e] of Object.entries(rows)) {
     const part = bases ? entryChanges(bases[cid], e) : e;
-    if (bases && !Object.keys(part).length) continue; // nothing changed for this customer
+    // Nothing changed for an entry that already exists: skip it. But a NEW all-zero entry
+    // (0 L / didn't take) must still be created - "entry exists, no milk" is what shows the ✕
+    // in the calendar and counts the customer as filled for the day (lock, Edit this day).
+    if (bases && !Object.keys(part).length && bases[cid]) continue;
     entries[cid] = { ...part, updatedBy: editorName, updatedAt: now };
   }
   if (!Object.keys(entries).length) return Promise.resolve();

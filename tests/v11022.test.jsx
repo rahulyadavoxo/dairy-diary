@@ -60,3 +60,29 @@ describe('1.10.22 release hardening', () => {
     expect(readFileSync('android/app/src/main/res/xml/file_paths.xml', 'utf8')).not.toContain('external-path');
   });
 });
+
+import { saveEntries } from '../src/db.js';
+describe('1.10.23 a new 0 L entry is still created (calendar ✕, day counts as filled)', () => {
+  const mk = () => {
+    const writes = [];
+    const fb = {
+      farmId: 'f',
+      db: {},
+      fsMod: {
+        doc: (...a) => a.slice(1).join('/'),
+        collection: (...a) => a.slice(1).join('/'),
+        setDoc: (ref, data) => (writes.push({ ref, data }), Promise.resolve()),
+      },
+    };
+    return { fb, writes };
+  };
+  it('new 0 L row -> entry written; unchanged existing row -> nothing written', () => {
+    const { fb, writes } = mk();
+    saveEntries(fb, '2026-10-07', { c1: { milkL: 0, milkMorningL: 0, milkEveningL: 0, skip: false, note: '' } }, 'x', {});
+    expect(writes.length).toBe(1);
+    expect(writes[0].data.entries.c1).toBeTruthy();
+    expect(writes[0].data.entries.c1.milkL).toBeUndefined(); // no quantity sent, so nothing of another phone is overwritten
+    saveEntries(fb, '2026-10-07', { c1: { milkL: 1 } }, 'x', { c1: { milkL: 1 } });
+    expect(writes.length).toBe(1);
+  });
+});
