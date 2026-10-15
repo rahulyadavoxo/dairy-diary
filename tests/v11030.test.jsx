@@ -56,7 +56,7 @@ describe('1.10.30 once-a-day customers and the evening box', () => {
     expect(dayComplete(half, mornOnly)).toBe(true);
     expect(dayComplete(half, both)).toBe(false);
     expect(initEvening(undefined, eveOnly)).toBe(1.25);
-    expect(initEvening(undefined, both)).toBe(null);
+    expect(initEvening(undefined, both)).toBe(1.5);
   });
   it('evening-only customer: evening box pre-filled, Delivered completes the day', () => {
     const fb = mkFb();
@@ -67,10 +67,16 @@ describe('1.10.30 once-a-day customers and the evening box', () => {
     expect(e.milkEveningL).toBe(1.25);
     expect(e.half).toBeFalsy();
   });
-  it('twice-a-day customer: empty evening box shows the usual number as hint', () => {
-    render(wrap(<Delivery {...props(mkFb(), [both])} />));
+  it('twice-a-day customer: evening box holds the usual number, editable; cleared = morning only', () => {
+    const fb = mkFb();
+    render(wrap(<Delivery {...props(fb, [both])} />));
+    expect(input('qty-evening').value).toBe('1.5');
+    fireEvent.change(input('qty-evening'), { target: { value: '2' } });
+    expect(input('qty-evening').value).toBe('2');
+    fireEvent.change(input('qty-evening'), { target: { value: '' } });
     expect(input('qty-evening').value).toBe('');
-    expect(input('qty-evening').placeholder).toBe('1.5');
+    tap(screen.getByText(en.delivered));
+    expect(lastEntry(fb, 'c1').half).toBe('morning');
   });
   it('As usual hides once morning or evening is edited', () => {
     render(wrap(<Delivery {...props(mkFb(), [both])} />));

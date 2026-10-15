@@ -186,9 +186,10 @@ describe('#4 morning and evening are separate rounds', () => {
     render(wrap(<Delivery {...deliProps(fb, { days })} />));
     expect(screen.getByText('Asha')).toBeTruthy();
     fireEvent.click(screen.getByText(en.asUsual, { selector: 'button' }));
-    // 1.10.27: As usual on the first visit is the morning only; the evening is still to come
+    // 1.10.31: the evening box is filled with the usual, so As usual saves the whole usual day
     const e = dayWrites(fb)[0].data.entries.c1;
-    expect([e.milkMorningL, e.milkL, e.half]).toEqual([1, 1, 'morning']);
+    expect([e.milkMorningL, e.milkL]).toEqual([1, 2]);
+    expect(e.half).toBeFalsy();
   });
   it('"Everyone\'s usual" is a toggle: on writes both rounds, off puts things back', () => {
     const fb = mkFb();

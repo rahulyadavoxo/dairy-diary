@@ -75,10 +75,11 @@ const tap = (el) => {
 
 const T = todayISO();
 describe('1.10.27 morning only stays incomplete', () => {
-  it('evening box starts empty; Delivered saves the morning only (half) and moves on', () => {
+  it('evening box (usual, 1.10.31) cleared = Delivered saves the morning only (half) and moves on', () => {
     const fb = mkFb();
     render(wrap(<Delivery {...props(fb)} />));
-    expect([val('qty-morning'), val('qty-evening')]).toEqual(['1', '']);
+    expect([val('qty-morning'), val('qty-evening')]).toEqual(['1', '1']);
+    fireEvent.change(box('qty-evening').querySelector('input'), { target: { value: '' } });
     tap(screen.getByText(en.delivered));
     const e = lastEntry(fb, 'c1');
     expect([e.milkMorningL, e.milkL, e.half]).toEqual([1, 1, 'morning']);
@@ -96,7 +97,7 @@ describe('1.10.27 morning only stays incomplete', () => {
     const fb = mkFb();
     const days = { [T]: { entries: { c1: { milkL: 1, milkMorningL: 1, milkEveningL: 0, half: 'morning' } } } };
     render(wrap(<Delivery {...props(fb, { days, customers: [c1] })} />));
-    expect([val('qty-morning'), val('qty-evening')]).toEqual(['1', '']);
+    expect([val('qty-morning'), val('qty-evening')]).toEqual(['1', '1']);
     tap(screen.getByText(en.asUsual, { selector: 'button' }));
     const e = { ...days[T].entries.c1, ...lastEntry(fb, 'c1') };
     expect([e.milkMorningL, e.milkEveningL, e.milkL, e.half]).toEqual([1, 1, 2, null]);

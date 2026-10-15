@@ -49,8 +49,9 @@ export function dayComplete(en, c) {
     customer who takes evening milk, 0 for one who doesn't. */
 export function initEvening(en, c) {
   if (en && !en.skip && en.half !== 'morning' && (Number(en.milkMorningL) > 0 || Number(en.milkEveningL) > 0)) return Number(en.milkEveningL) || 0;
-  // empty only for a twice-a-day customer; a once-a-day customer gets the usual (0 for morning-only)
-  return takesTwice(c) ? null : usualEvening(c);
+  // the usual evening, filled in and editable (user, 15 Oct 2026); clearing the box = evening not
+  // delivered yet (morning only, day stays incomplete for a twice-a-day customer)
+  return usualEvening(c);
 }
 
 const usualFor = (c, session) =>
@@ -93,7 +94,7 @@ function saveSkips(date, session, map) {
   }
 }
 
-function QtyEdit({ label, value, onChange, testId, placeholder }) {
+function QtyEdit({ label, value, onChange, testId, placeholder, allowEmpty }) {
   return (
     <label className="deli-qty" data-testid={testId}>
       {label}
@@ -109,7 +110,7 @@ function QtyEdit({ label, value, onChange, testId, placeholder }) {
           min="0"
           value={value == null ? '' : value}
           placeholder={placeholder}
-          onChange={(e) => onChange(e.target.value === '' && placeholder ? null : Math.max(0, toMilli(e.target.value) / 1000))}
+          onChange={(e) => onChange(e.target.value === '' && (placeholder || allowEmpty) ? null : Math.max(0, toMilli(e.target.value) / 1000))}
         />
         <button type="button" className="btn step" onClick={() => onChange(step(value, 250))}>
           +
@@ -204,7 +205,7 @@ function DeliveryCard({ c, initM, initE, initT, initPaneer, morningSaved, onDeli
         value={e}
         onChange={editE}
         testId="qty-evening"
-        placeholder={e == null ? fmtQty(usualEvening(c)) : undefined}
+        allowEmpty={takesTwice(c)}
       />
       <QtyEdit label={t('session_total')} value={tot} onChange={editT} testId="qty-total" />
       <p className="deli-total" data-testid="deli-total">

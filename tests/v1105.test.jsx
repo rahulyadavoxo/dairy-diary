@@ -174,7 +174,7 @@ describe('delivery screen layout and list', () => {
     const days = { [todayISO()]: { entries: { c1: { milkL: 1.5, milkMorningL: 1.5, milkEveningL: 0, half: 'morning' } } } };
     render(wrap(<Delivery {...props(fb, { days })} />));
     expect(screen.getByRole('heading', { level: 2 }).textContent).toContain('Asha');
-    expect([val('qty-morning'), val('qty-evening')]).toEqual(['1.5', '']);
+    expect([val('qty-morning'), val('qty-evening')]).toEqual(['1.5', '1']);
   });
   it('a paneer-only sale goes into history, so Back reaches it', () => {
     const fb = mkFb();
