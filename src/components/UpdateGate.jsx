@@ -1,13 +1,14 @@
 // Full-screen "Update" wall: shown when GitHub has a newer APK than the one installed.
 // The app can't be used until the new APK is installed (user, 15 Oct 2026).
+// Checked on start, on resume (30 min throttle), every 10 min while open, and when internet returns.
 import { useEffect, useRef, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { useLang } from '../i18n.js';
-import { checkForUpdate, installedVersion, downloadUpdate, installUpdate, waitForSync, CHECK_EVERY_MS } from '../appUpdate.js';
+import { checkForUpdate, installedVersion, downloadUpdate, installUpdate, waitForSync, CHECK_EVERY_MS, POLL_WHILE_OPEN_MS } from '../appUpdate.js';
 
 const real = { check: checkForUpdate, current: installedVersion, download: downloadUpdate, install: installUpdate, sync: waitForSync };
 
-export default function UpdateGate({ children, api = real, native = Capacitor.isNativePlatform() }) {
+export default function UpdateGate({ children, api = real, native = Capacitor.isNativePlatform(), pollMs = POLL_WHILE_OPEN_MS }) {
   const { t } = useLang();
   const [cur, setCur] = useState(null);
   const [upd, setUpd] = useState(null); // { version, url }
@@ -68,7 +69,7 @@ export default function UpdateGate({ children, api = real, native = Capacitor.is
 
   useEffect(() => {
     if (!native) return undefined;
-    run(true);
+    run(true).catch(() => {});
     let sub = null;
     let alive = true;
     import('@capacitor/app')
@@ -85,8 +86,19 @@ export default function UpdateGate({ children, api = real, native = Capacitor.is
         else if (s && s.remove) s.remove();
       })
       .catch(() => {});
+    // App open and in use: check again every few minutes, and as soon as internet comes back.
+    const visible = () => typeof document === 'undefined' || document.visibilityState !== 'hidden';
+    const tick = setInterval(() => {
+      if (visible() && statusRef.current === 'idle') run(true).catch(() => {});
+    }, pollMs);
+    const onOnline = () => {
+      if (visible()) run(true).catch(() => {});
+    };
+    window.addEventListener('online', onOnline);
     return () => {
       alive = false;
+      clearInterval(tick);
+      window.removeEventListener('online', onOnline);
       if (sub && sub.remove) sub.remove();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

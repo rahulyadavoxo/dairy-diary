@@ -125,9 +125,7 @@ export default function CustomerDetail({ fb, customers, days, payments, settings
         </div>
       )}
       <header className="screen-head">
-        <button className="btn small ghost" onClick={onBack}>
-          ← {t('back')}
-        </button>
+        {/* No on-screen Back here (user, 15 Oct): phone Back or the tab bar closes this page. */}
         <h1>{customer.name}</h1>
         <p className="muted small">{[customer.area, customer.phone].filter(Boolean).join(' · ')}</p>
         <MonthNav month={month} setMonth={setMonth} minMonth={firstDeliveryMonth(days)} />

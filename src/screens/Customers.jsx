@@ -131,17 +131,14 @@ export default function Customers({ fb, customers, settings, openCustomer }) {
         </div>
       </header>
       <StickySearch>
-        <div className="search-wrap">
-          <span className="search-icon" aria-hidden="true">🔍</span>
-          <input
-            className="search"
-            type="search"
-            placeholder={t('search')}
-            aria-label={t('search')}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
-        </div>
+        <input
+          className="search"
+          type="search"
+          placeholder={t('search')}
+          aria-label={t('search')}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
       </StickySearch>
       <p className="muted small">{searching ? t('routeOrderSearch') : `${t('routeOrder')}: ▲ / ▼`}</p>
       {selecting && selectedIds.length > 0 && (

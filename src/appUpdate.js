@@ -1,5 +1,5 @@
 // Forced in-app update (1.10.16).
-// On start (and when the app comes back to the front, at most every 30 min) the app asks GitHub
+// On start (when the app comes back to the front, at most every 30 min; every 10 min while open; when internet returns) the app asks GitHub
 // for the latest release. When its version is newer than this APK and the release already carries
 // the APK file, the whole app is replaced by an Update screen: the APK downloads inside the app and
 // Android's installer opens. Offline / GitHub unreachable -> the app keeps working (never stuck on
@@ -9,6 +9,9 @@ import { Capacitor, registerPlugin } from '@capacitor/core';
 export const REPO = 'rahulyadavoxo/dairy-diary';
 export const LATEST_URL = `https://api.github.com/repos/${REPO}/releases/latest`;
 export const CHECK_EVERY_MS = 30 * 60 * 1000;
+// While the app is open on screen it also re-checks by itself, so a new release is caught
+// without restarting the app (user, 15 Oct 2026). 10 min = 6 calls/hour, well under GitHub's 60/hour.
+export const POLL_WHILE_OPEN_MS = 10 * 60 * 1000;
 
 const ApkUpdater = registerPlugin('ApkUpdater');
 

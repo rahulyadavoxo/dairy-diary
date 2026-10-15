@@ -48,6 +48,15 @@ describe('small helpers', () => {
 const wrap = (ui) => <LangContext.Provider value={{ lang: 'en', t: makeT('en'), setLang: () => {} }}>{ui}</LangContext.Provider>;
 
 describe('BUG-02/03 Rules of Hooks crashes', () => {
+  it('CustomerDetail has no on-screen Back button (phone Back / tab bar close it)', () => {
+    cleanup();
+    const c = { id: 'c1', name: 'Ram' };
+    const props = { fb: {}, days: {}, payments: [], settings, displayName: 'x', customerId: 'c1', month: '2026-10', setMonth: () => {}, onBack: () => {} };
+    const r = render(wrap(<CustomerDetail {...props} customers={[c]} />));
+    expect(r.getByText('Ram')).toBeTruthy();
+    expect(r.container.querySelector('.screen-head').textContent).not.toMatch(/←/);
+  });
+
   it('CustomerDetail survives the customer disappearing and coming back', () => {
     cleanup();
     const c = { id: 'c1', name: 'Ram' };
