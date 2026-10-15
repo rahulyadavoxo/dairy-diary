@@ -318,6 +318,30 @@ describe('#5 any past day can be edited from Register', () => {
     });
     expect(screen.queryByTestId('day-editor')).toBeNull();
   });
+  it('1.10.24: today is never edited from the calendar; a wrong entry today can only be removed', () => {
+    const fb = mkFb();
+    const T = todayISO();
+    const alert = vi.spyOn(window, 'alert').mockImplementation(() => {});
+    const conf = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const { unmount } = render(wrap(<RegisterView {...regProps(fb, { days: { ...oldDays(), [T]: { entries: { c1: { milkL: 0, skip: true } } } } })} />));
+    fireEvent.click(screen.getByText(/Asha/));
+    fireEvent.click(screen.getByRole('switch', { name: en.calEditToggle }));
+    fireEvent.click(screen.getByLabelText(dmy(T), { selector: 'button.cal-cell' }));
+    expect(screen.queryByTestId('day-editor')).toBeNull();
+    expect(conf).toHaveBeenCalled();
+    const w = fb.writes.at(-1);
+    expect(w.update && w.data['entries.c1']).toBe('DEL');
+    unmount();
+    // no entry today -> only a hint, nothing written, no editor
+    const fb2 = mkFb();
+    render(wrap(<RegisterView {...regProps(fb2)} />));
+    fireEvent.click(screen.getByText(/Asha/));
+    fireEvent.click(screen.getByRole('switch', { name: en.calEditToggle }));
+    fireEvent.click(screen.getByLabelText(dmy(T), { selector: 'button.cal-cell' }));
+    expect(alert).toHaveBeenCalledWith(en.calTodayNoEdit);
+    expect(screen.queryByTestId('day-editor')).toBeNull();
+    expect(fb2.writes.length).toBe(0);
+  });
   it('future dates in the calendar are not editable', () => {
     render(wrap(<RegisterView {...regProps(mkFb())} />));
     fireEvent.click(screen.getByText(/Asha/));

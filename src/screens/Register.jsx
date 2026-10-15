@@ -5,7 +5,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { saveFeedback } from '../feedback.js';
 import { useLang } from '../i18n.js';
-import { saveEntries } from '../db.js';
+import { saveEntries, deleteEntry } from '../db.js';
 import { toMilli } from '../billing.js';
 import { normaliseEntry, usualMorning, usualEvening } from '../entry.js';
 import { addDays, dmy, fmtQty, timeHM, todayISO } from '../format.js';
@@ -353,6 +353,23 @@ export default function DayEditor({ fb, customers, days, pendingDays = {}, setti
 
       <div className="savebar">
         <span className="small">{flash || (unsavedCount ? `${t('notSavedYet')}: ${unsavedCount}` : t('saved'))}</span>
+        {only && saved[only.id] && (
+          <button
+            type="button"
+            className="btn danger"
+            onClick={() => {
+              if (!window.confirm(t('confirmClearEntry').replace('{name}', only.name).replace('{date}', dmy(date, lang)))) return;
+              dirty.current = {};
+              delete bases.current[only.id];
+              clearTimeout(timer.current);
+              setDrafts({});
+              deleteEntry(fb, date, only.id, displayName);
+              saveFeedback(true);
+            }}
+          >
+            {t('clearEntry')}
+          </button>
+        )}
         <button className="btn primary big" onClick={saveAll} disabled={!active.length}>
           {only ? t('save') : t('saveAll')}
         </button>

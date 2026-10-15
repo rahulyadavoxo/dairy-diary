@@ -11,6 +11,7 @@ import { pushBackHandler } from '../backStack.js';
 import { useScrollKeep } from '../scrollKeep.js';
 import { lockedBy, ringTimes } from '../reminders.js';
 import { saveFeedback } from '../feedback.js';
+import { deleteEntry } from '../db.js';
 import StickySearch from '../components/StickySearch.jsx';
 
 export { sortCustomers, isPaused };
@@ -39,7 +40,7 @@ export function isRecordedGap(days, cid, iso) {
 }
 
 /** Calendar modal: month grid with each day's milk for one customer (read-only). */
-function CalendarModal({ customer, days, onClose, onEditDay }) {
+function CalendarModal({ customer, days, onClose, onEditDay, onClearDay }) {
   const { t, lang } = useLang();
   const now = todayISO();
   const [ym, setYm] = useState(now.slice(0, 7)); // "2026-10"
@@ -106,7 +107,15 @@ function CalendarModal({ customer, days, onClose, onEditDay }) {
                 key={i}
                 disabled={c.iso > now}
                 onClick={() => {
-                  if (editOn) onEditDay(c.iso);
+                  if (!editOn) return;
+                  // Today is filled from Delivery / the Register list, never from the calendar
+                  // (user, 15 Oct 2026). Only a wrong entry made today can be removed here.
+                  if (c.iso === now) {
+                    if (!entryOn(days, customer.id, c.iso)) return window.alert(t('calTodayNoEdit'));
+                    if (window.confirm(t('confirmClearEntry').replace('{name}', customer.name).replace('{date}', dmy(c.iso, lang)))) onClearDay(c.iso);
+                    return;
+                  }
+                  onEditDay(c.iso);
                 }}
                 aria-label={dmy(c.iso, lang)}
                 className={'cal-cell' + (c.iso === now ? ' today' : '') + (c.milk > 0 ? ' has' : '') + (editOn ? ' editable' : '')}
@@ -370,9 +379,13 @@ export default function RegisterView({ fb, customers, days, daysLive = true, pen
           days={days}
           onClose={() => setCalId(null)}
           onEditDay={(iso) => {
-            if (lockAll && iso === todayISO()) return; // fill yesterday first
+            if (iso >= todayISO()) return; // today is never edited from the calendar
             setCalId(null);
             setEditing({ date: iso, customerId: calCustomer.id });
+          }}
+          onClearDay={(iso) => {
+            deleteEntry(fb, iso, calCustomer.id, displayName);
+            saveFeedback(true);
           }}
         />
       )}
