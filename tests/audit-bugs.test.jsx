@@ -164,3 +164,33 @@ describe('1.10.28: editing a customer saves a changed old due / special rates', 
     expect(custWrites(fb).at(-1).data.openingDuePaise).toBe(35000);
   });
 });
+
+describe('1.10.29: old advance in the customer profile', () => {
+  const custWrites = (fb) => fb.writes.filter((w) => w.path.includes('customers/'));
+  const field = (label) => screen.getByText(label, { exact: false }).closest('label').querySelector('input');
+  it('Advance switch saves the old amount as negative (advance)', () => {
+    const fb = mkFb();
+    render(wrap(<CustomerForm fb={fb} initial={{ ...c1, openingDuePaise: 0 }} nextOrder={30} settings={settings} onDone={() => {}} />));
+    fireEvent.change(field(en.openingDue), { target: { value: '300' } });
+    fireEvent.click(screen.getByTestId('opening-adv'));
+    fireEvent.click(screen.getByText(en.save, { selector: 'button' }));
+    expect(custWrites(fb).at(-1).data.openingDuePaise).toBe(-30000);
+  });
+  it('an advance opens as a positive amount with Advance selected; switching to Due flips it', () => {
+    const fb = mkFb();
+    render(wrap(<CustomerForm fb={fb} initial={{ ...c1, openingDuePaise: -30000 }} nextOrder={30} settings={settings} onDone={() => {}} />));
+    expect(field(en.openingDue).value).toBe('300');
+    expect(screen.getByTestId('opening-adv').getAttribute('aria-checked')).toBe('true');
+    fireEvent.click(screen.getByTestId('opening-due'));
+    fireEvent.click(screen.getByText(en.save, { selector: 'button' }));
+    expect(custWrites(fb).at(-1).data.openingDuePaise).toBe(30000);
+  });
+  it('old advance lowers the balance; bill text says Previous advance', async () => {
+    const res = computeMonth({ customers: [{ ...c1, openingDuePaise: -30000 }], days: {}, payments: [], settings, month: '2026-10' });
+    expect(res.rows[0].balancePaise).toBe(-30000);
+    const { billText } = await import('../src/bill.js');
+    const txt = billText(res.rows[0], '2026-10', settings);
+    expect(txt).toContain('Previous advance');
+    expect(txt).toContain('Advance: ₹300');
+  });
+});

@@ -148,8 +148,8 @@ export default function CustomerDetail({ fb, customers, days, payments, settings
           </div>
         )}
         <div className="kv">
-          <span>{t('previousDue')}</span>
-          <b>{rupees(row.previousDuePaise)}</b>
+          <span>{row.previousDuePaise < 0 ? t('previousAdvance') : t('previousDue')}</span>
+          <b>{rupees(Math.abs(row.previousDuePaise))}</b>
         </div>
         <div className="kv">
           <span>{t('paidThisMonth')}</span>

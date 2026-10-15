@@ -179,7 +179,8 @@ export function renderBillImage(row, month, settings = {}) {
     // separators sit midway between two rows (y - 30 touched the next row's text)
     line(g, 60, y - 46, W - 60, y - 46);
     srow('इस महीने / This month', rupees(row.billedPaise), { bold: true });
-    if (row.previousDuePaise !== 0) srow('पिछला बाकी / Previous', rupees(row.previousDuePaise), { dim: true });
+    if (row.previousDuePaise > 0) srow('पिछला बाकी / Previous', rupees(row.previousDuePaise), { dim: true });
+    if (row.previousDuePaise < 0) srow('पिछला एडवांस / Advance', rupees(-row.previousDuePaise), { dim: true });
     if (row.paidPaise !== 0) srow('जमा / Paid', rupees(row.paidPaise), { dim: true });
     line(g, 60, y - 46, W - 60, y - 46, GREEN, 4);
     y += 16;

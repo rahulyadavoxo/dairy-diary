@@ -241,7 +241,9 @@ export default function Hisaab({ fb, customers, days, payments, settings, month,
             <button className="row hisaab-row" onClick={() => openCustomer(r.customerId)}>
               <div className="row-top">
                 <b>{r.customer.name}</b>
-                <b className={masked ? 'muted' : r.balancePaise > 0 ? 'due' : 'clear'}>{money(r.balancePaise)}</b>
+                <b className={masked ? 'muted' : r.balancePaise > 0 ? 'due' : 'clear'} data-testid="row-balance">
+                  {r.balancePaise < 0 ? `${t('advance')} ${money(-r.balancePaise)}` : money(r.balancePaise)}
+                </b>
               </div>
               <div className="grid-4 small">
                 <span>
@@ -264,9 +266,9 @@ export default function Hisaab({ fb, customers, days, payments, settings, month,
                   </b>
                 </span>
                 <span>
-                  {t('previousDue')}
+                  {r.previousDuePaise < 0 ? t('previousAdvance') : t('previousDue')}
                   <br />
-                  <b>{money(r.previousDuePaise)}</b>
+                  <b>{money(Math.abs(r.previousDuePaise))}</b>
                 </span>
                 <span>
                   {t('paidThisMonth')}
@@ -274,9 +276,9 @@ export default function Hisaab({ fb, customers, days, payments, settings, month,
                   <b>{money(r.paidPaise)}</b>
                 </span>
                 <span>
-                  {t('balanceDue')}
+                  {r.balancePaise < 0 ? t('advance') : t('balanceDue')}
                   <br />
-                  <b>{money(r.balancePaise)}</b>
+                  <b className={r.balancePaise < 0 ? 'clear' : ''}>{money(Math.abs(r.balancePaise))}</b>
                 </span>
               </div>
             </button>

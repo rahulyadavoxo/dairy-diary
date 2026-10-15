@@ -28,7 +28,7 @@ function storeLastEdited(id) {
   }
 }
 
-const EMPTY = { name: '', phone: '', area: '', usualMorningL: 0.5, usualEveningL: 0.5, customRate: false, rateOverride: '', customPaneerRate: false, paneerRateOverride: '', openingDue: '', pauseFrom: '', pauseTo: '', active: true, isSupplier: false };
+const EMPTY = { name: '', phone: '', area: '', usualMorningL: 0.5, usualEveningL: 0.5, customRate: false, rateOverride: '', customPaneerRate: false, paneerRateOverride: '', openingDue: '', openingAdv: false, pauseFrom: '', pauseTo: '', active: true, isSupplier: false };
 
 const round3 = (n) => Math.max(0, Math.round(Number(n || 0) * 1000) / 1000);
 
@@ -235,7 +235,9 @@ export function CustomerForm({ fb, initial, nextOrder, onDone }) {
           rateOverride: paiseToInput(initial.rateOverridePaise),
           customPaneerRate: Number.isInteger(initial.paneerRateOverridePaise) && initial.paneerRateOverridePaise > 0,
           paneerRateOverride: paiseToInput(initial.paneerRateOverridePaise),
-          openingDue: paiseToInput(initial.openingDuePaise || ''),
+          // shown as a positive amount; the Due / Advance switch gives the sign (advance = negative)
+          openingDue: paiseToInput(initial.openingDuePaise ? Math.abs(initial.openingDuePaise) : ''),
+          openingAdv: (initial.openingDuePaise || 0) < 0,
           pauseFrom: initial.pauseFrom || '',
           pauseTo: initial.pauseTo || '',
           active: initial.active !== false,
@@ -314,7 +316,7 @@ export function CustomerForm({ fb, initial, nextOrder, onDone }) {
       usualL: round3(round3(f.usualMorningL) + round3(f.usualEveningL)),
       rateOverridePaise: f.customRate ? toPaise(f.rateOverride) : null,
       paneerRateOverridePaise: f.customPaneerRate ? toPaise(f.paneerRateOverride) : null,
-      openingDuePaise: toPaise(f.openingDue) || 0,
+      openingDuePaise: Math.abs(toPaise(f.openingDue) || 0) * (f.openingAdv ? -1 : 1),
       pauseFrom: f.pauseFrom || '',
       pauseTo: f.pauseTo || '',
       active: !!f.active,
@@ -425,8 +427,16 @@ export function CustomerForm({ fb, initial, nextOrder, onDone }) {
       )}
       <label>
         {t('openingDue')}
-        <input type="number" inputMode="decimal" step="any" value={f.openingDue} onChange={set('openingDue')} />
+        <input type="number" inputMode="decimal" min="0" step="any" value={f.openingDue} onChange={set('openingDue')} />
       </label>
+      <div className="seg-row" role="radiogroup">
+        <button type="button" role="radio" aria-checked={!f.openingAdv} data-testid="opening-due" className={'btn small' + (!f.openingAdv ? ' primary' : '')} onClick={() => setF({ ...f, openingAdv: false })}>
+          {t('openingIsDue')}
+        </button>
+        <button type="button" role="radio" aria-checked={!!f.openingAdv} data-testid="opening-adv" className={'btn small' + (f.openingAdv ? ' primary' : '')} onClick={() => setF({ ...f, openingAdv: true })}>
+          {t('advance')}
+        </button>
+      </div>
       <div className="two">
         <label>
           {t('pauseFrom')}

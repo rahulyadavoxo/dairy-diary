@@ -56,6 +56,7 @@ label.check input { width: 24px; min-height: 24px; }
 .btn:disabled { opacity: 0.4; }
 .btn.primary { background: var(--green); color: #fff; border-color: var(--green); font-weight: 700; }
 .btn.big { min-height: 54px; font-size: 1.05rem; width: 100%; }
+.seg-row { display: flex; gap: 0.5rem; margin: 0 0 0.7rem; }
 .btn.small { min-height: 40px; font-size: 0.9rem; padding: 0.3rem 0.7rem; }
 .btn.ghost { background: transparent; }
 .btn.danger { color: var(--red); border-color: var(--red); background: #fff; }
