@@ -8,7 +8,7 @@ import PaneerGrams from '../components/PaneerGrams.jsx';
 import { useLang } from '../i18n.js';
 import { saveEntries, deleteEntry } from '../db.js';
 import { playSound } from '../feedback.js';
-import { normaliseEntry } from '../entry.js';
+import { normaliseEntry, takesTwice } from '../entry.js';
 import { sortCustomers, isPaused } from './Register.jsx';
 import { usualMorning, usualEvening } from './Customers.jsx';
 import { todayISO, fmtQty } from '../format.js';
@@ -36,7 +36,8 @@ export function deliveredFor(en, session) {
     total-only entry. A morning entered in the Register keeps the customer on the list for evening. */
 export function dayComplete(en, c) {
   if (!en || en.skip) return false;
-  if (en.half) return false; // only the morning saved so far: comes back for the evening
+  // only the morning saved so far: comes back for the evening (not for a once-a-day customer)
+  if (en.half && takesTwice(c)) return false;
   const m = Number(en.milkMorningL) || 0;
   const e = Number(en.milkEveningL) || 0;
   if (m <= 0 && e <= 0) return (Number(en.milkL) || 0) > 0;
@@ -48,7 +49,8 @@ export function dayComplete(en, c) {
     customer who takes evening milk, 0 for one who doesn't. */
 export function initEvening(en, c) {
   if (en && !en.skip && en.half !== 'morning' && (Number(en.milkMorningL) > 0 || Number(en.milkEveningL) > 0)) return Number(en.milkEveningL) || 0;
-  return usualEvening(c) > 0 ? null : 0;
+  // empty only for a twice-a-day customer; a once-a-day customer gets the usual (0 for morning-only)
+  return takesTwice(c) ? null : usualEvening(c);
 }
 
 const usualFor = (c, session) =>
@@ -148,13 +150,17 @@ function DeliveryCard({ c, initM, initE, initT, initPaneer, morningSaved, onDeli
   const [paneerOn, setPaneerOn] = useState(initPaneer > 0);
   const [paneer, setPaneer] = useState(initPaneer);
   const pp = paneerOn ? paneer : 0;
+  // Once morning or evening is changed by hand, "As usual" is hidden: Delivered saves what's typed.
+  const [edited, setEdited] = useState(false);
   const editM = (v) => {
     setM(v);
     setTot(0);
+    setEdited(true);
   };
   const editE = (v) => {
     setE(v);
     setTot(0);
+    setEdited(true);
   };
   const editT = (v) => {
     setTot(v);
@@ -198,7 +204,7 @@ function DeliveryCard({ c, initM, initE, initT, initPaneer, morningSaved, onDeli
         value={e}
         onChange={editE}
         testId="qty-evening"
-        placeholder={e == null ? t('asUsual') + ': ' + fmtQty(usualEvening(c)) : undefined}
+        placeholder={e == null ? fmtQty(usualEvening(c)) : undefined}
       />
       <QtyEdit label={t('session_total')} value={tot} onChange={editT} testId="qty-total" />
       <p className="deli-total" data-testid="deli-total">
@@ -206,9 +212,11 @@ function DeliveryCard({ c, initM, initE, initT, initPaneer, morningSaved, onDeli
         <span className="muted small"> · {t('asUsual')}: {fmtQty(usual)} {t('litre')}</span>
       </p>
       <div className="form-actions">
-        <button type="button" className="btn big" onClick={asUsual}>
-          {t('asUsual')}
-        </button>
+        {!edited && (
+          <button type="button" className="btn big" onClick={asUsual} data-testid="as-usual-btn">
+            {t('asUsual')}
+          </button>
+        )}
         <button type="button" className="btn primary big" onClick={deliverNow}>
           {t('delivered')}
         </button>
@@ -471,7 +479,7 @@ function DeliveryRound({ fb, customers, days, settings, displayName, onBack, ses
             c={current}
             initM={review ? review.m || 0 : Number(saved[current.id]?.milkMorningL) || usualMorning(current)}
             initE={review ? review.e ?? null : initEvening(saved[current.id], current)}
-            morningSaved={!review && !!saved[current.id] && saved[current.id].half === 'morning'}
+            morningSaved={!review && !!saved[current.id] && saved[current.id].half === 'morning' && takesTwice(current)}
             initT={review && !((review.m || 0) + (review.e || 0)) ? review.total || 0 : 0}
             initPaneer={review ? review.p || 0 : Number(saved[current.id]?.paneerKg) || 0}
             onDelivered={guarded((raw, kind) => {

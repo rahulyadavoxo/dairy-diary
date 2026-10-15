@@ -1,7 +1,7 @@
 {
   "name": "dairy-diary",
   "private": true,
-  "version": "1.10.29",
+  "version": "1.10.30",
   "type": "module",
   "scripts": {
     "dev": "vite",

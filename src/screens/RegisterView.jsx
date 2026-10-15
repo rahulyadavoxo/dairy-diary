@@ -204,7 +204,7 @@ export default function RegisterView({ fb, customers, days, daysLive = true, pen
   // (user, 15 Oct 2026). Until then a tap only explains why.
   const dueToday = active.filter((c) => !isPaused(c, date));
   // A morning-only Delivery save (evening still to come) does not count as filled.
-  const doneFor = (c) => entryComplete(day && day.entries && day.entries[c.id]);
+  const doneFor = (c) => entryComplete(day && day.entries && day.entries[c.id], c);
   const allDone = dueToday.length > 0 && dueToday.every(doneFor);
   const pendingCount = dueToday.filter((c) => !doneFor(c)).length;
   const editDayOk = allDone && !lockDay;
@@ -349,7 +349,7 @@ export default function RegisterView({ fb, customers, days, daysLive = true, pen
                     <b>{num}. {c.name}</b>
                     {c.area && <span className="muted small"> · {c.area}</span>}
                     {isPaused(c, date) && <span className="tag">{t('paused')}</span>}
-                    {en && en.half === 'morning' && <span className="tag" data-testid="eve-pending">{t('eveningPending')}</span>}
+                    {en && en.half === 'morning' && !entryComplete(en, c) && <span className="tag" data-testid="eve-pending">{t('eveningPending')}</span>}
                     {c.isSupplier && <span className="tag supplier-tag">🏷️ {t('supplier')}</span>}
                   </div>
                   <span className="muted small">{fmtQty(milkOn(days, c.id, date))} {t('litre')}</span>

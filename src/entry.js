@@ -40,10 +40,20 @@ const round3 = (n) => Math.max(0, Math.round(Number(n || 0) * 1000) / 1000);
 // and the legacy usualL fallback was never used.
 const isSet = (v) => v !== null && v !== undefined && v !== '' && Number.isFinite(Number(v));
 
+/** Does this customer usually take milk both morning and evening? A customer who takes milk
+    only once a day never has an "evening left" (user, 15 Oct 2026). */
+export function takesTwice(c) {
+  return !!c && usualMorning(c) > 0 && usualEvening(c) > 0;
+}
+
 /** Is this customer's day fully recorded? Morning + evening (or a total, or Absent / 0 L).
-    A morning-only save from Delivery (half: 'morning') is not complete yet. */
-export function entryComplete(en) {
-  return !!en && !en.half;
+    A morning-only save from Delivery (half: 'morning') is not complete yet, unless the customer
+    takes milk only once a day (pass the customer) and some milk was recorded. */
+export function entryComplete(en, c) {
+  if (!en) return false;
+  if (!en.half) return true;
+  if (c && !takesTwice(c)) return (Number(en.milkMorningL) || 0) + (Number(en.milkEveningL) || 0) + (Number(en.milkL) || 0) > 0;
+  return false;
 }
 
 /** Usual morning litres for a customer (falls back to half of legacy usualL). */
