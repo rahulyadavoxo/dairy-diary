@@ -29,6 +29,9 @@ export function normaliseEntry(customer, raw, settings) {
     note: raw.note || '',
     milkRatePaise: mr > 0 ? mr : null,
     paneerRatePaise: pr > 0 ? pr : null,
+    // 'morning' = only the morning is recorded so far (evening still to come): the day is NOT
+    // complete yet (Edit this day count, Delivery list). null = the whole day is recorded.
+    half: raw.half === 'morning' || raw.half === 'evening' ? raw.half : null,
   };
 }
 
@@ -36,6 +39,12 @@ const round3 = (n) => Math.max(0, Math.round(Number(n || 0) * 1000) / 1000);
 // Number(null) and Number('') are 0 (finite), so a null/empty field used to count as "set to 0"
 // and the legacy usualL fallback was never used.
 const isSet = (v) => v !== null && v !== undefined && v !== '' && Number.isFinite(Number(v));
+
+/** Is this customer's day fully recorded? Morning + evening (or a total, or Absent / 0 L).
+    A morning-only save from Delivery (half: 'morning') is not complete yet. */
+export function entryComplete(en) {
+  return !!en && !en.half;
+}
 
 /** Usual morning litres for a customer (falls back to half of legacy usualL). */
 export function usualMorning(c) {

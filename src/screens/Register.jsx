@@ -87,7 +87,8 @@ export default function DayEditor({ fb, customers, days, pendingDays = {}, setti
 
   const rowFor = (c) => drafts[c.id] || saved[c.id] || defaultRow(c, date);
 
-  const normalise = (c, r, st) => normaliseEntry(c, r, st);
+  // Saving here records the whole day, so a morning-only Delivery save becomes complete.
+  const normalise = (c, r, st) => normaliseEntry(c, { ...r, half: null }, st);
 
   ctx.current = { date, displayName, byId, settings, saved };
 

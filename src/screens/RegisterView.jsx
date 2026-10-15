@@ -12,6 +12,7 @@ import { useScrollKeep } from '../scrollKeep.js';
 import { lockedBy, ringTimes } from '../reminders.js';
 import { saveFeedback } from '../feedback.js';
 import { deleteEntry } from '../db.js';
+import { entryComplete } from '../entry.js';
 import StickySearch from '../components/StickySearch.jsx';
 
 export { sortCustomers, isPaused };
@@ -202,8 +203,10 @@ export default function RegisterView({ fb, customers, days, daysLive = true, pen
   // "Edit this day" opens only once EVERY customer due that day (active, not paused) has an entry
   // (user, 15 Oct 2026). Until then a tap only explains why.
   const dueToday = active.filter((c) => !isPaused(c, date));
-  const allDone = dueToday.length > 0 && dueToday.every((c) => !!(day && day.entries && day.entries[c.id]));
-  const pendingCount = dueToday.filter((c) => !(day && day.entries && day.entries[c.id])).length;
+  // A morning-only Delivery save (evening still to come) does not count as filled.
+  const doneFor = (c) => entryComplete(day && day.entries && day.entries[c.id]);
+  const allDone = dueToday.length > 0 && dueToday.every(doneFor);
+  const pendingCount = dueToday.filter((c) => !doneFor(c)).length;
   const editDayOk = allDone && !lockDay;
   const [editMsg, setEditMsg] = useState('');
   useEffect(() => setEditMsg(''), [date]);
@@ -346,6 +349,7 @@ export default function RegisterView({ fb, customers, days, daysLive = true, pen
                     <b>{num}. {c.name}</b>
                     {c.area && <span className="muted small"> · {c.area}</span>}
                     {isPaused(c, date) && <span className="tag">{t('paused')}</span>}
+                    {en && en.half === 'morning' && <span className="tag" data-testid="eve-pending">{t('eveningPending')}</span>}
                     {c.isSupplier && <span className="tag supplier-tag">🏷️ {t('supplier')}</span>}
                   </div>
                   <span className="muted small">{fmtQty(milkOn(days, c.id, date))} {t('litre')}</span>

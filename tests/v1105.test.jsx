@@ -109,7 +109,8 @@ describe('delivery card: Total box', () => {
   it('morning/evening +/- (no Total) adds both', () => {
     const fb = mkFb();
     render(wrap(<Delivery {...props(fb)} />));
-    minus('qty-evening'); // 1 -> 0.75
+    // 1.10.27: the evening box starts empty (evening not delivered yet); fill it in
+    fireEvent.change(box('qty-evening').querySelector('input'), { target: { value: '0.75' } });
     expect(screen.getByTestId('deli-total').textContent).toContain('1.75');
     tap(screen.getByText(en.delivered));
     const e = lastEntry(fb, 'c1');
@@ -163,14 +164,17 @@ describe('delivery screen layout and list', () => {
     expect(screen.getByRole('heading', { level: 2 }).textContent).toContain('Bablu');
   });
   it('a morning entered in the Register keeps the customer on the round for the evening', () => {
-    expect(dayComplete({ milkL: 1, milkMorningL: 1, milkEveningL: 0 }, c1)).toBe(false);
+    // 1.10.27: a saved split counts as the whole day (evening 0 = no evening milk); only a
+    // morning-only Delivery save (half: 'morning') keeps the customer for the evening.
+    expect(dayComplete({ milkL: 1, milkMorningL: 1, milkEveningL: 0 }, c1)).toBe(true);
+    expect(dayComplete({ milkL: 1, milkMorningL: 1, milkEveningL: 0, half: 'morning' }, c1)).toBe(false);
     expect(dayComplete({ milkL: 1, milkMorningL: 1, milkEveningL: 0 }, c2)).toBe(true);
     expect(dayComplete({ milkL: 2, milkMorningL: 0, milkEveningL: 0 }, c1)).toBe(true);
     const fb = mkFb();
-    const days = { [todayISO()]: { entries: { c1: { milkL: 1.5, milkMorningL: 1.5, milkEveningL: 0 } } } };
+    const days = { [todayISO()]: { entries: { c1: { milkL: 1.5, milkMorningL: 1.5, milkEveningL: 0, half: 'morning' } } } };
     render(wrap(<Delivery {...props(fb, { days })} />));
     expect(screen.getByRole('heading', { level: 2 }).textContent).toContain('Asha');
-    expect([val('qty-morning'), val('qty-evening')]).toEqual(['1.5', '1']);
+    expect([val('qty-morning'), val('qty-evening')]).toEqual(['1.5', '']);
   });
   it('a paneer-only sale goes into history, so Back reaches it', () => {
     const fb = mkFb();

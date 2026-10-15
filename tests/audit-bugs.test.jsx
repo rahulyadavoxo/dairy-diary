@@ -88,7 +88,7 @@ describe('BUG 3 (Medium): "Everyone\'s usual" overwrites a morning already recor
     vi.spyOn(Date, 'now').mockImplementation(() => (now += TAP_GUARD_MS + 1));
     const T = todayISO();
     // morning 1.5 L recorded in the Register; evening not yet -> c1 still on the round
-    const days = { [T]: { entries: { c1: { milkL: 1.5, milkMorningL: 1.5, milkEveningL: 0, paneerKg: 0, skip: false, note: '' } } } };
+    const days = { [T]: { entries: { c1: { milkL: 1.5, milkMorningL: 1.5, milkEveningL: 0, paneerKg: 0, skip: false, note: '', half: 'morning' } } } };
     render(wrap(<Delivery fb={fb} customers={[c1, c2]} days={days} settings={settings} displayName="x" onBack={() => {}} />));
     fireEvent.click(screen.getByTestId('all-usual-toggle'));
     const e = { ...days[T].entries.c1, ...dayWrites(fb).at(-1).data.entries.c1 };

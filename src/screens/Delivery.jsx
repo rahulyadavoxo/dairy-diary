@@ -36,10 +36,19 @@ export function deliveredFor(en, session) {
     total-only entry. A morning entered in the Register keeps the customer on the list for evening. */
 export function dayComplete(en, c) {
   if (!en || en.skip) return false;
+  if (en.half) return false; // only the morning saved so far: comes back for the evening
   const m = Number(en.milkMorningL) || 0;
   const e = Number(en.milkEveningL) || 0;
   if (m <= 0 && e <= 0) return (Number(en.milkL) || 0) > 0;
-  return (m > 0 || usualMorning(c) <= 0) && (e > 0 || usualEvening(c) <= 0);
+  // Both rounds recorded (an evening of 0 L means "no evening milk today").
+  return true;
+}
+
+/** Evening box on the card: what is saved, else empty (null = evening not delivered yet) for a
+    customer who takes evening milk, 0 for one who doesn't. */
+export function initEvening(en, c) {
+  if (en && !en.skip && en.half !== 'morning' && (Number(en.milkMorningL) > 0 || Number(en.milkEveningL) > 0)) return Number(en.milkEveningL) || 0;
+  return usualEvening(c) > 0 ? null : 0;
 }
 
 const usualFor = (c, session) =>
@@ -82,7 +91,7 @@ function saveSkips(date, session, map) {
   }
 }
 
-function QtyEdit({ label, value, onChange, testId }) {
+function QtyEdit({ label, value, onChange, testId, placeholder }) {
   return (
     <label className="deli-qty" data-testid={testId}>
       {label}
@@ -96,8 +105,9 @@ function QtyEdit({ label, value, onChange, testId }) {
           inputMode="decimal"
           step="0.25"
           min="0"
-          value={value}
-          onChange={(e) => onChange(Math.max(0, toMilli(e.target.value) / 1000))}
+          value={value == null ? '' : value}
+          placeholder={placeholder}
+          onChange={(e) => onChange(e.target.value === '' && placeholder ? null : Math.max(0, toMilli(e.target.value) / 1000))}
         />
         <button type="button" className="btn step" onClick={() => onChange(step(value, 250))}>
           +
@@ -128,7 +138,7 @@ export function ToggleBar({ label, on, onChange, testId }) {
 
 // One card per customer for the whole day: Paneer (toggle, rarely sold) on top, then morning,
 // evening and the day's total. "As usual" (left) / "Delivered" (right); "Absent" = didn't take today.
-function DeliveryCard({ c, initM, initE, initT, initPaneer, onDelivered, onAbsent, onBack, canGoBack }) {
+function DeliveryCard({ c, initM, initE, initT, initPaneer, morningSaved, onDelivered, onAbsent, onBack, canGoBack }) {
   const { t } = useLang();
   const [m, setM] = useState(initM);
   const [e, setE] = useState(initE);
@@ -154,10 +164,23 @@ function DeliveryCard({ c, initM, initE, initT, initPaneer, onDelivered, onAbsen
   const sum = Math.round((Number(m || 0) + Number(e || 0)) * 1000) / 1000;
   const total = tot > 0 ? tot : sum;
   const usual = usualMorning(c) + usualEvening(c);
+  // Evening left empty (null) = only the morning is delivered now; the day stays incomplete and
+  // the customer comes back for the evening. A Total, or morning + evening, completes the day.
   const deliverNow = () =>
     onDelivered(
-      tot > 0 ? { milkMorningL: 0, milkEveningL: 0, milkL: tot, paneerKg: pp } : { milkMorningL: m, milkEveningL: e, paneerKg: pp },
+      tot > 0
+        ? { milkMorningL: 0, milkEveningL: 0, milkL: tot, paneerKg: pp, half: null }
+        : { milkMorningL: m || 0, milkEveningL: e || 0, paneerKg: pp, half: e == null ? 'morning' : null },
       'delivered',
+    );
+  // "As usual" fills the round being delivered now: the morning on the first visit (evening still
+  // to come), the evening when the morning is already saved.
+  const asUsual = () =>
+    onDelivered(
+      morningSaved
+        ? { milkMorningL: m || 0, milkEveningL: usualEvening(c), paneerKg: pp, half: null }
+        : { milkMorningL: usualMorning(c), milkEveningL: e == null ? 0 : e, paneerKg: pp, half: e == null ? 'morning' : null },
+      'usual',
     );
 
   return (
@@ -170,14 +193,20 @@ function DeliveryCard({ c, initM, initE, initT, initPaneer, onDelivered, onAbsen
       <ToggleBar label={'🧀 ' + t('paneer')} on={paneerOn} onChange={setPaneerOn} testId="paneer-toggle" />
       {paneerOn && <PaneerGrams label={t('paneer') + ' (' + t('gram') + ')'} value={paneer} onChange={setPaneer} testId="paneer-qty" />}
       <QtyEdit label={t('session_morning')} value={m} onChange={editM} testId="qty-morning" />
-      <QtyEdit label={t('session_evening')} value={e} onChange={editE} testId="qty-evening" />
+      <QtyEdit
+        label={t('session_evening')}
+        value={e}
+        onChange={editE}
+        testId="qty-evening"
+        placeholder={e == null ? t('asUsual') + ': ' + fmtQty(usualEvening(c)) : undefined}
+      />
       <QtyEdit label={t('session_total')} value={tot} onChange={editT} testId="qty-total" />
       <p className="deli-total" data-testid="deli-total">
         {t('session_total')}: <b>{fmtQty(total)} {t('litre')}</b>
         <span className="muted small"> · {t('asUsual')}: {fmtQty(usual)} {t('litre')}</span>
       </p>
       <div className="form-actions">
-        <button type="button" className="btn big" onClick={() => onDelivered({ milkMorningL: usualMorning(c), milkEveningL: usualEvening(c), paneerKg: pp }, 'usual')}>
+        <button type="button" className="btn big" onClick={asUsual}>
           {t('asUsual')}
         </button>
         <button type="button" className="btn primary big" onClick={deliverNow}>
@@ -298,7 +327,7 @@ function DeliveryRound({ fb, customers, days, settings, displayName, onBack, ses
     }
     const entry = normaliseEntry(c, { ...merged, skip: false, note: prev.note || '' }, settings);
     saveEntries(fb, date, { [c.id]: entry }, displayName, { [c.id]: saved[c.id] });
-    const item = { id: c.id, m: entry.milkMorningL, e: entry.milkEveningL, p: entry.paneerKg || 0, total: entry.milkL };
+    const item = { id: c.id, m: entry.milkMorningL, e: entry.half === 'morning' ? null : entry.milkEveningL, p: entry.paneerKg || 0, total: entry.milkL };
     if (!deliveredFor(entry, session) && !((entry.paneerKg || 0) > 0)) {
       // Nothing delivered in this round (0 L): move on instead of showing the same customer forever.
       setSkipped((s) => ({ ...s, [c.id]: true }));
@@ -441,7 +470,8 @@ function DeliveryRound({ fb, customers, days, settings, displayName, onBack, ses
             key={current.id + (review ? '-review-' + review.pos : '')}
             c={current}
             initM={review ? review.m || 0 : Number(saved[current.id]?.milkMorningL) || usualMorning(current)}
-            initE={review ? review.e || 0 : Number(saved[current.id]?.milkEveningL) || usualEvening(current)}
+            initE={review ? review.e ?? null : initEvening(saved[current.id], current)}
+            morningSaved={!review && !!saved[current.id] && saved[current.id].half === 'morning'}
             initT={review && !((review.m || 0) + (review.e || 0)) ? review.total || 0 : 0}
             initPaneer={review ? review.p || 0 : Number(saved[current.id]?.paneerKg) || 0}
             onDelivered={guarded((raw, kind) => {
