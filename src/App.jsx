@@ -18,6 +18,7 @@ import SetupFarm from './screens/SetupFarm.jsx';
 import Removed from './screens/Removed.jsx';
 import { useScrollKeep } from './scrollKeep.js';
 import Splash from './components/Splash.jsx';
+import UpdateGate from './components/UpdateGate.jsx';
 import { listenFarm, deviceStatus, loadFarmId, wipeLocalData } from './devices.js';
 import { App as CapApp } from '@capacitor/app';
 import { handleBack } from './backStack.js';
@@ -64,7 +65,7 @@ export default function App() {
 
   return (
     <LangContext.Provider value={ctx}>
-      {isFirebaseConfigured() ? <Authed /> : <NotConfigured />}
+      <UpdateGate>{isFirebaseConfigured() ? <Authed /> : <NotConfigured />}</UpdateGate>
     </LangContext.Provider>
   );
 }

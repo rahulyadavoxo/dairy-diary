@@ -12,7 +12,7 @@
  *  - The update takes effect on the next app launch (never mid-entry).
  */
 const OTA_BASE = 'https://cdn.jsdelivr.net/gh/rahulyadavoxo/dairy-diary@main/ota';
-const BUNDLED_VERSION = '1.10.15'; // MUST equal package.json "version" of the APK build
+const BUNDLED_VERSION = '1.10.16'; // MUST equal package.json "version" of the APK build
 const CACHE_PREFIX = 'dd-ota-';
 const COMPLETE_MARKER = '/__dd_complete';
 const CHECK_TIMEOUT_MS = 10000;

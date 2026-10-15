@@ -41,6 +41,8 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <!-- 22:00 / 08:00 register rings must fire on time (auto-granted for alarm-type use on Android 13+) -->
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <!-- in-app update: open the installer for the APK downloaded from the GitHub release -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <queries>
         <package android:name="com.whatsapp" />

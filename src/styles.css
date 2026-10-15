@@ -365,3 +365,7 @@ input.switch:focus-visible { outline: 3px solid #9fd3b2; outline-offset: 2px; }
 .btn.looks-disabled { opacity: 0.45; }
 .btn.saved-btn { background: #fff; color: var(--green); border: 1px solid #d9e6dd; }
 .modal.pin-card { max-width: 420px; }
+.update-gate { gap: 10px; text-align: center; padding: 24px; }
+.update-gate .update-icon { font-size: 56px; }
+.upd-progress { width: 100%; max-width: 320px; height: 10px; border-radius: 6px; background: #e3ece6; overflow: hidden; }
+.upd-bar { height: 100%; background: var(--green); transition: width 0.2s; }
