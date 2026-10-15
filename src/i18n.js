@@ -306,7 +306,8 @@ export const STRINGS = {
     // v1.9.8
     editDay: 'यह दिन बदलें',
     editDayTitle: 'दिन का रजिस्टर',
-    editDayHint: 'दूध, नहीं लिया, पनीर या नोट बदलो — अपने-आप सेव होगा',
+    editDayHint: 'दूध, नहीं लिया, पनीर या नोट बदलो — फिर सेव दबाओ',
+    discardUnsaved: 'बदलाव सेव नहीं हुए। बिना सेव किए वापस जाएँ? (बदलाव हट जाएँगे)',
     saveAllConfirm: '{n} ग्राहकों की इस दिन कोई एंट्री नहीं है। उनका रोज़ वाला दूध भी सेव करें?',
     noResults: 'कोई नहीं मिला',
     qtyInvalid: 'लीटर 0 या उससे ज़्यादा डालें',
@@ -625,7 +626,8 @@ export const STRINGS = {
     // v1.9.8
     editDay: 'Edit this day',
     editDayTitle: 'Day register',
-    editDayHint: 'Change milk, skip, paneer or note — saves by itself',
+    editDayHint: 'Change milk, skip, paneer or note — then press Save',
+    discardUnsaved: 'Changes are not saved. Go back without saving? (changes will be lost)',
     saveAllConfirm: '{n} customers have no entry for this day. Save their usual milk too?',
     noResults: 'No match',
     qtyInvalid: 'Enter litres of 0 or more',

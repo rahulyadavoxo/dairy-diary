@@ -1,7 +1,8 @@
 // Day editor: correct any past day (or today) for every customer, or for one customer.
 // Opened from the Register tab ("Edit this day") and from a customer's calendar (tap a date).
-// Rows: milk for the chosen session (morning / evening / total), skip, paneer, note. Edits
-// autosave after a short pause and are flushed when the editor closes or the date changes.
+// Rows: milk for the chosen session (morning / evening / total), skip, paneer, note. Nothing is
+// written until Save is pressed (user, 15 Oct 2026); Back / date change with unsaved edits asks
+// before throwing them away.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { saveFeedback } from '../feedback.js';
 import { useLang } from '../i18n.js';
@@ -50,7 +51,6 @@ export function defaultSession() {
   return new Date().getHours() < 13 ? 'morning' : 'evening';
 }
 
-const AUTOSAVE_MS = 1200;
 
 /** lockDate: "Edit this day" edits only that day (no ◀ ▶). "Edit old records" passes lockDate=false. */
 export default function DayEditor({ fb, customers, days, pendingDays = {}, settings, displayName, date: initialDate, customerId, lockDate = false, minDate, maxDate, onClose }) {
@@ -63,7 +63,7 @@ export default function DayEditor({ fb, customers, days, pendingDays = {}, setti
   const [flash, setFlash] = useState('');
   // Always opens on Total (user, 15 Oct 2026); Morning / Evening are one tap away.
   const [session, setSession] = useState('total');
-  const dirty = useRef({}); // cid -> row awaiting autosave
+  const dirty = useRef({}); // cid -> edited row, written only by Save
   const bases = useRef({}); // cid -> saved entry when its edit started (only changed fields are written)
   const timer = useRef(null);
   const ctx = useRef({});
@@ -117,22 +117,37 @@ export default function DayEditor({ fb, customers, days, pendingDays = {}, setti
     setTimeout(() => setFlash(''), 2500);
   };
 
-  // flush pending edits when leaving the screen or changing date
-  useEffect(() => () => flush(), []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Unsaved edits are only thrown away after the user agrees.
+  const discardOk = () => !Object.keys(dirty.current).length || window.confirm(t('discardUnsaved'));
+  const discard = () => {
+    clearTimeout(timer.current);
+    dirty.current = {};
+    bases.current = {};
+    setDrafts({});
+  };
   const close = () => {
-    flush();
+    if (!discardOk()) return false;
+    discard();
     onClose();
+    return true;
   };
   // Hardware back closes the editor (after saving pending edits), not the whole Register tab.
   const closeRef = useRef(close);
   closeRef.current = close;
-  useEffect(() => pushBackHandler(() => closeRef.current()), []);
+  useEffect(() => {
+    // handleBack pops the handler: when the user chose to stay, put it back.
+    let off;
+    const onBack = () => {
+      if (closeRef.current() === false) off = pushBackHandler(onBack);
+    };
+    off = pushBackHandler(onBack);
+    return () => off();
+  }, []);
 
   const changeDate = (d) => {
-    flush();
-    bases.current = {};
-    setDrafts({});
+    if (!discardOk()) return;
+    discard();
     setOpenPaneer({});
     setDate(d);
   };
@@ -142,8 +157,6 @@ export default function DayEditor({ fb, customers, days, pendingDays = {}, setti
     const next = { ...rowFor(c), ...patch };
     setDrafts((prev) => ({ ...prev, [c.id]: next }));
     dirty.current[c.id] = next;
-    clearTimeout(timer.current);
-    timer.current = setTimeout(flush, AUTOSAVE_MS);
   };
 
   /** Write a quantity into the active session field, keeping milkL (= total) in sync. */

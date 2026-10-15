@@ -883,6 +883,28 @@ describe('1.10.12 rings, lock, payment animation, total-first day editor', () =>
     fireEvent.change(input, { target: { value: '175' } });
     expect(kg).toBe(0.175);
   });
+  it('1.10.25: nothing is saved without Save; Back with changes asks first', () => {
+    vi.useFakeTimers();
+    try {
+      const fb = mkFb();
+      const onClose = vi.fn();
+      const d = addDays(todayISO(), -6);
+      render(wrap(<DayEditor fb={fb} customers={[c1]} days={{ [d]: { entries: { c1: { milkL: 1, milkMorningL: 0, milkEveningL: 0 } } } }} settings={settings} displayName="x" date={d} customerId="c1" lockDate onClose={onClose} />));
+      fireEvent.click(document.querySelectorAll('[data-testid="day-editor"] button.step')[1]);
+      act(() => vi.advanceTimersByTime(5000));
+      expect(fb.writes.filter((x) => x.path.includes('/days/')).length).toBe(0); // no autosave
+      const conf = vi.spyOn(window, 'confirm').mockReturnValue(false);
+      act(() => handleBack());
+      expect(conf).toHaveBeenCalledWith(en.discardUnsaved);
+      expect(onClose).not.toHaveBeenCalled(); // stayed
+      conf.mockReturnValue(true);
+      act(() => handleBack());
+      expect(onClose).toHaveBeenCalled();
+      expect(fb.writes.filter((x) => x.path.includes('/days/')).length).toBe(0); // thrown away, not saved
+    } finally {
+      vi.useRealTimers();
+    }
+  });
   it('the day editor opens on Total, and a total clears morning/evening', () => {
     localStorage.setItem('dd_session', 'morning');
     const fb = mkFb();
