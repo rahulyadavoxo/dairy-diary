@@ -42,3 +42,28 @@ describe('1.10.19 search icon on the right', () => {
     expect(css).toMatch(/:not\(:placeholder-shown\) ~ \.search-icon-r \{ display: none; \}/);
   });
 });
+
+import { swipeTarget, blockedTarget, TAB_ORDER } from '../src/swipeTabs.js';
+describe('1.10.20 swipe between tabs', () => {
+  const s = { x: 300, y: 400, t: 0 };
+  it('flick left goes to the next tab, right to the previous', () => {
+    expect(swipeTarget('register', s, { x: 150, y: 410, t: 200 })).toBe('hisaab');
+    expect(swipeTarget('hisaab', s, { x: 450, y: 390, t: 200 })).toBe('register');
+    expect(swipeTarget('hisaab', s, { x: 150, y: 400, t: 200 })).toBe('customers');
+  });
+  it('no wrap at the ends; short, slow or mostly-vertical moves are ignored', () => {
+    expect(swipeTarget('register', s, { x: 450, y: 400, t: 200 })).toBeNull();
+    expect(swipeTarget('settings', s, { x: 150, y: 400, t: 200 })).toBeNull();
+    expect(swipeTarget('register', s, { x: 260, y: 400, t: 100 })).toBeNull();
+    expect(swipeTarget('register', s, { x: 150, y: 400, t: 2000 })).toBeNull();
+    expect(swipeTarget('register', s, { x: 200, y: 600, t: 200 })).toBeNull();
+    expect(TAB_ORDER).toEqual(['register', 'hisaab', 'customers', 'settings']);
+  });
+  it('swipes starting in a text box or a popup do not switch tab', () => {
+    document.body.innerHTML = '<div class="modal-backdrop"><p id="a">x</p></div><input id="b"/><p id="c">ok</p>';
+    expect(blockedTarget(document.getElementById('a'))).toBe(true);
+    expect(blockedTarget(document.getElementById('b'))).toBe(true);
+    expect(blockedTarget(document.getElementById('c'))).toBe(false);
+    document.body.innerHTML = '';
+  });
+});

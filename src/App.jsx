@@ -10,6 +10,7 @@ import ImportReview from './screens/ImportReview.jsx';
 import Customers from './screens/Customers.jsx';
 import Hisaab from './screens/Hisaab.jsx';
 import CustomerDetail from './screens/CustomerDetail.jsx';
+import { swipeTarget, blockedTarget } from './swipeTabs.js';
 import Delivery from './screens/Delivery.jsx';
 import Settings from './screens/Settings.jsx';
 import Welcome from './screens/Welcome.jsx';
@@ -210,6 +211,7 @@ export function withFarmName(settings, farm) {
 function Main({ fb, user, farm, farmId }) {
   const { t, lang } = useLang();
   const [tab, setTab] = useState('register');
+  const swipeStart = useRef(null); // touch start for tab swipe
   const [detail, setDetail] = useState(null); // { customerId, month }
   const [delivery, setDelivery] = useState(false);
   const [importReview, setImportReview] = useState(false);
@@ -336,7 +338,26 @@ function Main({ fb, user, farm, farmId }) {
   return (
     <div className="app">
       {!online && <div className="offline-bar">{t('offline')}</div>}
-      <main className="content">{screen}</main>
+      <main
+        className="content"
+        onTouchStart={(e) => {
+          const p = e.touches && e.touches[0];
+          swipeStart.current =
+            p && e.touches.length === 1 && !detail && !delivery && !importReview && !blockedTarget(e.target)
+              ? { x: p.clientX, y: p.clientY, t: Date.now() }
+              : null;
+        }}
+        onTouchEnd={(e) => {
+          const st = swipeStart.current;
+          swipeStart.current = null;
+          const p = e.changedTouches && e.changedTouches[0];
+          if (!st || !p) return;
+          const next = swipeTarget(tab, st, { x: p.clientX, y: p.clientY, t: Date.now() });
+          if (next) setTab(next);
+        }}
+      >
+        {screen}
+      </main>
       <nav className="tabbar">
         {tabs.map(([id, icon, label]) => (
           <button
