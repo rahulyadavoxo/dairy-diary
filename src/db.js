@@ -97,14 +97,32 @@ export function saveOrder(fb, orderedCustomers) {
   if (n) log(batch.commit());
 }
 
-/** Save several register rows for one date. rows: { [customerId]: entry } */
-export function saveEntries(fb, date, rows, editorName) {
+const emptyVal = (v) => v == null || v === 0 || v === '' || v === false;
+const sameVal = (a, b) => Object.is(a, b) || (emptyVal(a) && emptyVal(b));
+
+/** Only the fields of `next` that differ from `base` (the entry the editor started from).
+ *  undefined / null / 0 / '' / false count as the same "empty" value. */
+export function entryChanges(base, next) {
+  const out = {};
+  for (const k of Object.keys(next || {})) if (!sameVal((base || {})[k], next[k])) out[k] = next[k];
+  return out;
+}
+
+/** Save several register rows for one date. rows: { [customerId]: entry }
+ *  bases (optional): { [customerId]: entry as it was when the user started editing }. When given,
+ *  only the fields the user actually changed are written, so two phones (or a phone that was
+ *  offline) editing different fields of the same customer's day don't overwrite each other. */
+export function saveEntries(fb, date, rows, editorName, bases) {
   const { fsMod } = fb;
   const now = Date.now();
   const entries = {};
   for (const [cid, e] of Object.entries(rows)) {
-    entries[cid] = { ...e, updatedBy: editorName, updatedAt: now };
+    const part = bases ? entryChanges(bases[cid], e) : e;
+    if (bases && !Object.keys(part).length) continue; // nothing changed for this customer
+    entries[cid] = { ...part, updatedBy: editorName, updatedAt: now };
   }
+  if (!Object.keys(entries).length) return Promise.resolve();
+  rows = entries;
   // Invalidate cached bill photos for this month (they'll regenerate)
   const month = date.slice(0, 7);
   for (const cid of Object.keys(rows)) deleteCachedPhoto(cid, month);

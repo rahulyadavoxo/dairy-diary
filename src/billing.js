@@ -43,7 +43,11 @@ export function paneerRateFor(settings, entry, customer) {
 /** Charge for a single saved entry. Skip = no milk that day (paneer still counts if entered). */
 export function entryCharge(entry, customer, settings) {
   if (!entry) return { milkMl: 0, milkPaise: 0, paneerG: 0, paneerPaise: 0, totalPaise: 0, milkRatePaise: 0 };
-  const milkMl = entry.skip ? 0 : toMilli(entry.milkL);
+  // Morning + evening win over the stored total when a split exists: two phones may each have
+  // written their own session, and the stored total is only as fresh as the last writer's copy.
+  const mm = toMilli(entry.milkMorningL);
+  const em = toMilli(entry.milkEveningL);
+  const milkMl = entry.skip ? 0 : mm > 0 || em > 0 ? mm + em : toMilli(entry.milkL);
   const paneerG = toMilli(entry.paneerKg);
   const mr = milkRateFor(customer, settings, entry);
   const pr = paneerRateFor(settings, entry, customer);

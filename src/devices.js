@@ -252,7 +252,7 @@ export function listenFarm(fb, farmId, cb) {
       const exists = s.exists();
       // A missing doc read only from cache is not proof the farm doesn't exist — wait for the server.
       const loaded = exists || !fromCache;
-      cb({ farm: exists ? s.data({ serverTimestamps: 'estimate' }) : null, exists, loaded, denied: false, fromCache });
+      cb({ farm: exists ? s.data({ serverTimestamps: 'estimate' }) : null, exists, loaded, denied: false, fromCache, pending: s.metadata.hasPendingWrites });
     },
     (e) => {
       console.error('[farm]', e);
@@ -286,17 +286,22 @@ export async function wipeLocalData(fb) {
  * Owner "Sign out": besides signing out, remove the farm data this phone keeps — the Firestore
  * offline cache, the saved bill photos, the PIN and the other per-phone keys (language stays).
  */
-export async function signOutAndWipe(fb, clearPhotos, waitMs = 8000) {
+export async function signOutAndWipe(fb, clearPhotos, waitMs = 8000, confirmUnsynced = null) {
   // Give queued entries a chance to reach the server first (the cache is about to be deleted).
   if (fb.fsMod.waitForPendingWrites) {
     let timer;
-    await Promise.race([
-      fb.fsMod.waitForPendingWrites(fb.db).catch(() => {}),
+    const synced = await Promise.race([
+      fb.fsMod.waitForPendingWrites(fb.db).then(
+        () => true,
+        () => true,
+      ),
       new Promise((r) => {
-        timer = setTimeout(r, waitMs);
+        timer = setTimeout(() => r(false), waitMs);
       }),
     ]);
     clearTimeout(timer);
+    // Still unsynced entries (slow network): they'd be deleted with the cache - ask first.
+    if (!synced && confirmUnsynced && !confirmUnsynced()) return false;
   }
   try {
     if (clearPhotos) await clearPhotos();
@@ -312,4 +317,5 @@ export async function signOutAndWipe(fb, clearPhotos, waitMs = 8000) {
     /* ignore */
   }
   await wipeLocalData(fb);
+  return true;
 }

@@ -74,12 +74,14 @@ export default function DevicesCard({ fb, farm, farmId, uid, online, now: nowPro
 
   const remove = (d) => {
     const self = d.uid === uid;
-    gate.ask(t(self ? 'confirmLeave' : 'confirmRemoveDevice') + ` — ${d.name}`, () =>
-      removeDevice(fb, farmId, d.uid).catch((e) => {
+    gate.ask(t(self ? 'confirmLeave' : 'confirmRemoveDevice') + ` — ${d.name}`, async () => {
+      // Leaving: let this phone's own entries reach the server before it loses access.
+      if (self && fb.fsMod.waitForPendingWrites) await fb.fsMod.waitForPendingWrites(fb.db).catch(() => {});
+      return removeDevice(fb, farmId, d.uid).catch((e) => {
         console.error(e);
         setErr(t('errDenied'));
-      }),
-    );
+      });
+    });
   };
 
   const saveName = (e) => {

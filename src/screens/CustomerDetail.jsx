@@ -94,7 +94,8 @@ export default function CustomerDetail({ fb, customers, days, payments, settings
   const upiId = validUpiId(settings.upiId);
   const typedPaise = toPaise(amount);
   const qrAmount = typedPaise > 0 ? typedPaise : fullPaymentPaise(row.balancePaise);
-  const qrLink = upiId && qrAmount > 0
+  // A supplier is paid BY the dairy: never show "scan to pay the dairy" on a supplier's page.
+  const qrLink = !customer.isSupplier && upiId && qrAmount > 0
     ? upiLink({ upiId, payeeName: settings.farmName || 'Dairy', amountPaise: qrAmount, note: `${settings.farmName || 'Dairy'} - ${customer.name}` })
     : null;
   const qrSrc = qrLink ? qrDataUrl(qrLink) : null; // plain compute: this runs after the early return, so no hooks here
@@ -257,8 +258,8 @@ export default function CustomerDetail({ fb, customers, days, payments, settings
         ))}
       </ul>
 
-      <h2>{t('upiQrTitle')}</h2>
-      <div className="card upi-qr" data-testid="upi-qr-box">
+      {!customer.isSupplier && <h2>{t('upiQrTitle')}</h2>}
+      {!customer.isSupplier && <div className="card upi-qr" data-testid="upi-qr-box">
         {!upiId ? (
           <p className="muted small">{t('upiNotSet')}</p>
         ) : !qrSrc ? (
@@ -272,7 +273,7 @@ export default function CustomerDetail({ fb, customers, days, payments, settings
             <p className="muted small">{t('upiAfterPaid')}</p>
           </>
         )}
-      </div>
+      </div>}
     </div>
   );
 }

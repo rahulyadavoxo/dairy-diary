@@ -174,7 +174,8 @@ async function setup(t) {
 export async function syncRings({ days, pendingDays, hasCustomers, t, dmy, now = new Date(), times = DEF_TIMES }) {
   if (!native()) return;
   const plan = planRings({ now, days, pendingDays, hasCustomers, times });
-  const sig = plan.map((p) => `${p.id}@${p.at.getTime()}`).join(',');
+  // the texts are part of the signature: a language change re-schedules the pending rings
+  const sig = [t('ringTitle'), t('ringNight'), t('ringMorning')].join('|') + '#' + plan.map((p) => `${p.id}@${p.at.getTime()}`).join(',');
   if (sig === lastSig) return;
   lastSig = sig;
   try {

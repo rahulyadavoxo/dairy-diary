@@ -50,7 +50,7 @@ export default function ImportCustomers({ fb, customers, onDone }) {
   }
 
   return (
-    <div className="screen form">
+    <div className="screen form" data-noswipe>
       <header className="screen-head">
         <button type="button" className="btn small ghost" onClick={onDone}>
           ← {t('back')}

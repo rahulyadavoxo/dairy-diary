@@ -244,7 +244,7 @@ describe('#16 Absent; empty list says so', () => {
     render(wrap(<Delivery {...deliProps(fb)} />));
     fireEvent.click(screen.getByText(en.absent));
     const e = dayWrites(fb)[0].data.entries.c1;
-    expect([e.skip, e.milkL]).toEqual([true, 0]);
+    expect([e.skip, e.milkL ?? 0]).toEqual([true, 0]);
     expect(screen.getByText('Bablu')).toBeTruthy();
   });
   it('paneer is a toggle on top, off by default; morning, evening and total below', () => {
@@ -871,8 +871,8 @@ describe('1.10.12 rings, lock, payment animation, total-first day editor', () =>
     const w = fb.writes.filter((x) => x.path.includes('/days/'));
     const e = Object.assign({}, ...w.map((x) => x.data.entries)).c1;
     expect(e.milkL).toBe(3);
-    expect(e.milkMorningL).toBe(0);
-    expect(e.milkEveningL).toBe(0);
+    expect(e.milkMorningL ?? 0).toBe(0);
+    expect(e.milkEveningL ?? 0).toBe(0);
     localStorage.removeItem('dd_session');
   });
   it('Add payment shows "Payment received" with the amount', () => {

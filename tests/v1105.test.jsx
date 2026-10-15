@@ -84,7 +84,7 @@ describe('delivery card: Total box', () => {
     expect([val('qty-morning'), val('qty-evening'), val('qty-total')]).toEqual(['0', '0', '0.5']);
     tap(screen.getByText(en.delivered));
     const e = lastEntry(fb, 'c1');
-    expect([e.milkMorningL, e.milkEveningL, e.milkL]).toEqual([0, 0, 0.5]);
+    expect([e.milkMorningL ?? 0, e.milkEveningL ?? 0, e.milkL]).toEqual([0, 0, 0.5]); // unchanged empty fields aren't re-sent
   });
   it('typing a Total works the same way', () => {
     const fb = mkFb();
@@ -92,7 +92,7 @@ describe('delivery card: Total box', () => {
     fireEvent.change(box('qty-total').querySelector('input'), { target: { value: '3' } });
     tap(screen.getByText(en.delivered));
     const e = lastEntry(fb, 'c1');
-    expect([e.milkMorningL, e.milkEveningL, e.milkL]).toEqual([0, 0, 3]);
+    expect([e.milkMorningL ?? 0, e.milkEveningL ?? 0, e.milkL]).toEqual([0, 0, 3]);
   });
   it('editing morning or evening after Total sets Total back to 0 and saves morning + evening', () => {
     const fb = mkFb();

@@ -42,13 +42,38 @@ export function pinWaitSeconds(now = Date.now()) {
   return until > now ? Math.ceil((until - now) / 1000) : 0;
 }
 
+// v2 PIN hash: PBKDF2-SHA256 with a random per-phone salt, "v2$<salt hex>$<hash hex>".
+// (v1 was an unsalted SHA-256, which a 4-digit PIN gives up instantly.)
+const PBKDF2_ITER = 150000;
+const hex = (u8) => [...u8].map((b) => b.toString(16).padStart(2, '0')).join('');
+const unhex = (h) => new Uint8Array((h.match(/../g) || []).map((x) => parseInt(x, 16)));
+async function pbkdf2Hex(pin, salt, iter = PBKDF2_ITER) {
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode('dd-pin:' + pin), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt, iterations: iter }, key, 256);
+  return hex(new Uint8Array(bits));
+}
+async function matches(pin, stored) {
+  if (stored.startsWith('v2$')) {
+    const [, saltHex, h] = stored.split('$');
+    return (await pbkdf2Hex(pin, unhex(saltHex))) === h;
+  }
+  return (await sha256Hex('dd-pin:' + pin)) === stored; // v1 (older phones / old synced PIN)
+}
+
 export async function verifyPin(pin) {
   const h = getPinHash();
   if (!h) return true; // no lock set
   if (pinWaitSeconds() > 0) return false;
-  const input = await sha256Hex('dd-pin:' + pin);
-  if (input === h) {
+  if (await matches(pin, h)) {
     writeFails(null);
+    if (!h.startsWith('v2$')) {
+      // upgrade an old v1 hash the first time the right PIN is typed
+      try {
+        localStorage.setItem(KEY, await hashPin(pin));
+      } catch {
+        /* ignore */
+      }
+    }
     return true;
   }
   const f = readFails();
@@ -60,7 +85,8 @@ export async function verifyPin(pin) {
 }
 
 export async function hashPin(pin) {
-  return sha256Hex('dd-pin:' + pin);
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  return `v2$${hex(salt)}$${await pbkdf2Hex(pin, salt)}`;
 }
 
 export function savePinHash(hash) {

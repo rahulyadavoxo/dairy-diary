@@ -16,8 +16,10 @@ export function normaliseEntry(customer, raw, settings) {
   const total = hasSessions ? Math.round((morn + eve) * 1000) / 1000 : q3(raw.milkL);
   // Snapshot a rate only when one is actually set (> 0). null = "no rate yet": billing then uses
   // the customer / settings rate, so milk delivered before the rate was entered is not ₹0 forever.
-  const mr = milkRateFor(customer, settings, null);
-  const pr = paneerRateFor(settings, null, customer);
+  // Re-saving an existing entry keeps the rate it was billed at (raw carries the saved snapshot);
+  // only a new entry (no valid snapshot) takes the customer / settings rate of today.
+  const mr = milkRateFor(customer, settings, raw);
+  const pr = paneerRateFor(settings, raw, customer);
   return {
     milkL: total,
     milkMorningL: morn,

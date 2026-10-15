@@ -6,34 +6,21 @@
     <meta name="theme-color" content="#1f6f43" />
     <title>Dairy Diary</title>
     <script>
-    /* Dairy Diary OTA bootstrap: registers the update service worker and asks it
-       to check for updates at most once a day. Everything is fail-safe — if any
-       step throws, the app below loads normally from the APK's bundled files. */
+    /* The old OTA service worker is retired (security: it could load code that was not signed
+       with the APK key). Remove any registration and its caches; the APK updater replaces it. */
     (function () {
       try {
-        if (!('serviceWorker' in navigator)) return;
-        var DAILY_MS = 24 * 3600 * 1000;
-        function poke(reg) {
-          try {
-            var last = parseInt(localStorage.getItem('dd_ota_check') || '0', 10);
-            if (Date.now() - last > DAILY_MS && navigator.onLine !== false) {
-              // only count the daily check when we are online, otherwise an offline start
-              // postponed the next update check by a whole day
-              localStorage.setItem('dd_ota_check', String(Date.now()));
-              var send = function () {
-                try {
-                  var c = reg.active;
-                  if (c) c.postMessage({ type: 'dd-check-update' });
-                } catch (e) {}
-              };
-              if (reg.active) send();
-              else if (navigator.serviceWorker && navigator.serviceWorker.ready) {
-                navigator.serviceWorker.ready.then(send).catch(function () {});
-              }
-            }
-          } catch (e) {}
+        if ('serviceWorker' in navigator && navigator.serviceWorker.getRegistrations) {
+          navigator.serviceWorker.getRegistrations().then(function (rs) {
+            rs.forEach(function (r) { try { r.unregister(); } catch (e) {} });
+          }).catch(function () {});
         }
-        navigator.serviceWorker.register('./sw.js').then(poke).catch(function () {});
+        if (window.caches && caches.keys) {
+          caches.keys().then(function (ks) {
+            ks.forEach(function (k) { if (k.indexOf('dd-') === 0) caches.delete(k); });
+          }).catch(function () {});
+        }
+        try { localStorage.removeItem('dd_ota_check'); } catch (e) {}
       } catch (e) {}
     })();
     </script>

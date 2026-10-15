@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { LangContext, loadLang, saveLang, makeT, useLang } from './i18n.js';
 import { isFirebaseConfigured, getFirebase } from './firebase.js';
 import { listenAll, saveSettings } from './db.js';
@@ -157,7 +157,8 @@ function FarmGate({ fb, user, farmId, onRemoved }) {
     return () => clearTimeout(id);
   }, []);
   const status = deviceStatus(state, user.uid);
-  const lockOut = status === 'removed' && user.isAnonymous;
+  // Wait for the server to confirm a removal (not just this phone's own queued 'leave' write).
+  const lockOut = status === 'removed' && user.isAnonymous && !state.pending;
 
   useEffect(() => {
     if (!lockOut) return;
@@ -217,14 +218,35 @@ function Main({ fb, user, farm, farmId }) {
   const [importReview, setImportReview] = useState(false);
   // Customer detail / delivery / import review replace the tab's list: keep its scroll position.
   useScrollKeep(!!detail || delivery || importReview, tab);
+  // A different tab (tapped or swiped) opens at its top, not at the old tab's scroll position.
+  const firstTab = useRef(true);
+  useLayoutEffect(() => {
+    if (firstTab.current) {
+      firstTab.current = false;
+      return;
+    }
+    window.scrollTo(0, 0);
+  }, [tab]);
   const [settings, setSettings] = useState({});
   const [customers, setCustomers] = useState([]);
   const [days, setDays] = useState({});
   const [pendingDays, setPendingDays] = useState({});
+  const [daysLive, setDaysLive] = useState(false); // last days snapshot came from the server
   const [payments, setPayments] = useState([]);
   const [loaded, setLoaded] = useState({ days: false, customers: false });
   const [online, setOnline] = useState(typeof navigator === 'undefined' ? true : navigator.onLine);
   const [month, setMonth] = useState(monthOf(todayISO()));
+  // App left open into a new month: Hisaab follows if it was showing the (old) current month.
+  const curMonth = useRef(monthOf(todayISO()));
+  useEffect(() => {
+    const id = setInterval(() => {
+      const m = monthOf(todayISO());
+      if (m === curMonth.current) return;
+      setMonth((x) => (x === curMonth.current ? m : x));
+      curMonth.current = m;
+    }, 60 * 1000);
+    return () => clearInterval(id);
+  }, []);
   const myDevice = farm && farm.devices ? farm.devices[user.uid] : null;
   const [displayName, setDisplayName] = useState(
     user.displayName || (myDevice && myDevice.name) || (user.email || '').split('@')[0],
@@ -246,9 +268,10 @@ function Main({ fb, user, farm, farmId }) {
           setCustomers(c);
           setLoaded((l) => (l.customers ? l : { ...l, customers: true }));
         },
-        days: (d, p) => {
+        days: (d, p, fromCache) => {
           setDays(d);
           setPendingDays(p);
+          setDaysLive(!fromCache);
           setLoaded((l) => (l.days ? l : { ...l, days: true }));
         },
         payments: setPayments,
@@ -305,7 +328,7 @@ function Main({ fb, user, farm, farmId }) {
 
   const farmName = farm && farm.name;
   const effSettings = useMemo(() => withFarmName(settings, farmName ? { name: farmName } : null), [settings, farmName]);
-  const data = { fb, user, settings: effSettings, customers, days, pendingDays, payments, displayName, setDisplayName, online, farm, farmId };
+  const data = { fb, user, settings: effSettings, customers, days, daysLive, pendingDays, payments, displayName, setDisplayName, online, farm, farmId };
 
   let screen;
   if (delivery) {

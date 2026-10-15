@@ -261,8 +261,8 @@ function DeliveryRound({ fb, customers, days, settings, displayName, onBack, ses
   }, [review]);
 
   // Done for this round: delivered now or earlier, or marked "didn't take" for the whole day in the register.
-  const isDelivered = (c) =>
-    !!doneNow[c.id] || dayComplete(saved[c.id], c) || !!(saved[c.id] && (saved[c.id].skip || (saved[c.id].paneerKg || 0) > 0));
+  // Paneer alone is not a milk delivery: a paneer-only "Delivered" is remembered via `skipped`.
+  const isDelivered = (c) => !!doneNow[c.id] || dayComplete(saved[c.id], c) || !!(saved[c.id] && saved[c.id].skip);
   const remaining = list.filter((c) => !isDelivered(c) && !skipped[c.id]);
   const done = list.length - remaining.length;
   const current = review ? byId[review.id] : remaining[0];
@@ -272,7 +272,7 @@ function DeliveryRound({ fb, customers, days, settings, displayName, onBack, ses
   useEffect(() => {
     if (history.length === 0) {
       const seeded = list
-        .filter((c) => dayComplete(saved[c.id], c) || !!(saved[c.id] && (saved[c.id].skip || (saved[c.id].paneerKg || 0) > 0)))
+        .filter((c) => dayComplete(saved[c.id], c) || !!(saved[c.id] && saved[c.id].skip) || (!!skipped[c.id] && (Number(saved[c.id] && saved[c.id].paneerKg) || 0) > 0))
         .map((c) => {
           const en = saved[c.id] || {};
           if (en.skip) return { id: c.id, m: 0, e: 0, p: 0, total: 0, absent: true };
@@ -297,17 +297,20 @@ function DeliveryRound({ fb, customers, days, settings, displayName, onBack, ses
       if (session === 'evening') merged.milkMorningL = Number(prev.milkL);
     }
     const entry = normaliseEntry(c, { ...merged, skip: false, note: prev.note || '' }, settings);
-    saveEntries(fb, date, { [c.id]: entry }, displayName);
+    saveEntries(fb, date, { [c.id]: entry }, displayName, { [c.id]: saved[c.id] });
     const item = { id: c.id, m: entry.milkMorningL, e: entry.milkEveningL, p: entry.paneerKg || 0, total: entry.milkL };
     if (!deliveredFor(entry, session) && !((entry.paneerKg || 0) > 0)) {
       // Nothing delivered in this round (0 L): move on instead of showing the same customer forever.
       setSkipped((s) => ({ ...s, [c.id]: true }));
       if (review) setHistory((h) => h.filter((_, i) => i !== review.pos));
-    } else if (review) {
-      setHistory((h) => h.map((x, i) => (i === review.pos ? item : x)));
     } else {
-      setDoneNow((d) => ({ ...d, [c.id]: true }));
-      setHistory((h) => [...h, item]);
+      // paneer only (no milk): remember it on this phone so the card does not come back
+      if (!deliveredFor(entry, session)) setSkipped((s) => ({ ...s, [c.id]: true }));
+      if (review) setHistory((h) => h.map((x, i) => (i === review.pos ? item : x)));
+      else {
+        setDoneNow((d) => ({ ...d, [c.id]: true }));
+        setHistory((h) => [...h, item]);
+      }
     }
     setReview(null);
   };
@@ -316,7 +319,7 @@ function DeliveryRound({ fb, customers, days, settings, displayName, onBack, ses
   const markAbsent = (c) => {
     const prev = saved[c.id] || {};
     const entry = normaliseEntry(c, { milkMorningL: 0, milkEveningL: 0, paneerKg: 0, skip: true, note: prev.note || '' }, settings);
-    saveEntries(fb, date, { [c.id]: entry }, displayName);
+    saveEntries(fb, date, { [c.id]: entry }, displayName, { [c.id]: saved[c.id] });
     const item = { id: c.id, m: 0, e: 0, p: 0, total: 0, absent: true };
     if (review) setHistory((h) => h.map((x, i) => (i === review.pos ? item : x)));
     else {
@@ -344,13 +347,16 @@ function DeliveryRound({ fb, customers, days, settings, displayName, onBack, ses
     const snap = {};
     remaining.forEach((c) => {
       const prev = saved[c.id] || {};
-      const raw = { milkMorningL: usualMorning(c), milkEveningL: usualEvening(c) };
+      // keep a round that is already recorded (e.g. morning entered in the Register)
+      const pm = Number(prev.milkMorningL) || 0;
+      const pe = Number(prev.milkEveningL) || 0;
+      const raw = { milkMorningL: pm > 0 ? pm : usualMorning(c), milkEveningL: pe > 0 ? pe : usualEvening(c) };
       rows[c.id] = normaliseEntry(c, { ...raw, paneerKg: prev.paneerKg || 0, skip: false, note: prev.note || '' }, settings);
       snap[c.id] = { prev: saved[c.id] || null, wrote: rows[c.id] };
       now[c.id] = true;
     });
     if (Object.keys(rows).length) {
-      saveEntries(fb, date, rows, displayName);
+      saveEntries(fb, date, rows, displayName, saved);
       setDoneNow((d) => ({ ...d, ...now }));
       setAllUsual(snap);
     }

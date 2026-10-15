@@ -2,7 +2,7 @@
 // opens a calendar with date-wise milk; tapping a date there opens the day editor for that
 // customer. Daily entry happens in Delivery mode; "Edit this day" corrects any past day.
 import { firstDeliveryMonth } from '../firstMonth.js';
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import { useLang } from '../i18n.js';
 import DayEditor, { sortCustomers, isPaused, matchesQuery } from './Register.jsx';
 import { addDays, dmy, fmtQty, timeHM, todayISO, monthName as fmtMonthName, shortDate, weekdaysMonFirst } from '../format.js';
@@ -143,7 +143,7 @@ function CalendarModal({ customer, days, onClose, onEditDay }) {
   );
 }
 
-export default function RegisterView({ fb, customers, days, pendingDays, settings, displayName, onDelivery, onImportReview }) {
+export default function RegisterView({ fb, customers, days, daysLive = true, pendingDays, settings, displayName, onDelivery, onImportReview }) {
   const { t, lang } = useLang();
   const [date, setDate] = useState(todayISO());
   const [query, setQuery] = useState('');
@@ -176,8 +176,19 @@ export default function RegisterView({ fb, customers, days, pendingDays, setting
     const id = setInterval(() => setNow(new Date()), 60 * 1000);
     return () => clearInterval(id);
   }, []);
+  // App left open past midnight: if the Register was on "today", move it to the new today.
+  const shownToday = useRef(todayISO());
+  useEffect(() => {
+    const t0 = todayISO();
+    if (t0 !== shownToday.current) {
+      setDate((d) => (d === shownToday.current ? t0 : d));
+      shownToday.current = t0;
+    }
+  }, [now]);
   const isToday = date === todayISO();
-  const lockAll = lockedBy({ now, days, pendingDays, hasCustomers: active.length > 0, times: ringTimes(settings) });
+  // Only lock on data the server confirmed: an offline cache may simply not have yesterday's
+  // entries from the other phone yet, and "fill yesterday" would then overwrite them.
+  const lockAll = daysLive ? lockedBy({ now, days, pendingDays, hasCustomers: active.length > 0, times: ringTimes(settings) }) : null;
   const lockDay = isToday ? lockAll : null;
   // "Edit this day" opens only once EVERY customer due that day (active, not paused) has an entry
   // (user, 15 Oct 2026). Until then a tap only explains why.
@@ -279,7 +290,7 @@ export default function RegisterView({ fb, customers, days, pendingDays, setting
           </div>
         )}
         {onDelivery && (
-          <button type="button" className="btn primary big delivery-cta" disabled={!!lockDay} onClick={onDelivery}>
+          <button type="button" className="btn primary big delivery-cta" disabled={!!lockAll} onClick={onDelivery}>
             🚚 {t('delivery')}
           </button>
         )}

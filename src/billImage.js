@@ -133,7 +133,8 @@ export function renderBillImage(row, month, settings = {}) {
         const cy = startY + week * cellH;
         const info = daily[iso];
         const hasMilk = info && !info.skip && (info.milkMl || 0) > 0;
-        const isGap = info && iso <= todayStr && !hasMilk;
+        // ✕ only for a day with no milk AND no paneer (same rule as the Register / customer calendar)
+        const isGap = info && iso <= todayStr && !hasMilk && !((info.paneerG || 0) > 0);
 
         // cell bg
         g.fillStyle = hasMilk ? GREEN_LIGHT : '#fafafa';

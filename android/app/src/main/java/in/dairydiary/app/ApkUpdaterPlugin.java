@@ -4,6 +4,8 @@ import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
+import android.content.pm.Signature;
+import android.content.pm.SigningInfo;
 import android.net.Uri;
 import android.os.Build;
 import android.provider.Settings;
@@ -19,6 +21,10 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Locale;
+import java.util.Set;
 
 /**
  * In-app update: downloads the new APK from the GitHub release and opens Android's installer.
@@ -43,14 +49,52 @@ public class ApkUpdaterPlugin extends Plugin {
         return Build.VERSION.SDK_INT >= 28 ? pi.getLongVersionCode() : pi.versionCode;
     }
 
+    /** Signing certificates of a PackageInfo (API 28+), or null when they can't be read. */
+    private static Set<String> certs(PackageInfo pi) {
+        try {
+            if (pi == null || Build.VERSION.SDK_INT < 28) return null;
+            SigningInfo si = pi.signingInfo;
+            if (si == null) return null;
+            Signature[] sigs = si.hasMultipleSigners() ? si.getApkContentsSigners() : si.getSigningCertificateHistory();
+            if (sigs == null || sigs.length == 0) return null;
+            Set<String> out = new HashSet<>();
+            for (Signature g : sigs) out.add(Arrays.toString(g.toByteArray()));
+            return out;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** Only GitHub hosts may serve the update (also after redirects); no path tricks. */
+    static boolean allowedUrl(String u, boolean first) {
+        try {
+            URL url = new URL(u);
+            if (!"https".equals(url.getProtocol())) return false;
+            String host = url.getHost().toLowerCase(Locale.ROOT);
+            String path = url.getPath();
+            if (path.contains("..") || path.contains("%2e") || path.contains("%2E")) return false;
+            if (first) return host.equals("github.com") && path.startsWith("/rahulyadavoxo/dairy-diary/releases/download/");
+            return host.equals("github.com") || host.endsWith(".githubusercontent.com");
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     @SuppressWarnings("deprecation")
     private String checkApk(File f) {
         try {
-            PackageInfo pi = getContext().getPackageManager().getPackageArchiveInfo(f.getAbsolutePath(), 0);
+            PackageManager pm = getContext().getPackageManager();
+            int flags = Build.VERSION.SDK_INT >= 28 ? PackageManager.GET_SIGNING_CERTIFICATES : 0;
+            PackageInfo pi = pm.getPackageArchiveInfo(f.getAbsolutePath(), flags);
             if (pi == null) return "NOT_APK";
             if (!getContext().getPackageName().equals(pi.packageName)) return "WRONG_APP";
             long code = Build.VERSION.SDK_INT >= 28 ? pi.getLongVersionCode() : pi.versionCode;
             if (code <= installedVersionCode()) return "NOT_NEWER";
+            // Same signing key as the installed app (Android's installer checks this too; we reject
+            // early). If either side can't be read we leave it to the installer.
+            Set<String> mine = certs(pm.getPackageInfo(getContext().getPackageName(), flags));
+            Set<String> theirs = certs(pi);
+            if (mine != null && theirs != null && java.util.Collections.disjoint(mine, theirs)) return "WRONG_SIGNER";
             return null;
         } catch (Exception e) {
             return "NOT_APK";
@@ -60,7 +104,7 @@ public class ApkUpdaterPlugin extends Plugin {
     @PluginMethod
     public void download(final PluginCall call) {
         final String url = call.getString("url");
-        if (url == null || !url.startsWith("https://github.com/rahulyadavoxo/dairy-diary/releases/download/")) {
+        if (url == null || !allowedUrl(url, true)) {
             call.reject("Bad update url", "BAD_URL");
             return;
         }
@@ -86,8 +130,9 @@ public class ApkUpdaterPlugin extends Plugin {
                     if (st >= 300 && st < 400) {
                         String loc = con.getHeaderField("Location");
                         con.disconnect();
-                        if (loc == null || !loc.startsWith("https://") || ++hops > 5) throw new Exception("redirect");
-                        next = loc;
+                        if (loc == null || ++hops > 5) throw new Exception("redirect");
+                        next = new URL(new URL(next), loc).toString();
+                        if (!allowedUrl(next, false)) throw new Exception("redirect host");
                         continue;
                     }
                     if (st != 200) throw new Exception("HTTP " + st);

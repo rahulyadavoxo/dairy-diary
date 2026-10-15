@@ -64,6 +64,7 @@ export default function DayEditor({ fb, customers, days, pendingDays = {}, setti
   // Always opens on Total (user, 15 Oct 2026); Morning / Evening are one tap away.
   const [session, setSession] = useState('total');
   const dirty = useRef({}); // cid -> row awaiting autosave
+  const bases = useRef({}); // cid -> saved entry when its edit started (only changed fields are written)
   const timer = useRef(null);
   const ctx = useRef({});
 
@@ -88,7 +89,7 @@ export default function DayEditor({ fb, customers, days, pendingDays = {}, setti
 
   const normalise = (c, r, st) => normaliseEntry(c, r, st);
 
-  ctx.current = { date, displayName, byId, settings };
+  ctx.current = { date, displayName, byId, settings, saved };
 
   const flush = () => {
     clearTimeout(timer.current);
@@ -100,8 +101,13 @@ export default function DayEditor({ fb, customers, days, pendingDays = {}, setti
     ids.forEach((id) => {
       if (map[id]) out[id] = normalise(map[id], rows[id], st);
     });
+    const base = {};
+    ids.forEach((id) => {
+      base[id] = id in bases.current ? bases.current[id] : ctx.current.saved[id];
+      delete bases.current[id];
+    });
     dirty.current = {};
-    saveEntries(fb, d, out, who);
+    saveEntries(fb, d, out, who, base);
     setDrafts((prev) => {
       const n = { ...prev };
       ids.forEach((id) => delete n[id]);
@@ -125,12 +131,14 @@ export default function DayEditor({ fb, customers, days, pendingDays = {}, setti
 
   const changeDate = (d) => {
     flush();
+    bases.current = {};
     setDrafts({});
     setOpenPaneer({});
     setDate(d);
   };
 
   const update = (c, patch) => {
+    if (!(c.id in bases.current)) bases.current[c.id] = saved[c.id];
     const next = { ...rowFor(c), ...patch };
     setDrafts((prev) => ({ ...prev, [c.id]: next }));
     dirty.current[c.id] = next;
@@ -163,6 +171,7 @@ export default function DayEditor({ fb, customers, days, pendingDays = {}, setti
     const fresh = active.filter((c) => !saved[c.id] && !drafts[c.id]).length;
     if (!customerId && fresh > 0 && !window.confirm(t('saveAllConfirm').replace('{n}', fresh))) return;
     active.forEach((c) => {
+      if (!(c.id in bases.current)) bases.current[c.id] = saved[c.id];
       dirty.current[c.id] = rowFor(c);
     });
     flush();

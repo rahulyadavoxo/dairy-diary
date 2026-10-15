@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLang } from '../i18n.js';
-import { saveCustomer, saveOrder } from '../db.js';
+import { saveCustomer, saveOrder, entryChanges } from '../db.js';
 import { sortCustomers, isPaused, matchesQuery } from './Register.jsx';
 import { dmy, fmtQty, paiseToInput, rupees, toPaise, todayISO } from '../format.js';
 import { pushBackHandler } from '../backStack.js';
@@ -243,6 +243,7 @@ export function CustomerForm({ fb, initial, nextOrder, onDone }) {
         }
       : EMPTY,
   );
+  const f0 = useRef(f); // the form as it opened: only fields changed since then are saved
   const [err, setErr] = useState('');
   // Deactivating a customer (the Deactivate button or turning Active off) asks for the PIN when
   // one is set. pinAsk = 'button' | 'toggle' | null.
@@ -302,7 +303,7 @@ export function CustomerForm({ fb, initial, nextOrder, onDone }) {
     if (f.customPaneerRate && !(pRate > 0)) return fail(t('paneerRateRequired'));
     const due = toPaise(f.openingDue);
     if (f.openingDue !== '' && due === null) return fail(t('amountInvalid'));
-    const data = {
+    const toData = (f) => ({
       name: f.name.trim(),
       phone: f.phone.trim(),
       area: f.area.trim(),
@@ -316,7 +317,17 @@ export function CustomerForm({ fb, initial, nextOrder, onDone }) {
       pauseTo: f.pauseTo || '',
       active: !!f.active,
       isSupplier: !!f.isSupplier,
-    };
+    });
+    let data = toData(f);
+    if (initial) {
+      // Only what was changed in this form: another phone may have paused / deactivated / edited
+      // this customer meanwhile, and re-sending the old values would undo that.
+      data = entryChanges(toData(f0.current), data);
+      if (!Object.keys(data).length) {
+        saveFeedback(true);
+        return onDone(initial.id);
+      }
+    }
     if (!initial) data.order = nextOrder;
     const savedId = saveCustomer(fb, initial ? initial.id : null, data);
     saveFeedback(true);
@@ -327,7 +338,7 @@ export function CustomerForm({ fb, initial, nextOrder, onDone }) {
 
   return (
     // noValidate: the WebView's tiny validation bubbles were the only feedback; show our own errors.
-    <form className="screen form" onSubmit={submit} noValidate>
+    <form className="screen form" onSubmit={submit} noValidate data-noswipe>
       <header className="screen-head">
         <h1>{initial ? t('editCustomer') : t('addCustomer')}</h1>
       </header>

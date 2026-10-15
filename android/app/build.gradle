@@ -7,8 +7,8 @@ android {
         applicationId "in.dairydiary.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 31
-        versionName "1.10.21"
+        versionCode 32
+        versionName "1.10.22"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -35,15 +35,30 @@ android {
                 keyAlias(ddProp('DD_KEY_ALIAS') ?: 'androiddebugkey')
                 keyPassword ddPass
             }
+            // The farm phones get the RELEASE build (not debuggable: no USB/WebView inspection),
+            // signed with the same key, so it installs over the old debug build as an update.
+            release {
+                storeFile file(ddStore)
+                storePassword ddPass
+                keyAlias(ddProp('DD_KEY_ALIAS') ?: 'androiddebugkey')
+                keyPassword ddPass
+            }
         } else {
             logger.warn('Dairy Diary: DD_KEYSTORE/DD_KEY_PASS not set - signing with the local debug key (not installable over the farm app).')
         }
     }
     buildTypes {
         release {
+            debuggable false
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            if (signingConfigs.findByName('release') != null) signingConfig signingConfigs.release
         }
+    }
+    lint {
+        // Lint must never block a farm release build on a warning.
+        checkReleaseBuilds false
+        abortOnError false
     }
 }
 

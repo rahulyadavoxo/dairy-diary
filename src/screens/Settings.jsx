@@ -304,7 +304,11 @@ export default function Settings({ fb, user, settings, displayName, setDisplayNa
             disabled={!online}
             onClick={() => {
               if (!window.confirm(t('confirmSignOut'))) return;
-              signOutAndWipe(fb, clearCachedPhotos).finally(() => window.location.reload());
+              signOutAndWipe(fb, clearCachedPhotos, 8000, () => window.confirm(t('signOutUnsynced')))
+                .then((done) => {
+                  if (done !== false) window.location.reload();
+                })
+                .catch(() => window.location.reload());
             }}
           >
             {t('signOut')}

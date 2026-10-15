@@ -112,7 +112,9 @@ describe('native side is wired', () => {
     expect(readFileSync('android/app/src/main/AndroidManifest.xml', 'utf8')).toContain('android.permission.REQUEST_INSTALL_PACKAGES');
     const j = readFileSync('android/app/src/main/java/in/dairydiary/app/ApkUpdaterPlugin.java', 'utf8');
     expect(j).toContain('@CapacitorPlugin(name = "ApkUpdater")');
-    expect(j).toContain('https://github.com/rahulyadavoxo/dairy-diary/releases/download/');
+    expect(j).toContain('"/rahulyadavoxo/dairy-diary/releases/download/"');
+    expect(j).toContain('host.equals("github.com")');
+    expect(j).toContain('WRONG_SIGNER');
     for (const k of ['updTitle', 'updBody', 'updNow', 'updDownloading', 'updInstallHint', 'updPermHint', 'updFailed', 'updRetry', 'updCurrent'])
       expect(STRINGS.hi[k] && STRINGS.en[k]).toBeTruthy();
   });
