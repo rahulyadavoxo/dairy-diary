@@ -399,9 +399,10 @@ export function CustomerForm({ fb, initial, nextOrder, onDone }) {
           </div>
         </label>
       </div>
+      <div className="card fold-card">
       <button
         type="button"
-        className="switch-row section-toggle"
+        className="section-toggle"
         aria-expanded={showFormat}
         data-testid="milk-format"
         onClick={() => setShowFormat(!showFormat)}
@@ -433,9 +434,11 @@ export function CustomerForm({ fb, initial, nextOrder, onDone }) {
       ) : (
         <p className="muted small">{t(f.prefillMode === 'lastDay' ? 'prefillLastDay' : 'prefillUsual')}</p>
       )}
+      </div>
+      <div className="card fold-card">
       <button
         type="button"
-        className="switch-row section-toggle"
+        className="section-toggle"
         aria-expanded={showRates}
         data-testid="special-rates"
         onClick={() => setShowRates(!showRates)}
@@ -491,6 +494,7 @@ export function CustomerForm({ fb, initial, nextOrder, onDone }) {
             : t('usesDefaultRates')}
         </p>
       )}
+      </div>
       <label>
         {t('openingDue')}
         <input type="number" inputMode="decimal" min="0" step="any" value={f.openingDue} onChange={set('openingDue')} />
