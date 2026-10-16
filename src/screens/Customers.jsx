@@ -28,7 +28,7 @@ function storeLastEdited(id) {
   }
 }
 
-const EMPTY = { name: '', phone: '', area: '', usualMorningL: 0.5, usualEveningL: 0.5, customRate: false, rateOverride: '', customPaneerRate: false, paneerRateOverride: '', openingDue: '', openingAdv: false, pauseFrom: '', pauseTo: '', active: true, isSupplier: false };
+const EMPTY = { name: '', phone: '', area: '', usualMorningL: 0.5, usualEveningL: 0.5, customRate: false, rateOverride: '', customPaneerRate: false, paneerRateOverride: '', openingDue: '', openingAdv: false, pauseFrom: '', pauseTo: '', active: true, isSupplier: false, prefillMode: 'usual' };
 
 const round3 = (n) => Math.max(0, Math.round(Number(n || 0) * 1000) / 1000);
 
@@ -242,6 +242,7 @@ export function CustomerForm({ fb, initial, nextOrder, onDone }) {
           pauseTo: initial.pauseTo || '',
           active: initial.active !== false,
           isSupplier: !!initial.isSupplier,
+          prefillMode: initial.prefillMode === 'lastDay' ? 'lastDay' : 'usual',
         }
       : EMPTY,
   );
@@ -321,6 +322,7 @@ export function CustomerForm({ fb, initial, nextOrder, onDone }) {
       pauseTo: f.pauseTo || '',
       active: !!f.active,
       isSupplier: !!f.isSupplier,
+      prefillMode: f.prefillMode === 'lastDay' ? 'lastDay' : 'usual',
     });
     let data = toData(f);
     if (initial) {
@@ -387,6 +389,24 @@ export function CustomerForm({ fb, initial, nextOrder, onDone }) {
           </div>
         </label>
       </div>
+      <p className="muted small">{t('prefillHint')}</p>
+      {[
+        ['usual', 'prefillUsual'],
+        ['lastDay', 'prefillLastDay'],
+      ].map(([mode, key]) => (
+        <div className="switch-row" key={mode}>
+          <span>🔁 {t(key)}</span>
+          <input
+            type="checkbox"
+            role="switch"
+            className="switch"
+            aria-label={t(key)}
+            data-testid={'prefill-' + mode}
+            checked={(f.prefillMode || 'usual') === mode}
+            onChange={(e) => setF({ ...f, prefillMode: e.target.checked ? mode : mode === 'usual' ? 'lastDay' : 'usual' })}
+          />
+        </div>
+      ))}
       <div className="switch-row">
         <span>🥛 {t('customRateToggle')}</span>
         <input

@@ -8,7 +8,7 @@ import PaneerGrams from '../components/PaneerGrams.jsx';
 import { useLang } from '../i18n.js';
 import { saveEntries, deleteEntry } from '../db.js';
 import { playSound } from '../feedback.js';
-import { normaliseEntry, takesTwice, emptyHalf } from '../entry.js';
+import { normaliseEntry, takesTwice, emptyHalf, prefillLastDay, withLastDay } from '../entry.js';
 import { sortCustomers, isPaused } from './Register.jsx';
 import { usualMorning, usualEvening } from './Customers.jsx';
 import { todayISO, fmtQty } from '../format.js';
@@ -141,7 +141,8 @@ export function ToggleBar({ label, on, onChange, testId }) {
 
 // One card per customer for the whole day: Paneer (toggle, rarely sold) on top, then morning,
 // evening and the day's total. "As usual" (left) / "Delivered" (right); "Absent" = didn't take today.
-function DeliveryCard({ c, initM, initE, initT, initPaneer, morningSaved, onDelivered, onAbsent, onBack, canGoBack }) {
+function DeliveryCard({ c, initM, initE, initT, initPaneer, morningSaved, onDelivered, onAbsent, onBack, canGoBack, lastDay = false }) {
+  const usualKey = lastDay ? 'sameAsLastDay' : 'asUsual';
   const { t } = useLang();
   const [m, setM] = useState(initM);
   const [e, setE] = useState(initE);
@@ -210,12 +211,12 @@ function DeliveryCard({ c, initM, initE, initT, initPaneer, morningSaved, onDeli
       <QtyEdit label={t('session_total')} value={tot} onChange={editT} testId="qty-total" />
       <p className="deli-total" data-testid="deli-total">
         {t('session_total')}: <b>{fmtQty(total)} {t('litre')}</b>
-        <span className="muted small"> · {t('asUsual')}: {fmtQty(usual)} {t('litre')}</span>
+        <span className="muted small"> · {t(usualKey)}: {fmtQty(usual)} {t('litre')}</span>
       </p>
       <div className="form-actions">
         {!edited && (
           <button type="button" className="btn big" onClick={asUsual} data-testid="as-usual-btn">
-            {t('asUsual')}
+            {t(usualKey)}
           </button>
         )}
         <button type="button" className="btn primary big" onClick={deliverNow}>
@@ -269,7 +270,12 @@ function DeliveryRound({ fb, customers, days, settings, displayName, onBack, ses
   const date = todayISO();
   const day = days[date] || null;
   const saved = (day && day.entries) || {};
-  const list = useMemo(() => deliveryList(customers, saved, date, session), [customers, saved, date, session]);
+  const prefilled = useMemo(
+    () => customers.map((c) => (prefillLastDay(c) ? withLastDay(c, days, date) : c)),
+    [customers, days, date],
+  );
+  const lastDay = prefilled.length > 0 && prefilled.every((c) => prefillLastDay(c));
+  const list = useMemo(() => deliveryList(prefilled, saved, date, session), [prefilled, saved, date, session]);
   const byId = useMemo(() => Object.fromEntries(list.map((c) => [c.id, c])), [list]);
   const [skipped, setSkippedState] = useState(() => loadSkips(date, session));
   const setSkipped = (fn) =>
@@ -447,7 +453,7 @@ function DeliveryRound({ fb, customers, days, settings, displayName, onBack, ses
         {!settings.milkRatePaise && <p className="card warn small">{t('rateMissing')}</p>}
         {!review && (remaining.length > 0 || allUsual) && (
           <ToggleBar
-            label={t('markAllUsual')}
+            label={t(lastDay ? 'markAllLastDay' : 'markAllUsual')}
             on={!!allUsual}
             onChange={guarded((v) => (v ? deliverAllUsual() : undoAllUsual()))}
             testId="all-usual-toggle"
@@ -493,6 +499,7 @@ function DeliveryRound({ fb, customers, days, settings, displayName, onBack, ses
             })}
             onBack={guarded(goBack)}
             canGoBack={canGoBack}
+            lastDay={prefillLastDay(current)}
           />
         )
       )}

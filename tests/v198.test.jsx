@@ -1047,3 +1047,43 @@ describe('1.10.15: Settings Saved/Save button and PIN for rates / UPI', () => {
     expect(settingsWrite(fb).data.paneerRatePaise).toBe(36000);
   });
 });
+
+describe('1.10.34 Delivery pre-fill: usual or same as last day', () => {
+  const c = { id: 'c1', name: 'Asha', order: 10, usualMorningL: 1, usualEveningL: 1 };
+  it('withLastDay uses the last day with milk, skipping Absent / 0 L, else the profile', async () => {
+    const { withLastDay } = await import('../src/entry.js');
+    const T = todayISO();
+    const days = {
+      [addDays(T, -3)]: { entries: { c1: { milkL: 3, milkMorningL: 2, milkEveningL: 1 } } },
+      [addDays(T, -2)]: { entries: { c1: { milkL: 0, skip: true } } },
+      [addDays(T, -1)]: { entries: { c1: { milkL: 0, milkMorningL: 0, milkEveningL: 0 } } },
+    };
+    const x = withLastDay(c, days, T);
+    expect([x.usualMorningL, x.usualEveningL]).toEqual([2, 1]);
+    expect(withLastDay(c, {}, T)).toBe(c);
+    const tot = withLastDay(c, { [addDays(T, -1)]: { entries: { c1: { milkL: 2.5, milkMorningL: 0, milkEveningL: 0 } } } }, T);
+    expect([tot.usualMorningL, tot.usualEveningL]).toEqual([2.5, 0]);
+  });
+  it('Customer profile: two switches, turning one on turns the other off, saved on the customer', () => {
+    const fb = mkFb();
+    render(wrap(<CustomerForm fb={fb} initial={c} nextOrder={20} onDone={() => {}} />));
+    const st = (m) => screen.getByTestId('prefill-' + m).checked;
+    expect([st('usual'), st('lastDay')]).toEqual([true, false]);
+    fireEvent.click(screen.getByTestId('prefill-lastDay'));
+    expect([st('usual'), st('lastDay')]).toEqual([false, true]);
+    fireEvent.click(screen.getByTestId('prefill-usual'));
+    expect([st('usual'), st('lastDay')]).toEqual([true, false]);
+    fireEvent.click(screen.getByTestId('prefill-usual'));
+    expect([st('usual'), st('lastDay')]).toEqual([false, true]);
+    fireEvent.click(screen.getByText(STRINGS.en.save));
+    expect(fb.writes.at(-1).data).toMatchObject({ prefillMode: 'lastDay' });
+  });
+  it('Delivery in last-day mode pre-fills yesterday and says "Same as last day"', () => {
+    const T = todayISO();
+    const days = { [addDays(T, -1)]: { entries: { c1: { milkL: 2.5, milkMorningL: 1.5, milkEveningL: 1 } } } };
+    render(wrap(<Delivery fb={mkFb()} customers={[{ ...c, prefillMode: 'lastDay' }]} days={days} settings={settings} displayName="x" onBack={() => {}} />));
+    const D = STRINGS.en;
+    expect(screen.getByTestId('qty-morning').querySelector('input').value).toBe('1.5');
+    expect(screen.getByTestId('as-usual-btn').textContent).toBe(D.sameAsLastDay);
+  });
+});

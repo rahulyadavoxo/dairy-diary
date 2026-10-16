@@ -80,3 +80,27 @@ export function usualEvening(c) {
   if (isSet(c.usualEveningL)) return round3(c.usualEveningL);
   return round3((Number(c.usualL) || 0) / 2);
 }
+
+/** customer.prefillMode (set in each customer's profile): 'lastDay' = Delivery pre-fills the
+    customer's last day with milk, 'usual' (default) = the profile's usual litres (user, 16 Oct 2026). */
+export const prefillLastDay = (c) => !!c && c.prefillMode === 'lastDay';
+
+/** The customer with usual morning / evening replaced by their last day with milk before `date`
+    (Absent / 0 L days skipped). No such day = the customer as is (profile usual). */
+export function withLastDay(c, days, date) {
+  const keys = Object.keys(days || {}).filter((d) => d < date).sort().reverse();
+  for (const d of keys) {
+    const en = days[d] && days[d].entries && days[d].entries[c.id];
+    if (!en || en.skip) continue;
+    const m = Math.max(0, Number(en.milkMorningL) || 0);
+    const e = Math.max(0, Number(en.milkEveningL) || 0);
+    const tot = Math.max(0, Number(en.milkL) || 0);
+    if (m + e > 0) {
+      // a morning-only day (evening never filled): keep the profile evening
+      const eve = en.half === 'morning' && e === 0 ? undefined : e;
+      return { ...c, usualMorningL: m, usualEveningL: eve === undefined ? c.usualEveningL : eve, usualL: undefined };
+    }
+    if (tot > 0) return { ...c, usualMorningL: tot, usualEveningL: 0, usualL: undefined };
+  }
+  return c;
+}
