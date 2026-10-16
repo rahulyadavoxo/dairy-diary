@@ -3,7 +3,7 @@
 // walks through every customer that has a phone number: it opens their WhatsApp
 // chat with the bill text prefilled, the user presses Send, then moves to the
 // next customer. Progress survives app restarts (localStorage).
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLang } from '../i18n.js';
 import { computeMonth } from '../billing.js';
 import { renderBillImage, billFileName, billFingerprint } from '../billImage.js';
@@ -14,6 +14,7 @@ import { saveSettings } from '../db.js';
 import { addMonths, monthOf, todayISO, monthName, rupees } from '../format.js';
 
 const PROG_KEY = 'dd_wa_progress';
+export const CHAIN_SECONDS = 3;
 
 export function shouldPromptBills(settings) {
   return todayISO().slice(8, 10) === '01' && settings.billsSentForMonth !== monthOf(todayISO());
@@ -51,6 +52,16 @@ export default function BillSender({ fb, customers, days, payments, settings, on
   const [shareErr, setShareErr] = useState('');
   const [noNumber, setNoNumber] = useState(false);
   const curRow = idx < targets.length ? targets[idx] : null;
+  // One-by-one chain (user, 16 Oct 2026): after a bill opens in WhatsApp and the user comes back,
+  // the next customer's chat opens by itself after a 3 s countdown ("Ruko" stops it).
+  // The user always presses Send in WhatsApp themselves - nothing is sent automatically.
+  const [chain, setChain] = useState(false);
+  const [countdown, setCountdown] = useState(null); // seconds left, or null
+  const [autoOpen, setAutoOpen] = useState(false);
+  const away = useRef(false); // a bill was just handed to WhatsApp
+  const chainRef = useRef(false);
+  chainRef.current = chain;
+  const shareRef = useRef(null);
 
   // Render the bill image (with calendar) for preview — prefer cached photo
   useEffect(() => {
@@ -84,6 +95,49 @@ export default function BillSender({ fb, customers, days, payments, settings, on
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idx, curRow && curRow.customerId]);
+
+  // Back from WhatsApp -> start the countdown.
+  useEffect(() => {
+    const back = () => {
+      if (!away.current) return;
+      away.current = false;
+      if (chainRef.current) setCountdown(CHAIN_SECONDS);
+    };
+    const onVis = () => document.visibilityState === 'visible' && back();
+    document.addEventListener('visibilitychange', onVis);
+    let sub = null;
+    let dead = false;
+    import('@capacitor/app')
+      .then(({ App }) => App.addListener('resume', back))
+      .then((h) => (dead ? h && h.remove() : (sub = h)))
+      .catch(() => {});
+    return () => {
+      dead = true;
+      document.removeEventListener('visibilitychange', onVis);
+      if (sub) sub.remove();
+    };
+  }, []);
+  useEffect(() => {
+    if (countdown === null) return undefined;
+    if (countdown <= 0) {
+      setCountdown(null);
+      setOpened(false);
+      setNoNumber(false);
+      setShareErr('');
+      setIdx((i) => i + 1);
+      setAutoOpen(true);
+      return undefined;
+    }
+    const id = setTimeout(() => setCountdown((c) => (c === null ? null : c - 1)), 1000);
+    return () => clearTimeout(id);
+  }, [countdown]);
+  // Next customer's photo is ready -> open their chat (or stop the chain when there's no number).
+  useEffect(() => {
+    if (!autoOpen || !curRow || !imgBlob) return;
+    setAutoOpen(false);
+    if (validWaNumber(curRow.customer.phone) && shareRef.current) shareRef.current(false);
+    else setChain(false);
+  }, [autoOpen, curRow, imgBlob]);
 
   useEffect(() => {
     try {
@@ -145,11 +199,23 @@ export default function BillSender({ fb, customers, days, payments, settings, on
         phone: pickManually ? null : n,
       });
       setOpened(true);
+      if (!pickManually) {
+        away.current = true;
+        setChain(true);
+      }
     } catch (e) {
       if (isShareCancel(e)) return;
       console.error('[share-bill]', e);
       setShareErr(e && e.code === 'NOT_INSTALLED' ? t('waNotInstalled') : t('shareFailed'));
     }
+  };
+
+  shareRef.current = sharePhoto;
+  const stopChain = () => {
+    setCountdown(null);
+    setChain(false);
+    setAutoOpen(false);
+    away.current = false;
   };
 
   const nextCustomer = () => {
@@ -187,6 +253,14 @@ export default function BillSender({ fb, customers, days, payments, settings, on
         ) : (
           <p className="muted small">{t('loading')}</p>
         )}
+        {countdown !== null && (
+          <div className="card warn" data-testid="chain-countdown">
+            <p><b>{t('waChainNext').replace('{s}', countdown)}</b></p>
+            <button type="button" className="btn big" onClick={stopChain}>
+              ⏸ {t('waChainStop')}
+            </button>
+          </div>
+        )}
         {!opened ? (
           <>
             <button
@@ -195,8 +269,9 @@ export default function BillSender({ fb, customers, days, payments, settings, on
               onClick={() => sharePhoto(false)}
               disabled={!imgBlob}
             >
-              📤 {t('waSharePhoto')}
+              📤 {chain || idx > 0 ? t('waSharePhoto') : t('waChainStart')}
             </button>
+            <p className="muted small" style={{ marginTop: '0.4rem' }}>{t('waChainHint')}</p>
             {shareErr && <p className="err small">{shareErr}</p>}
             {noNumber ? (
               <>
