@@ -547,6 +547,7 @@ describe('#19 customer form validation, #20 deactivate asks first', () => {
     const fb = mkFb();
     render(wrap(<CustomerForm fb={fb} initial={null} nextOrder={10} onDone={() => {}} />));
     fireEvent.change(screen.getByLabelText(`${en.name} *`), { target: { value: 'Ram' } });
+    fireEvent.click(screen.getByTestId('special-rates'));
     fireEvent.click(screen.getByLabelText(en.customRateToggle));
     fireEvent.click(screen.getByText(en.save));
     expect(screen.getByText(en.rateRequired)).toBeTruthy();
@@ -694,6 +695,9 @@ describe('1.10.11 customer form, special paneer rate, day editor', () => {
     const fb = mkFb();
     render(wrap(<CustomerForm fb={fb} initial={null} nextOrder={10} onDone={() => {}} />));
     fireEvent.change(screen.getByLabelText(`${en.name} *`), { target: { value: 'Ram' } });
+    expect(screen.queryByLabelText(en.paneerRateToggle)).toBeNull();
+    expect(screen.getByText(en.usesDefaultRates)).toBeTruthy();
+    fireEvent.click(screen.getByTestId('special-rates'));
     expect(screen.getByLabelText(en.paneerRateToggle).getAttribute('role')).toBe('switch');
     expect(screen.getByLabelText(en.customRateToggle).getAttribute('role')).toBe('switch');
     expect(screen.getByText(en.usesDefaultPaneerRate)).toBeTruthy();
@@ -1067,6 +1071,8 @@ describe('1.10.34 Delivery pre-fill: usual or same as last day', () => {
   it('Customer profile: two switches, turning one on turns the other off, saved on the customer', () => {
     const fb = mkFb();
     render(wrap(<CustomerForm fb={fb} initial={c} nextOrder={20} onDone={() => {}} />));
+    expect(screen.queryByTestId('prefill-usual')).toBeNull();
+    fireEvent.click(screen.getByTestId('milk-format'));
     const st = (m) => screen.getByTestId('prefill-' + m).checked;
     expect([st('usual'), st('lastDay')]).toEqual([true, false]);
     fireEvent.click(screen.getByTestId('prefill-lastDay'));
@@ -1108,8 +1114,22 @@ describe('1.10.35 pause dates start today or later', () => {
     const fb = mkFb();
     const T = todayISO();
     render(wrap(<CustomerForm fb={fb} initial={{ ...c, pauseFrom: addDays(T, -3), pauseTo: addDays(T, 3) }} nextOrder={20} onDone={() => {}} />));
+    fireEvent.click(screen.getByTestId('milk-format'));
     fireEvent.click(screen.getByTestId('prefill-lastDay'));
     fireEvent.click(screen.getByText(STRINGS.en.save));
     expect(fb.writes.at(-1).data).toMatchObject({ prefillMode: 'lastDay' });
+  });
+});
+
+describe('1.10.36 special rates master switch', () => {
+  it('opens on when the customer has a special rate; off turns both rates off', () => {
+    const fb = mkFb();
+    render(wrap(<CustomerForm fb={fb} initial={{ id: 'c1', name: 'Asha', order: 10, rateOverridePaise: 5400 }} nextOrder={20} onDone={() => {}} />));
+    expect(screen.getByTestId('special-rates').checked).toBe(true);
+    expect(screen.getByLabelText(en.customRateToggle).checked).toBe(true);
+    fireEvent.click(screen.getByTestId('special-rates'));
+    expect(screen.queryByLabelText(en.customRateToggle)).toBeNull();
+    fireEvent.click(screen.getByText(en.save));
+    expect(fb.writes.at(-1).data).toMatchObject({ rateOverridePaise: null });
   });
 });

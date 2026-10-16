@@ -222,6 +222,12 @@ export default function Customers({ fb, customers, settings, openCustomer }) {
 
 export function CustomerForm({ fb, initial, nextOrder, onDone }) {
   const { t } = useLang();
+  // Master switch: the milk / paneer special-rate switches show only while it is on (user, 16 Oct 2026).
+  // "Set milk format" shows the As usual / Same as last day switches (user, 16 Oct 2026).
+  const [showFormat, setShowFormat] = useState(() => !!initial && initial.prefillMode === 'lastDay');
+  const [showRates, setShowRates] = useState(
+    () => !!initial && ((Number.isInteger(initial.rateOverridePaise) && initial.rateOverridePaise > 0) || (Number.isInteger(initial.paneerRateOverridePaise) && initial.paneerRateOverridePaise > 0)),
+  );
   const [f, setF] = useState(() =>
     initial
       ? {
@@ -393,61 +399,102 @@ export function CustomerForm({ fb, initial, nextOrder, onDone }) {
           </div>
         </label>
       </div>
-      <p className="muted small">{t('prefillHint')}</p>
-      {[
-        ['usual', 'prefillUsual'],
-        ['lastDay', 'prefillLastDay'],
-      ].map(([mode, key]) => (
-        <div className="switch-row" key={mode}>
-          <span>🔁 {t(key)}</span>
+      <div className="switch-row">
+        <span>🥛 {t('milkFormatToggle')}</span>
+        <input
+          type="checkbox"
+          role="switch"
+          className="switch"
+          aria-label={t('milkFormatToggle')}
+          data-testid="milk-format"
+          checked={showFormat}
+          onChange={(e) => setShowFormat(e.target.checked)}
+        />
+      </div>
+      {showFormat ? (
+        <div className="milk-format">
+        <p className="muted small">{t('prefillHint')}</p>
+        {[
+          ['usual', 'prefillUsual'],
+          ['lastDay', 'prefillLastDay'],
+        ].map(([mode, key]) => (
+          <div className="switch-row" key={mode}>
+            <span>🔁 {t(key)}</span>
+            <input
+              type="checkbox"
+              role="switch"
+              className="switch"
+              aria-label={t(key)}
+              data-testid={'prefill-' + mode}
+              checked={(f.prefillMode || 'usual') === mode}
+              onChange={(e) => setF({ ...f, prefillMode: e.target.checked ? mode : mode === 'usual' ? 'lastDay' : 'usual' })}
+            />
+          </div>
+        ))}
+        </div>
+      ) : (
+        <p className="muted small">{t(f.prefillMode === 'lastDay' ? 'prefillLastDay' : 'prefillUsual')}</p>
+      )}
+      <div className="switch-row">
+        <span>💰 {t('specialRatesToggle')}</span>
+        <input
+          type="checkbox"
+          role="switch"
+          className="switch"
+          aria-label={t('specialRatesToggle')}
+          data-testid="special-rates"
+          checked={showRates}
+          onChange={(e) => {
+            const on = e.target.checked;
+            setShowRates(on);
+            // Off = both special rates off, the default rates apply
+            if (!on) setF({ ...f, customRate: false, customPaneerRate: false });
+          }}
+        />
+      </div>
+      {showRates ? (
+        <div className="special-rates">
+        <div className="switch-row">
+          <span>🥛 {t('customRateToggle')}</span>
           <input
             type="checkbox"
             role="switch"
             className="switch"
-            aria-label={t(key)}
-            data-testid={'prefill-' + mode}
-            checked={(f.prefillMode || 'usual') === mode}
-            onChange={(e) => setF({ ...f, prefillMode: e.target.checked ? mode : mode === 'usual' ? 'lastDay' : 'usual' })}
+            aria-label={t('customRateToggle')}
+            checked={f.customRate}
+            onChange={(e) => setF({ ...f, customRate: e.target.checked })}
           />
         </div>
-      ))}
-      <div className="switch-row">
-        <span>🥛 {t('customRateToggle')}</span>
-        <input
-          type="checkbox"
-          role="switch"
-          className="switch"
-          aria-label={t('customRateToggle')}
-          checked={f.customRate}
-          onChange={(e) => setF({ ...f, customRate: e.target.checked })}
-        />
-      </div>
-      {f.customRate ? (
-        <label>
-          {t('customRateLabel')}
-          <input type="number" inputMode="decimal" min="0" step="any" value={f.rateOverride} onChange={set('rateOverride')} />
-        </label>
+        {f.customRate ? (
+          <label>
+            {t('customRateLabel')}
+            <input type="number" inputMode="decimal" min="0" step="any" value={f.rateOverride} onChange={set('rateOverride')} />
+          </label>
+        ) : (
+          <p className="muted small">{t('usesDefaultRate')}</p>
+        )}
+        <div className="switch-row">
+          <span>🧀 {t('paneerRateToggle')}</span>
+          <input
+            type="checkbox"
+            role="switch"
+            className="switch"
+            aria-label={t('paneerRateToggle')}
+            checked={f.customPaneerRate}
+            onChange={(e) => setF({ ...f, customPaneerRate: e.target.checked })}
+          />
+        </div>
+        {f.customPaneerRate ? (
+          <label>
+            {t('paneerRateLabel')}
+            <input type="number" inputMode="decimal" min="0" step="any" value={f.paneerRateOverride} onChange={set('paneerRateOverride')} />
+          </label>
+        ) : (
+          <p className="muted small">{t('usesDefaultPaneerRate')}</p>
+        )}
+        </div>
       ) : (
-        <p className="muted small">{t('usesDefaultRate')}</p>
-      )}
-      <div className="switch-row">
-        <span>🧀 {t('paneerRateToggle')}</span>
-        <input
-          type="checkbox"
-          role="switch"
-          className="switch"
-          aria-label={t('paneerRateToggle')}
-          checked={f.customPaneerRate}
-          onChange={(e) => setF({ ...f, customPaneerRate: e.target.checked })}
-        />
-      </div>
-      {f.customPaneerRate ? (
-        <label>
-          {t('paneerRateLabel')}
-          <input type="number" inputMode="decimal" min="0" step="any" value={f.paneerRateOverride} onChange={set('paneerRateOverride')} />
-        </label>
-      ) : (
-        <p className="muted small">{t('usesDefaultPaneerRate')}</p>
+        <p className="muted small">{t('usesDefaultRates')}</p>
       )}
       <label>
         {t('openingDue')}
