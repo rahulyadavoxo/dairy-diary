@@ -3,7 +3,7 @@ import { firstDeliveryMonth } from '../firstMonth.js';
 import { WhatsAppIcon, BillIcon } from '../components/Icons.jsx';
 import { pushBackHandler } from '../backStack.js';
 import { useLang } from '../i18n.js';
-import { computeMonth, sortByDue } from '../billing.js';
+import { computeMonth, sortByDue, isPaidRow } from '../billing.js';
 import { getPinHash, verifyPin, pinWaitSeconds } from '../pinLock.js';
 import { preGenerateBillPhotos } from '../billPreGen.js';
 import { fmtQty, monthDates, rupees, todayISO, monthOf } from '../format.js';
@@ -49,7 +49,7 @@ export default function Hisaab({ fb, customers, days, payments, settings, month,
   useScrollKeep(sending || photos);
   // Search + filter survive opening a customer (the screen unmounts), so Back returns to the same list.
   const [query, setQueryState] = useState(() => hisaabView.query);
-  // 'all' | 'unpaid' (balance due > 0) | 'paid' (nothing due / advance)
+  // 'all' | 'unpaid' (everything not paid) | 'paid' (isPaidRow: payment marked and nothing due, or advance)
   const [payFilter, setPayFilterState] = useState(() => hisaabView.payFilter);
   const setQuery = (v) => {
     hisaabView.query = v;
@@ -140,12 +140,12 @@ export default function Hisaab({ fb, customers, days, payments, settings, month,
   }, [month, res]);
   // Customers (they owe us) and suppliers (we owe them) are listed separately.
   const customerRows = sortByDue(allRows.filter((r) => !r.customer.isSupplier));
-  const unpaidCount = customerRows.filter((r) => r.balancePaise > 0).length;
+  const unpaidCount = customerRows.filter((r) => !isPaidRow(r)).length;
   const paidCount = customerRows.length - unpaidCount;
   const rows = customerRows.filter(
     (r) =>
       matchesQuery(r.customer, query) &&
-      (payFilter === 'all' || (payFilter === 'unpaid' ? r.balancePaise > 0 : r.balancePaise <= 0)),
+      (payFilter === 'all' || (payFilter === 'unpaid' ? !isPaidRow(r) : isPaidRow(r))),
   );
   const supplierRows = sortByDue(allRows.filter((r) => r.customer.isSupplier && matchesQuery(r.customer, query)));
   const sTotals = res.supplierTotals || { billedPaise: 0, collectedPaise: 0, pendingPaise: 0, advancePaise: 0 };

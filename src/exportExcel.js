@@ -2,12 +2,10 @@
 // One file per month: a day-by-day milk grid with the month's bill for every customer,
 // the suppliers below it, then every payment of the month. Amounts are plain rupee numbers
 // (no ₹ sign) so Excel can add them up. UTF-8 with BOM so Hindi names show correctly.
-import { Capacitor, registerPlugin } from '@capacitor/core';
+import { Capacitor } from '@capacitor/core';
 import { computeMonth } from './billing.js';
 import { monthDates, monthName } from './format.js';
-import { blobToBase64 } from './waShare.js';
-
-const FileShare = registerPlugin('WhatsAppShare');
+import { blobToBase64, WhatsAppShare as FileShare } from './waShare.js';
 
 const H = {
   hi: {

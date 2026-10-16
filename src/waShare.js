@@ -2,7 +2,7 @@ import { Capacitor, registerPlugin } from '@capacitor/core';
 import { waNumber } from './format.js';
 import { shareImage } from './billImage.js';
 
-const WhatsAppShare = registerPlugin('WhatsAppShare');
+export const WhatsAppShare = registerPlugin('WhatsAppShare');
 
 /** Normalised WhatsApp number (country code + digits), or null when missing or invalid. */
 export function validWaNumber(phone) {

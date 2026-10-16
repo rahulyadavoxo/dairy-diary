@@ -147,3 +147,13 @@ describe('1.10.42 Excel export', () => {
     expect(exportFileName({ farmName: 'Ram Dairy' }, '2026-10')).toBe('Ram_Dairy-2026-10.csv');
   });
 });
+
+import { isPaidRow } from '../src/billing.js';
+describe('1.10.43 Paid only after a payment is marked', () => {
+  it('₹0 bill with no payment is not paid; paid in full or advance is', () => {
+    expect(isPaidRow({ balancePaise: 0, paidPaise: 0 })).toBe(false);
+    expect(isPaidRow({ balancePaise: 0, paidPaise: 5000 })).toBe(true);
+    expect(isPaidRow({ balancePaise: -100, paidPaise: 0 })).toBe(true);
+    expect(isPaidRow({ balancePaise: 100, paidPaise: 5000 })).toBe(false);
+  });
+});

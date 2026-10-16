@@ -146,6 +146,14 @@ export function computeMonth({ customers = [], days = {}, payments = [], setting
   };
 }
 
+/** Hisaab "Paid" (user, 16 Oct 2026): only once a payment is marked this month and nothing is
+ *  left due, or the customer has an advance. A ₹0 bill with no payment is NOT paid. */
+export function isPaidRow(row) {
+  if (!row) return false;
+  if (row.balancePaise < 0) return true;
+  return row.balancePaise === 0 && row.paidPaise > 0;
+}
+
 /** Sort rows by highest balance due first, then by name. */
 export function sortByDue(rows) {
   return [...rows].sort((a, b) => b.balancePaise - a.balancePaise || String(a.customer.name || '').localeCompare(String(b.customer.name || '')));
