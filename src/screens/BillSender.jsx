@@ -222,6 +222,13 @@ export default function BillSender({ fb, customers, days, payments, settings, on
     away.current = false;
   };
 
+  // WhatsApp never tells us whether Send was pressed: the user says "not sent" -> same customer again,
+  // nothing is counted as sent.
+  const notSent = () => {
+    setCountdown(null);
+    if (shareRef.current) shareRef.current(false);
+  };
+
   const nextCustomer = () => {
     setOpened(false);
     setNoNumber(false);
@@ -260,7 +267,10 @@ export default function BillSender({ fb, customers, days, payments, settings, on
         {countdown !== null && (
           <div className="card warn" data-testid="chain-countdown">
             <p><b>{t('waChainNext').replace('{s}', countdown)}</b></p>
-            <button type="button" className="btn big" onClick={stopChain}>
+            <button type="button" className="btn big primary" onClick={notSent}>
+              ↩ {t('waChainNotSent')}
+            </button>
+            <button type="button" className="btn big" onClick={stopChain} style={{ marginTop: '0.5rem' }}>
               ⏸ {t('waChainStop')}
             </button>
           </div>

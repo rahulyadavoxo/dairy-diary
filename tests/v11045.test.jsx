@@ -79,4 +79,19 @@ describe('1.10.45 bills one by one: next chat opens after coming back', () => {
     expect(sent).toHaveLength(1);
     expect(screen.queryByTestId('chain-countdown')).toBeNull();
   });
+
+  it('"Not sent" reopens the SAME customer and does not move on', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    render(wrap(<BillSender {...props} />));
+    await flush();
+    fireEvent.click(screen.getByText(/Send bills to everyone/));
+    await flush();
+    await act(async () => document.dispatchEvent(new Event('visibilitychange')));
+    fireEvent.click(screen.getByText(new RegExp(en.waChainNotSent)));
+    await flush();
+    expect(sent).toHaveLength(2);
+    expect(sent[1]).toBe(sent[0]);
+    expect(blobs[1]).toBe(blobs[0]);
+    expect(JSON.parse(localStorage.getItem('dd_wa_progress')).idx).toBe(0);
+  });
 });
