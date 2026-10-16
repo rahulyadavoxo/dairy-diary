@@ -222,7 +222,7 @@ export default function Customers({ fb, customers, settings, openCustomer }) {
 
 export function CustomerForm({ fb, initial, nextOrder, onDone }) {
   const { t } = useLang();
-  // Master switch: the milk / paneer special-rate switches show only while it is on (user, 16 Oct 2026).
+  // Show / hide only (no setting changes): the milk / paneer special-rate switches (user, 16 Oct 2026).
   // "Set milk format" shows the As usual / Same as last day switches (user, 16 Oct 2026).
   const [showFormat, setShowFormat] = useState(() => !!initial && initial.prefillMode === 'lastDay');
   const [showRates, setShowRates] = useState(
@@ -399,18 +399,16 @@ export function CustomerForm({ fb, initial, nextOrder, onDone }) {
           </div>
         </label>
       </div>
-      <div className="switch-row">
+      <button
+        type="button"
+        className="switch-row section-toggle"
+        aria-expanded={showFormat}
+        data-testid="milk-format"
+        onClick={() => setShowFormat(!showFormat)}
+      >
         <span>🥛 {t('milkFormatToggle')}</span>
-        <input
-          type="checkbox"
-          role="switch"
-          className="switch"
-          aria-label={t('milkFormatToggle')}
-          data-testid="milk-format"
-          checked={showFormat}
-          onChange={(e) => setShowFormat(e.target.checked)}
-        />
-      </div>
+        <span className="muted small">{showFormat ? t('hide') + ' ▲' : t('show') + ' ▼'}</span>
+      </button>
       {showFormat ? (
         <div className="milk-format">
         <p className="muted small">{t('prefillHint')}</p>
@@ -435,23 +433,16 @@ export function CustomerForm({ fb, initial, nextOrder, onDone }) {
       ) : (
         <p className="muted small">{t(f.prefillMode === 'lastDay' ? 'prefillLastDay' : 'prefillUsual')}</p>
       )}
-      <div className="switch-row">
+      <button
+        type="button"
+        className="switch-row section-toggle"
+        aria-expanded={showRates}
+        data-testid="special-rates"
+        onClick={() => setShowRates(!showRates)}
+      >
         <span>💰 {t('specialRatesToggle')}</span>
-        <input
-          type="checkbox"
-          role="switch"
-          className="switch"
-          aria-label={t('specialRatesToggle')}
-          data-testid="special-rates"
-          checked={showRates}
-          onChange={(e) => {
-            const on = e.target.checked;
-            setShowRates(on);
-            // Off = both special rates off, the default rates apply
-            if (!on) setF({ ...f, customRate: false, customPaneerRate: false });
-          }}
-        />
-      </div>
+        <span className="muted small">{showRates ? t('hide') + ' ▲' : t('show') + ' ▼'}</span>
+      </button>
       {showRates ? (
         <div className="special-rates">
         <div className="switch-row">
@@ -494,7 +485,11 @@ export function CustomerForm({ fb, initial, nextOrder, onDone }) {
         )}
         </div>
       ) : (
-        <p className="muted small">{t('usesDefaultRates')}</p>
+        <p className="muted small">
+          {f.customRate || f.customPaneerRate
+            ? [f.customRate && `🥛 ₹${f.rateOverride}/${t('litre')}`, f.customPaneerRate && `🧀 ₹${f.paneerRateOverride}/${t('kg')}`].filter(Boolean).join(' · ')
+            : t('usesDefaultRates')}
+        </p>
       )}
       <label>
         {t('openingDue')}

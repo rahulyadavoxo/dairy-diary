@@ -1122,14 +1122,15 @@ describe('1.10.35 pause dates start today or later', () => {
 });
 
 describe('1.10.36 special rates master switch', () => {
-  it('opens on when the customer has a special rate; off turns both rates off', () => {
+  it('opens when the customer has a special rate; hiding only hides', () => {
     const fb = mkFb();
     render(wrap(<CustomerForm fb={fb} initial={{ id: 'c1', name: 'Asha', order: 10, rateOverridePaise: 5400 }} nextOrder={20} onDone={() => {}} />));
-    expect(screen.getByTestId('special-rates').checked).toBe(true);
+    expect(screen.getByTestId('special-rates').getAttribute('aria-expanded')).toBe('true');
     expect(screen.getByLabelText(en.customRateToggle).checked).toBe(true);
     fireEvent.click(screen.getByTestId('special-rates'));
     expect(screen.queryByLabelText(en.customRateToggle)).toBeNull();
+    fireEvent.change(screen.getByLabelText(`${en.name} *`), { target: { value: 'Asha B' } });
     fireEvent.click(screen.getByText(en.save));
-    expect(fb.writes.at(-1).data).toMatchObject({ rateOverridePaise: null });
+    expect(fb.writes.at(-1).data.rateOverridePaise).toBeUndefined(); // hiding does not change the rate
   });
 });

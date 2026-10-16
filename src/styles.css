@@ -379,3 +379,5 @@ input.switch:focus-visible { outline: 3px solid #9fd3b2; outline-offset: 2px; }
 .search-box .search:not(:placeholder-shown) ~ .search-icon-r { display: none; }
 .search-sticky.stuck { background: var(--bg); box-shadow: 0 6px 8px -6px rgba(0, 0, 0, 0.18); }
 .search-sticky.stuck::before { content: ''; position: absolute; left: 0; right: 0; bottom: 100%; height: env(safe-area-inset-top); background: var(--bg); }
+
+.section-toggle { width: 100%; background: none; border: 0; padding: 0.5rem 0; font: inherit; font-weight: 600; color: inherit; cursor: pointer; text-align: left; }
