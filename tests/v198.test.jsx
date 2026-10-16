@@ -1087,3 +1087,29 @@ describe('1.10.34 Delivery pre-fill: usual or same as last day', () => {
     expect(screen.getByTestId('as-usual-btn').textContent).toBe(D.sameAsLastDay);
   });
 });
+
+describe('1.10.35 pause dates start today or later', () => {
+  const c = { id: 'c1', name: 'Asha', order: 10, usualMorningL: 1, usualEveningL: 1 };
+  it('date boxes have today as minimum; a past start is refused', () => {
+    const fb = mkFb();
+    const T = todayISO();
+    render(wrap(<CustomerForm fb={fb} initial={c} nextOrder={20} onDone={() => {}} />));
+    expect(screen.getByTestId('pause-from').getAttribute('min')).toBe(T);
+    expect(screen.getByTestId('pause-to').getAttribute('min')).toBe(T);
+    fireEvent.change(screen.getByTestId('pause-from'), { target: { value: addDays(T, -2) } });
+    const n = fb.writes.length;
+    fireEvent.click(screen.getByText(STRINGS.en.save));
+    expect(fb.writes.length).toBe(n);
+    expect(screen.getByText(STRINGS.en.pausePast)).toBeTruthy();
+    fireEvent.change(screen.getByTestId('pause-from'), { target: { value: addDays(T, 2) } });
+    expect(screen.getByTestId('pause-to').getAttribute('min')).toBe(addDays(T, 2));
+  });
+  it('a pause already running keeps its old start when other fields are edited', () => {
+    const fb = mkFb();
+    const T = todayISO();
+    render(wrap(<CustomerForm fb={fb} initial={{ ...c, pauseFrom: addDays(T, -3), pauseTo: addDays(T, 3) }} nextOrder={20} onDone={() => {}} />));
+    fireEvent.click(screen.getByTestId('prefill-lastDay'));
+    fireEvent.click(screen.getByText(STRINGS.en.save));
+    expect(fb.writes.at(-1).data).toMatchObject({ prefillMode: 'lastDay' });
+  });
+});

@@ -298,6 +298,10 @@ export function CustomerForm({ fb, initial, nextOrder, onDone }) {
     };
     if (!f.name.trim()) return fail(t('nameRequired'));
     if (f.pauseFrom && f.pauseTo && f.pauseFrom > f.pauseTo) return fail(`${t('pauseFrom')} > ${t('pauseTo')}`);
+    // A pause starts today or later (user, 16 Oct 2026). A pause already running keeps its old start.
+    const today0 = todayISO();
+    if (f.pauseFrom && f.pauseFrom < today0 && f.pauseFrom !== ((initial && initial.pauseFrom) || '')) return fail(t('pausePast'));
+    if (f.pauseTo && f.pauseTo < today0 && f.pauseTo !== ((initial && initial.pauseTo) || '')) return fail(t('pausePast'));
     const badQty = (v) => v !== '' && v != null && (!Number.isFinite(Number(v)) || Number(v) < 0);
     if (badQty(f.usualMorningL) || badQty(f.usualEveningL)) return fail(t('qtyInvalid'));
     const rate = toPaise(f.rateOverride);
@@ -460,11 +464,23 @@ export function CustomerForm({ fb, initial, nextOrder, onDone }) {
       <div className="two">
         <label>
           {t('pauseFrom')}
-          <input type="date" value={f.pauseFrom} onChange={set('pauseFrom')} />
+          <input
+            type="date"
+            value={f.pauseFrom}
+            min={initial && initial.pauseFrom && initial.pauseFrom < todayISO() ? initial.pauseFrom : todayISO()}
+            onChange={set('pauseFrom')}
+            data-testid="pause-from"
+          />
         </label>
         <label>
           {t('pauseTo')}
-          <input type="date" value={f.pauseTo} onChange={set('pauseTo')} />
+          <input
+            type="date"
+            value={f.pauseTo}
+            min={f.pauseFrom && f.pauseFrom > todayISO() ? f.pauseFrom : todayISO()}
+            onChange={set('pauseTo')}
+            data-testid="pause-to"
+          />
         </label>
       </div>
       {/* Only the box itself toggles Active (a div, not a label: tapping the text does nothing). */}
