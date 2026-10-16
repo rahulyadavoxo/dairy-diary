@@ -85,7 +85,12 @@ export default function DayEditor({ fb, customers, days, pendingDays = {}, setti
   );
   const byId = useMemo(() => Object.fromEntries(customers.map((c) => [c.id, c])), [customers]);
 
-  const rowFor = (c) => drafts[c.id] || saved[c.id] || defaultRow(c, date);
+  // A saved entry may lack fields (older 0 L saves were written without milkL): show them as 0.
+  // Opened from a customer's calendar, a day with no entry shows empty (0), exactly like the
+  // calendar, not the usual litres (user, 16 Oct 2026).
+  const ZERO = { milkL: 0, milkMorningL: 0, milkEveningL: 0, paneerKg: 0, skip: false, note: '' };
+  const rowFor = (c) =>
+    drafts[c.id] || (saved[c.id] ? { ...ZERO, ...saved[c.id] } : customerId ? { ...ZERO, skip: isPaused(c, date) } : defaultRow(c, date));
 
   // Saving here records the whole day, so a morning-only Delivery save becomes complete.
   const normalise = (c, r, st) => normaliseEntry(c, { ...r, half: null }, st);
@@ -177,7 +182,7 @@ export default function DayEditor({ fb, customers, days, pendingDays = {}, setti
     }
   };
 
-  const qtyFor = (r) => (session === 'morning' ? r.milkMorningL || 0 : session === 'evening' ? r.milkEveningL || 0 : r.milkL);
+  const qtyFor = (r) => (session === 'morning' ? r.milkMorningL || 0 : session === 'evening' ? r.milkEveningL || 0 : r.milkL || 0);
 
   const saveAll = () => {
     // Rows without a saved entry only show the usual litres as a suggestion. Saving them creates

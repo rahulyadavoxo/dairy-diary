@@ -6,6 +6,7 @@ describe('1.10.22 two phones / offline phone never overwrite each other', () => 
   it('only fields the user changed are sent; empty values count as the same', () => {
     expect(entryChanges({ milkMorningL: 1, milkEveningL: 0, note: '' }, { milkMorningL: 1, milkEveningL: 1, note: '' })).toEqual({ milkEveningL: 1 });
     expect(entryChanges(undefined, { milkMorningL: 1, milkEveningL: 0, skip: false, note: '', milkRatePaise: null })).toEqual({ milkMorningL: 1 });
+    expect(entryChanges(undefined, { milkL: 0, milkMorningL: 0, skip: false })).toEqual({ milkL: 0 });
     expect(entryChanges({ milkL: 2 }, { milkL: 2 })).toEqual({});
     expect(entryChanges({ active: true }, { active: false })).toEqual({ active: false });
   });
@@ -81,7 +82,7 @@ describe('1.10.23 a new 0 L entry is still created (calendar ✕, day counts as 
     saveEntries(fb, '2026-10-07', { c1: { milkL: 0, milkMorningL: 0, milkEveningL: 0, skip: false, note: '' } }, 'x', {});
     expect(writes.length).toBe(1);
     expect(writes[0].data.entries.c1).toBeTruthy();
-    expect(writes[0].data.entries.c1.milkL).toBeUndefined(); // no quantity sent, so nothing of another phone is overwritten
+    expect(writes[0].data.entries.c1.milkL).toBe(0); // 1.10.33: a new 0 L entry stores milkL 0
     saveEntries(fb, '2026-10-07', { c1: { milkL: 1 } }, 'x', { c1: { milkL: 1 } });
     expect(writes.length).toBe(1);
   });

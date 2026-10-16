@@ -137,3 +137,29 @@ describe('1.10.32 empty morning-only saves (morning 0, evening empty)', () => {
     expect(screen.getByRole('alert').textContent).toBe(en.editDayNeedsAll.replace('{n}', 1));
   });
 });
+
+describe('1.10.33 calendar edit shows exactly what the calendar shows', () => {
+  it('a day with no entry opens empty (0), not the usual', async () => {
+    const { default: DayEditor } = await import('../src/screens/Register.jsx');
+    const D = addDays(T, -3);
+    render(wrap(<DayEditor fb={mkFb()} customers={[both]} days={{}} settings={settings} displayName="x" date={D} customerId="c1" lockDate onClose={() => {}} />));
+    expect(screen.getByTestId('day-editor').querySelector('input.qty').value).toBe('0');
+  });
+  it('saving 0 stores milkL 0 and reopens as 0; old field-less entries show 0', async () => {
+    const { default: DayEditor } = await import('../src/screens/Register.jsx');
+    const D = addDays(T, -3);
+    const fb = mkFb();
+    render(wrap(<DayEditor fb={fb} customers={[both]} days={{}} settings={settings} displayName="x" date={D} customerId="c1" lockDate onClose={() => {}} />));
+    fireEvent.click(screen.getByText(en.save));
+    expect(lastEntry(fb, 'c1').milkL).toBe(0);
+    cleanup();
+    render(wrap(<DayEditor fb={fb} customers={[both]} days={{ [D]: { entries: { c1: { skip: false, updatedBy: 'x' } } } }} settings={settings} displayName="x" date={D} customerId="c1" lockDate onClose={() => {}} />));
+    expect(screen.getByTestId('day-editor').querySelector('input.qty').value).toBe('0');
+  });
+  it('a saved entry opens with its own litres', async () => {
+    const { default: DayEditor } = await import('../src/screens/Register.jsx');
+    const D = addDays(T, -3);
+    render(wrap(<DayEditor fb={mkFb()} customers={[both]} days={{ [D]: { entries: { c1: { milkL: 2.5, milkMorningL: 0, milkEveningL: 0 } } } }} settings={settings} displayName="x" date={D} customerId="c1" lockDate onClose={() => {}} />));
+    expect(screen.getByTestId('day-editor').querySelector('input.qty').value).toBe('2.5');
+  });
+});

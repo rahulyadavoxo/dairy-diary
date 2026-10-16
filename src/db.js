@@ -105,6 +105,8 @@ const sameVal = (a, b) => Object.is(a, b) || (emptyVal(a) && emptyVal(b));
 export function entryChanges(base, next) {
   const out = {};
   for (const k of Object.keys(next || {})) if (!sameVal((base || {})[k], next[k])) out[k] = next[k];
+  // A brand-new entry always carries milkL, so a 0 L day is stored as milkL: 0 (user, 16 Oct 2026).
+  if (!base && next && 'milkL' in next) out.milkL = next.milkL;
   return out;
 }
 
