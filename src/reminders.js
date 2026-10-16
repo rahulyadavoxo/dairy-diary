@@ -142,6 +142,14 @@ async function setup(t) {
   } catch {
     /* web / old Android */
   }
+  // Android 13+: notifications are OFF for a new app until the user allows them, and then no ring
+  // ever shows (bug reported 16 Oct 2026). Ask once here; Settings shows a warning while it's off.
+  try {
+    const p = await LN.checkPermissions();
+    if (p && p.display && p.display !== 'granted' && p.display !== 'denied') await LN.requestPermissions();
+  } catch {
+    /* ignore */
+  }
   try {
     await LN.registerActionTypes({ types: [{ id: RING_ACTION_TYPE, actions: [{ id: 'close', title: t('ringClose') }] }] });
   } catch {
@@ -205,6 +213,41 @@ export async function syncRings({ days, pendingDays, hasCustomers, t, dmy, now =
     lastSig = ''; // try again next time
     console.error('[rings]', e);
   }
+}
+
+/** 'granted' | 'denied' | 'prompt' ... ; web counts as granted. */
+export async function ringPermission() {
+  if (!native()) return 'granted';
+  try {
+    const { LN } = await plugin();
+    const r = await LN.checkPermissions();
+    return (r && r.display) || 'granted';
+  } catch {
+    return 'granted';
+  }
+}
+
+/** Ask for notifications; when Android won't show the prompt any more, open the app's notification settings. */
+export async function askRingPermission() {
+  if (!native()) return 'granted';
+  let state = 'denied';
+  try {
+    const { LN } = await plugin();
+    const r = await LN.requestPermissions();
+    state = (r && r.display) || 'denied';
+  } catch {
+    /* ignore */
+  }
+  if (state !== 'granted') {
+    try {
+      const { registerPlugin } = await import('@capacitor/core');
+      await registerPlugin('SyncKeeper').openNotificationSettings();
+    } catch {
+      /* ignore */
+    }
+  }
+  lastSig = ''; // re-schedule on the next sync
+  return state;
 }
 
 export function _resetRingsForTest() {

@@ -16,8 +16,9 @@ import androidx.core.app.NotificationCompat;
 /** Keeps the process alive while entries wait for the server. See SyncKeeperPlugin. */
 public class SyncKeepService extends Service {
     static final String CHANNEL = "dd_sync";
-    static final int NOTE_ID = 7101;
-    static final int REMIND_ID = 7102;
+    // 7100-7207 belong to the register rings (reminders.js) - never reuse them here
+    static final int NOTE_ID = 9101;
+    static final int REMIND_ID = 9102;
     static final long MAX_MS = 5L * 60 * 60 * 1000; // never run longer than 5 h
     private final Handler handler = new Handler(Looper.getMainLooper());
 

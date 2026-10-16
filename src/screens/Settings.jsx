@@ -8,7 +8,7 @@ import { getPinHash, hashPin, savePinHash, verifyPin, pinWaitSeconds } from '../
 import DevicesCard from '../components/DevicesCard.jsx';
 import { signOutAndWipe } from '../devices.js';
 import { clearCachedPhotos } from '../billCache.js';
-import { ringTimes, validRingTimes } from '../reminders.js';
+import { ringTimes, validRingTimes, ringPermission, askRingPermission } from '../reminders.js';
 import { usePinGate } from '../components/PinGate.jsx';
 
 // Single source of truth for the version (package.json, injected by vite.config.js).
@@ -32,6 +32,19 @@ export default function Settings({ fb, user, settings, displayName, setDisplayNa
   const morningStr = `${pad(curTimes.morning[0])}:${pad(curTimes.morning[1])}`;
   const [ring, setRing] = useState({ night: nightStr, morning: morningStr });
   const [ringMsg, setRingMsg] = useState({ text: '', err: false });
+  // Notifications off -> the register ring can never show; warn and offer to turn them on.
+  const [ringPerm, setRingPerm] = useState('granted');
+  useEffect(() => {
+    let live = true;
+    const check = () => ringPermission().then((p) => live && setRingPerm(p));
+    check();
+    const onVis = () => document.visibilityState === 'visible' && check(); // back from Android settings
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      live = false;
+      document.removeEventListener('visibilitychange', onVis);
+    };
+  }, []);
   useEffect(() => setRing({ night: nightStr, morning: morningStr }), [nightStr, morningStr]);
   const ringDirty = ring.night !== nightStr || ring.morning !== morningStr;
   const saveRing = (e) => {
@@ -226,6 +239,14 @@ export default function Settings({ fb, user, settings, displayName, setDisplayNa
           <b>⏰ {t('ringSettings')}</b>
         </p>
         <p className="muted small">{t('ringSettingsHint')}</p>
+        {ringPerm !== 'granted' && (
+          <div className="card warn" data-testid="ring-perm-off">
+            <p className="error">⚠️ {t('ringPermOff')}</p>
+            <button type="button" className="btn primary" onClick={() => askRingPermission().then(setRingPerm)}>
+              🔔 {t('ringPermOn')}
+            </button>
+          </div>
+        )}
         <div className="ring-times">
           <label>
             🌙 {t('ringNightLabel')}

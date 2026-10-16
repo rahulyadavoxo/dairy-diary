@@ -2,6 +2,9 @@ package in.dairydiary.app;
 
 import android.content.Context;
 import android.content.Intent;
+import android.net.Uri;
+import android.os.Build;
+import android.provider.Settings;
 import androidx.core.content.ContextCompat;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
@@ -25,6 +28,26 @@ public class SyncKeeperPlugin extends Plugin {
         if (!pending) stop(getContext());
         else if (inBackground) start(getContext());
         call.resolve();
+    }
+
+    /** Opens this app's notification settings (register ring needs notifications on). */
+    @PluginMethod
+    public void openNotificationSettings(PluginCall call) {
+        Context ctx = getContext();
+        Intent i;
+        if (Build.VERSION.SDK_INT >= 26) {
+            i = new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS);
+            i.putExtra(Settings.EXTRA_APP_PACKAGE, ctx.getPackageName());
+        } else {
+            i = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + ctx.getPackageName()));
+        }
+        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        try {
+            ctx.startActivity(i);
+            call.resolve();
+        } catch (Exception e) {
+            call.reject("cannot open settings");
+        }
     }
 
     @Override
