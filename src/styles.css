@@ -384,23 +384,3 @@ input.switch:focus-visible { outline: 3px solid #9fd3b2; outline-offset: 2px; }
 .fold-card > .section-toggle { display: flex; align-items: center; justify-content: space-between; gap: 0.8rem; min-height: 52px; width: 100%; background: none; border: 0; padding: 0.4rem 0; font: inherit; font-weight: 700; color: inherit; cursor: pointer; text-align: left; }
 .fold-card > .section-toggle + * { border-top: 1px solid var(--line); padding-top: 0.4rem; margin-top: 0; }
 .fold-card > p.muted { margin: 0 0 0.6rem; }
-
-/* Scroll edge effect (like the Android notification shade, user 16 Oct 2026):
-   list cards shrink and fade as they slide out at the top or bottom, and grow back
-   in as they come in. Uses CSS scroll-driven animations; older WebViews just skip it.
-   The insets keep the effect clear of the sticky search (top) and the tab bar (bottom). */
-@keyframes dd-edge {
-  0% { opacity: 0; transform: scale(0.9) translateY(14px); }
-  14% { opacity: 1; transform: none; }
-  86% { opacity: 1; transform: none; }
-  100% { opacity: 0; transform: scale(0.9) translateY(-14px); }
-}
-@supports (animation-timeline: view()) {
-  @media (prefers-reduced-motion: no-preference) {
-    .content ul > li {
-      animation: dd-edge linear both;
-      animation-timeline: view(block 56px calc(var(--tab-h) + env(safe-area-inset-bottom)));
-      transform-origin: center;
-    }
-  }
-}
