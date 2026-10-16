@@ -10,7 +10,6 @@ import { signOutAndWipe } from '../devices.js';
 import { clearCachedPhotos } from '../billCache.js';
 import { ringTimes, validRingTimes } from '../reminders.js';
 import { usePinGate } from '../components/PinGate.jsx';
-import { listAnimOn, setListAnim } from '../listAnim.js';
 
 // Single source of truth for the version (package.json, injected by vite.config.js).
 // eslint-disable-next-line no-undef
@@ -20,7 +19,6 @@ export default function Settings({ fb, user, settings, displayName, setDisplayNa
   const { t, lang, setLang } = useLang();
   const [f, setF] = useState({ milkRate: '', paneerRate: '', farmName: '', phone: '', upiId: '' });
   const [name, setName] = useState(displayName || '');
-  const [anim, setAnim] = useState(listAnimOn);
   const [msg, setMsg] = useState('');
   const [pin, setPin] = useState('');
   const [pinMsg, setPinMsg] = useState('');
@@ -221,25 +219,6 @@ export default function Settings({ fb, user, settings, displayName, setDisplayNa
             English
           </button>
         </div>
-      </div>
-
-      <div className="card">
-        <div className="switch-row">
-          <span>✨ {t('listAnimToggle')}</span>
-          <input
-            type="checkbox"
-            role="switch"
-            className="switch"
-            aria-label={t('listAnimToggle')}
-            data-testid="list-anim"
-            checked={anim}
-            onChange={(e) => {
-              setAnim(e.target.checked);
-              setListAnim(e.target.checked);
-            }}
-          />
-        </div>
-        <p className="muted small">{t('listAnimHint')}</p>
       </div>
 
       <form className="card ring-card" onSubmit={saveRing} noValidate>
