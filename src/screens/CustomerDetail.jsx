@@ -25,6 +25,7 @@ export default function CustomerDetail({ fb, customers, days, payments, settings
   const row = res && res.rows[0];
   const [amount, setAmount] = useState('');
   const [mode, setMode] = useState('cash');
+  const [pick, setPick] = useState(null); // 'full' | 'part' chosen before an amount is typed
   const [payDate, setPayDate] = useState(todayISO());
   const [err, setErr] = useState('');
   // All hooks must run on every render, BEFORE any early return (Rules of Hooks).
@@ -49,6 +50,26 @@ export default function CustomerDetail({ fb, customers, days, payments, settings
     );
   }
 
+  // Full / Part follow the typed amount (user, 16 Oct 2026): less than due = Part -> "Add payment",
+  // exactly due = Full -> "Paid", more than due = Full + the extra goes to advance. The balance
+  // already carries an overpayment forward as advance (computeMonth), so nothing else is stored.
+  const duePaise = fullPaymentPaise(row.balancePaise);
+  const typedNow = toPaise(amount) || 0;
+  const payKind =
+    typedNow > 0
+      ? typedNow < duePaise
+        ? 'part'
+        : typedNow === duePaise
+          ? 'full'
+          : 'over'
+      : pick;
+  const payLabel =
+    typedNow > 0 && payKind === 'full'
+      ? t('payMarkPaid')
+      : typedNow > 0 && payKind === 'over'
+        ? (duePaise > 0 ? t('payPaidAdvance') : t('payAddAdvance')).replace('{x}', rupees(typedNow - duePaise))
+        : t('addPayment');
+
   const record = (e) => {
     e.preventDefault();
     const p = toPaise(amount);
@@ -59,6 +80,7 @@ export default function CustomerDetail({ fb, customers, days, payments, settings
     playSound('payment');
     setPaidAnim({ paise: p, key: Date.now() });
     setAmount('');
+    setPick(null);
   };
 
   const share = async (pickManually = false) => {
@@ -200,10 +222,26 @@ export default function CustomerDetail({ fb, customers, days, payments, settings
       <h2>{t('recordPayment')}</h2>
       <form className="card pay" onSubmit={record} noValidate>
         <div className="chips">
-          <button type="button" className="btn chip" onClick={() => setAmount(paiseToInput(fullPaymentPaise(row.balancePaise)))}>
-            {t('fullPayment')} {rupees(fullPaymentPaise(row.balancePaise))}
+          <button
+            type="button"
+            data-testid="pay-full"
+            className={'btn chip pick' + (payKind === 'full' || payKind === 'over' ? ' sel' : '')}
+            onClick={() => {
+              setPick('full');
+              setAmount(duePaise > 0 ? paiseToInput(duePaise) : '');
+            }}
+          >
+            {t('fullPayment')} {rupees(duePaise)}
           </button>
-          <button type="button" className="btn chip" onClick={() => setAmount('')}>
+          <button
+            type="button"
+            data-testid="pay-part"
+            className={'btn chip pick' + (payKind === 'part' ? ' sel' : '')}
+            onClick={() => {
+              setPick('part');
+              if (typedPaise >= duePaise) setAmount('');
+            }}
+          >
             {t('partPayment')}
           </button>
         </div>
@@ -211,6 +249,12 @@ export default function CustomerDetail({ fb, customers, days, payments, settings
           {t('amount')}
           <input type="number" inputMode="decimal" min="0" step="any" value={amount} onChange={(e) => setAmount(e.target.value)} />
         </label>
+        {payKind === 'part' && typedPaise > 0 && (
+          <p className="small muted" data-testid="pay-hint">{t('payLeftAfter').replace('{x}', rupees(duePaise - typedPaise))}</p>
+        )}
+        {payKind === 'over' && (
+          <p className="small ok-text" data-testid="pay-hint">{t('payToAdvance').replace('{x}', rupees(typedPaise - duePaise))}</p>
+        )}
         <div className="chips">
           <button type="button" className={'btn chip' + (mode === 'cash' ? ' on' : '')} onClick={() => setMode('cash')}>
             💵 {t('cash')}
@@ -225,8 +269,8 @@ export default function CustomerDetail({ fb, customers, days, payments, settings
           <input type="date" value={payDate} max={todayISO()} onChange={(e) => e.target.value && setPayDate(e.target.value)} />
         </label>
         {err && <p className="error">{err}</p>}
-        <button className="btn primary big" type="submit">
-          {t('addPayment')}
+        <button className="btn primary big" type="submit" data-testid="pay-submit">
+          {payLabel}
         </button>
       </form>
 

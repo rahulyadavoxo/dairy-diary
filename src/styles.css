@@ -65,6 +65,8 @@ label.check input { width: 24px; min-height: 24px; }
 .btn.toggle { min-width: 92px; font-weight: 600; }
 .btn.toggle.on { background: #fde8e6; color: var(--red); border-color: var(--red); }
 .btn.chip.on { background: var(--green); color: #fff; border-color: var(--green); }
+.btn.chip.pick.sel { background: #e3f3e8; color: var(--green); border: 2px solid var(--green); font-weight: 700; }
+.ok-text { color: var(--green); font-weight: 600; }
 .btn.step { width: 48px; height: 48px; font-size: 1.6rem; font-weight: 700; padding: 0; background: #eef6f0; border-color: #cfe4d6; }
 .has-note { background: #fff6d6; }
 

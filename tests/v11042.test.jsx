@@ -157,3 +157,49 @@ describe('1.10.43 Paid only after a payment is marked', () => {
     expect(isPaidRow({ balancePaise: 100, paidPaise: 5000 })).toBe(false);
   });
 });
+
+import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import CustomerDetail from '../src/screens/CustomerDetail.jsx';
+import { LangContext, makeT, STRINGS } from '../src/i18n.js';
+
+describe('1.10.43 Full / Part follow the amount', () => {
+  afterEach(() => cleanup());
+  const en = STRINGS.en;
+  const view = () =>
+    render(
+      <LangContext.Provider value={{ lang: 'en', t: makeT('en'), setLang: () => {} }}>
+        <CustomerDetail
+          fb={{ farmId: 'F', fsMod: { doc: () => ({ id: 'x' }), collection: () => ({}), setDoc: () => Promise.resolve() } }}
+          customers={[{ id: 'a', name: 'Asha' }]}
+          days={{ '2026-10-01': { entries: { a: { milkL: 1, milkRatePaise: 10000 } } } }}
+          payments={[]}
+          settings={{ milkRatePaise: 10000 }}
+          month="2026-10"
+          customerId="a"
+          onBack={() => {}}
+          displayName="me"
+        />
+      </LangContext.Provider>,
+    );
+  it('highlights the choice and changes the button', () => {
+    view();
+    const input = document.querySelector('form.pay input[type="number"]');
+    const btn = () => screen.getByTestId('pay-submit').textContent;
+    expect(btn()).toBe(en.addPayment);
+    fireEvent.click(screen.getByTestId('pay-full'));
+    expect(screen.getByTestId('pay-full').className).toContain('sel');
+    expect(btn()).toBe(en.payMarkPaid);
+    fireEvent.change(input, { target: { value: '40' } });
+    expect(screen.getByTestId('pay-part').className).toContain('sel');
+    expect(screen.getByTestId('pay-full').className).not.toContain('sel');
+    expect(btn()).toBe(en.addPayment);
+    fireEvent.change(input, { target: { value: '150' } });
+    expect(screen.getByTestId('pay-full').className).toContain('sel');
+    expect(btn()).toContain('advance');
+    expect(screen.getByTestId('pay-hint').textContent).toContain('50');
+    fireEvent.change(input, { target: { value: '' } });
+    fireEvent.click(screen.getByTestId('pay-part'));
+    expect(screen.getByTestId('pay-part').className).toContain('sel');
+    expect(btn()).toBe(en.addPayment);
+  });
+});

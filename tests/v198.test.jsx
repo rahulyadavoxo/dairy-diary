@@ -122,7 +122,7 @@ describe('#2 payments with paise, #17 no future payment date', () => {
     expect(amount.getAttribute('step')).toBe('any');
     fireEvent.click(screen.getByText(/^Full/));
     expect(amount.value).toBe('660.5');
-    fireEvent.click(screen.getByText(en.addPayment));
+    fireEvent.click(screen.getByText(en.payMarkPaid));
     expect(payWrites(fb)).toHaveLength(1);
     expect(payWrites(fb)[0].data.amountPaise).toBe(66050);
   });
