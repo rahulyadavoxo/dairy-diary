@@ -13,7 +13,14 @@ function report() {
   const p = n > 0;
   if (p === last) return;
   last = p;
-  if (Capacitor.isNativePlatform()) SyncKeeper.setPending({ pending: p }).catch(() => {});
+  // Never throw from here: a missing/mocked plugin must not break a write.
+  try {
+    if (Capacitor.isNativePlatform() && typeof SyncKeeper.setPending === 'function') {
+      Promise.resolve(SyncKeeper.setPending({ pending: p })).catch(() => {});
+    }
+  } catch {
+    /* ignore */
+  }
 }
 
 /** Count a write until the server confirms (or refuses) it. Returns the same promise. */
