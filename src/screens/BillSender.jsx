@@ -229,6 +229,14 @@ export default function BillSender({ fb, customers, days, payments, settings, on
     if (shareRef.current) shareRef.current(false);
   };
 
+  const prevCustomer = () => {
+    stopChain();
+    setOpened(false);
+    setNoNumber(false);
+    setShareErr('');
+    setIdx((i) => Math.max(0, i - 1));
+  };
+
   const nextCustomer = () => {
     setOpened(false);
     setNoNumber(false);
@@ -239,12 +247,22 @@ export default function BillSender({ fb, customers, days, payments, settings, on
   return (
     <div className="screen">
       <header className="screen-head">
-        <button type="button" className="btn small ghost" onClick={onClose}>
-          ← {t('back')}
-        </button>
-        <h1>
-          {t('waBillsTitle')} <span className="muted small">({idx + 1}/{targets.length})</span>
-        </h1>
+        {/* User (16 Oct): no left Back here; top-right button steps the count back one customer. */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
+          <h1 style={{ margin: 0 }}>
+            {t('waBillsTitle')} <span className="muted small">({idx + 1}/{targets.length})</span>
+          </h1>
+          <button
+            type="button"
+            className="btn small ghost"
+            onClick={prevCustomer}
+            disabled={idx === 0}
+            data-testid="wa-prev"
+            style={{ flexShrink: 0 }}
+          >
+            ← {t('waPrev')}
+          </button>
+        </div>
         <p className="muted small">
           {monthName(billMonth, lang)} · {t('sendBills')}
         </p>

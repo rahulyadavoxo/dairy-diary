@@ -94,4 +94,18 @@ describe('1.10.45 bills one by one: next chat opens after coming back', () => {
     expect(blobs[1]).toBe(blobs[0]);
     expect(JSON.parse(localStorage.getItem('dd_wa_progress')).idx).toBe(0);
   });
+
+  it('top-right Previous steps the count back; no left Back on the sending screen', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    localStorage.setItem('dd_wa_progress', JSON.stringify({ month: bm, idx: 1 }));
+    render(wrap(<BillSender {...props} />));
+    await flush();
+    expect(screen.getByText(/\(2\/2\)/)).toBeTruthy();
+    expect(screen.queryByText(new RegExp(`← ${STRINGS.en.back}$`))).toBeNull();
+    fireEvent.click(screen.getByTestId('wa-prev'));
+    await flush();
+    expect(screen.getByText(/\(1\/2\)/)).toBeTruthy();
+    expect(screen.getByTestId('wa-prev').disabled).toBe(true);
+    expect(sent).toHaveLength(0);
+  });
 });
