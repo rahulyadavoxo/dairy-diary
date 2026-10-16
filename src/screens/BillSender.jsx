@@ -48,6 +48,8 @@ export default function BillSender({ fb, customers, days, payments, settings, on
   // the last customer (idx === targets.length) renders fewer hooks and React crashes.
   const [imgUrl, setImgUrl] = useState(null);
   const [imgBlob, setImgBlob] = useState(null);
+  // Which customer the ready photo belongs to - never share customer A's photo to customer B.
+  const [blobFor, setBlobFor] = useState(null);
   const [imgErr, setImgErr] = useState('');
   const [shareErr, setShareErr] = useState('');
   const [noNumber, setNoNumber] = useState(false);
@@ -70,6 +72,7 @@ export default function BillSender({ fb, customers, days, payments, settings, on
     let url = null;
     setImgUrl(null);
     setImgBlob(null);
+    setBlobFor(null);
     setImgErr('');
     (async () => {
       try {
@@ -82,6 +85,7 @@ export default function BillSender({ fb, customers, days, payments, settings, on
         if (!live) return;
         url = URL.createObjectURL(blob);
         setImgBlob(blob);
+        setBlobFor(curRow.customerId);
         setImgUrl(url);
       } catch (e) {
         if (!live) return;
@@ -133,11 +137,11 @@ export default function BillSender({ fb, customers, days, payments, settings, on
   }, [countdown]);
   // Next customer's photo is ready -> open their chat (or stop the chain when there's no number).
   useEffect(() => {
-    if (!autoOpen || !curRow || !imgBlob) return;
+    if (!autoOpen || !curRow || !imgBlob || blobFor !== curRow.customerId) return;
     setAutoOpen(false);
     if (validWaNumber(curRow.customer.phone) && shareRef.current) shareRef.current(false);
     else setChain(false);
-  }, [autoOpen, curRow, imgBlob]);
+  }, [autoOpen, curRow, imgBlob, blobFor]);
 
   useEffect(() => {
     try {
@@ -187,7 +191,7 @@ export default function BillSender({ fb, customers, days, payments, settings, on
   const row = targets[idx];
 
   const sharePhoto = async (pickManually = false) => {
-    if (!imgBlob) return;
+    if (!imgBlob || blobFor !== row.customerId) return;
     const n = validWaNumber(row.customer.phone);
     if (!n && !pickManually) { setNoNumber(true); setShareErr(''); return; }
     setNoNumber(false);

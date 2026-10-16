@@ -1,13 +1,18 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup, act } from '@testing-library/react';
 
-vi.mock('../src/billImage.js', async (orig) => ({ ...(await orig()), renderBillImage: vi.fn(async () => new Blob(['x'])) }));
+vi.mock('../src/billImage.js', async (orig) => ({ ...(await orig()), renderBillImage: vi.fn(async (row) => {
+  await new Promise((r) => setTimeout(r, 50));
+  return new Blob([row.customerId]);
+}) }));
 vi.mock('../src/billCache.js', () => ({ getCachedPhoto: vi.fn(async () => null), putCachedPhoto: vi.fn(), deleteCachedPhoto: vi.fn() }));
 const sent = [];
+const blobs = [];
 vi.mock('../src/waShare.js', async (orig) => ({
   ...(await orig()),
-  sendBillToWhatsApp: vi.fn(async ({ phone }) => {
+  sendBillToWhatsApp: vi.fn(async ({ phone, blob }) => {
     sent.push(phone);
+    blobs.push(await blob.text());
     return 'direct';
   }),
 }));
@@ -19,12 +24,13 @@ import { addMonths, monthOf, todayISO } from '../src/format.js';
 const en = STRINGS.en;
 const wrap = (ui) => <LangContext.Provider value={{ lang: 'en', t: makeT('en'), setLang: () => {} }}>{ui}</LangContext.Provider>;
 const flush = async () => {
-  for (let i = 0; i < 5; i++) await act(async () => {});
+  for (let i = 0; i < 5; i++) await act(async () => { vi.advanceTimersByTime(60); await new Promise((r) => setTimeout(r, 0)); });
 };
 
 describe('1.10.45 bills one by one: next chat opens after coming back', () => {
   beforeEach(() => {
     sent.length = 0;
+    blobs.length = 0;
     localStorage.clear();
     globalThis.URL.createObjectURL = () => 'blob:x';
     globalThis.URL.revokeObjectURL = () => {};
@@ -55,6 +61,9 @@ describe('1.10.45 bills one by one: next chat opens after coming back', () => {
     await flush();
     expect(sent).toHaveLength(2);
     expect(sent[1]).not.toBe(sent[0]);
+    // each chat gets its OWN customer's bill (16 Oct bug: B's chat got A's photo)
+    const phoneOf = Object.fromEntries(customers.map((c) => [c.id, c.phone]));
+    blobs.forEach((id, i) => expect(sent[i]).toContain(phoneOf[id].slice(-10)));
   });
 
   it('Stop keeps the next chat closed', async () => {
