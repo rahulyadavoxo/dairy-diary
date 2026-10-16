@@ -70,6 +70,36 @@ public class WhatsAppSharePlugin extends Plugin {
         }
     }
 
+    /** Share any file (the monthly Excel/CSV export) through the normal Android share sheet. */
+    @PluginMethod
+    public void shareFile(PluginCall call) {
+        String b64 = call.getString("base64");
+        String fileName = call.getString("fileName", "export.csv");
+        String mime = call.getString("mimeType", "text/csv");
+        if (b64 == null || b64.isEmpty()) { call.reject("No file", "NO_FILE"); return; }
+        try {
+            File dir = new File(getContext().getCacheDir(), "exports");
+            if (!dir.exists() && !dir.mkdirs()) throw new Exception("mkdir failed");
+            String safe = fileName.replaceAll("[^A-Za-z0-9._-]", "_");
+            File f = new File(dir, safe);
+            try (FileOutputStream out = new FileOutputStream(f)) {
+                out.write(Base64.decode(b64, Base64.DEFAULT));
+            }
+            Uri uri = FileProvider.getUriForFile(getContext(), getContext().getPackageName() + ".fileprovider", f);
+            Intent i = new Intent(Intent.ACTION_SEND);
+            i.setType(mime);
+            i.putExtra(Intent.EXTRA_STREAM, uri);
+            i.putExtra(Intent.EXTRA_SUBJECT, safe);
+            i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            Intent chooser = Intent.createChooser(i, safe);
+            chooser.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
+            getActivity().startActivity(chooser);
+            call.resolve();
+        } catch (Exception e) {
+            call.reject("Share failed: " + e.getMessage(), "SHARE_FAILED", e);
+        }
+    }
+
     /** Opens the customer's WhatsApp chat (works for any number, even with no earlier chat). No text is sent. */
     @PluginMethod
     public void openChat(PluginCall call) {

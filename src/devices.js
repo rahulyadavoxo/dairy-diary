@@ -268,6 +268,11 @@ export function listenFarm(fb, farmId, cb) {
  */
 export async function wipeLocalData(fb) {
   clearFarmId();
+  try {
+    localStorage.removeItem('dd_hist_v1'); // old-history mark (db.js HIST_KEY) belongs to the wiped cache
+  } catch {
+    /* ignore */
+  }
   cancelAllRings();
   try {
     await fb.fsMod.terminate(fb.db);

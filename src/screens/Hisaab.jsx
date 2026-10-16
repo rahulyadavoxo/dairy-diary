@@ -13,6 +13,8 @@ import MonthNav from '../components/MonthNav.jsx';
 import { matchesQuery } from './Register.jsx';
 import { useScrollKeep } from '../scrollKeep.js';
 import StickySearch from '../components/StickySearch.jsx';
+import { shareMonthExcel } from '../exportExcel.js';
+import { isShareCancel } from '../waShare.js';
 
 export { MonthNav };
 
@@ -24,7 +26,24 @@ export function resetHisaabView() {
 }
 
 export default function Hisaab({ fb, customers, days, payments, settings, month, setMonth, openCustomer }) {
-  const { t } = useLang();
+  const { t, lang } = useLang();
+  const [exporting, setExporting] = useState(false);
+  const [exportErr, setExportErr] = useState('');
+  const exportExcel = async () => {
+    if (exporting) return;
+    setExporting(true);
+    setExportErr('');
+    try {
+      await shareMonthExcel({ customers, days, payments, settings, month, lang });
+    } catch (e) {
+      if (!isShareCancel(e)) {
+        console.error('[export]', e);
+        setExportErr(t('exportFailed'));
+      }
+    } finally {
+      setExporting(false);
+    }
+  };
   const [sending, setSending] = useState(false);
   const [photos, setPhotos] = useState(false);
   useScrollKeep(sending || photos);
@@ -168,10 +187,24 @@ export default function Hisaab({ fb, customers, days, payments, settings, month,
           <button type="button" className={'btn small icon-btn' + (isLastDay ? ' on' : '')} onClick={() => setPhotos(true)}>
             <BillIcon /> {t('billPhotosShort')}
           </button>
+          {showTotals && (
+            <button
+              type="button"
+              className="btn small icon-only"
+              data-testid="export-excel"
+              onClick={exportExcel}
+              disabled={exporting}
+              aria-label={t('exportExcel')}
+              title={t('exportExcel')}
+            >
+              📊
+            </button>
+          )}
           <button type="button" className="btn small ghost" onClick={toggleTotals}>
             {showTotals ? '👁️' : pinLocked ? '🔒' : '👁️‍🗨️'} {showTotals ? t('hide') : t('show')}
           </button>
         </div>
+        {exportErr && <p className="error small">{exportErr}</p>}
         {pinOpen && (
           <div className="card" style={{ marginBottom: '0.6rem' }}>
             <form onSubmit={submitPin} className="form-inline">

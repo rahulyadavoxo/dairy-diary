@@ -48,10 +48,11 @@ describe('Hisaab search + paid/unpaid', () => {
     fireEvent.click(screen.getByText(`${en.filterAll} (3)`));
     expect(names()).toHaveLength(3);
   });
-  it('compact toolbar: WhatsApp, photos and show in one row', () => {
+  it('compact toolbar: WhatsApp, photos, Excel (when totals show) and show in one row', () => {
     const { container } = view();
     const row = container.querySelector('.tool-row');
-    expect(row.querySelectorAll('button')).toHaveLength(3);
+    expect(row.querySelectorAll('button')).toHaveLength(4);
+    expect(row.querySelector(`[aria-label="${en.exportExcel}"]`)).toBeTruthy();
     expect(row.querySelector(`[aria-label="${en.waBillsShort}"] .icon-wa`)).toBeTruthy();
     expect(row.textContent).toContain(en.billPhotosShort);
   });

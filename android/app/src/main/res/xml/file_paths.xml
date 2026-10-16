@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Only the two app-cache folders that are ever shared: downloaded updates and bill photos. -->
+<!-- Only the app-cache folders that are ever shared: downloaded updates, bill photos and Excel exports. -->
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
     <cache-path name="updates" path="updates/" />
     <cache-path name="bills" path="bills/" />
+    <cache-path name="exports" path="exports/" />
 </paths>
