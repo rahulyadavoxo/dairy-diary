@@ -26,6 +26,13 @@
 
         </activity>
 
+        <!-- v1.10.49: keeps the app alive in the background until queued entries reach the server -->
+        <service
+            android:name=".SyncKeepService"
+            android:exported="false"
+            android:stopWithTask="false"
+            android:foregroundServiceType="dataSync" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
@@ -40,6 +47,9 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <!-- 22:00 / 08:00 register rings must fire on time (auto-granted for alarm-type use on Android 13+) -->
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />

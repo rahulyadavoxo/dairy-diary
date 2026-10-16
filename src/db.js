@@ -2,6 +2,7 @@
 import { deleteCachedPhoto } from './billCache.js';
 import { vibrateFail } from './feedback.js';
 import { addMonths, todayISO } from './format.js';
+import { trackWrite } from './pendingSync.js';
 //
 // All data lives under farms/{farmId}/ (see src/devices.js and firestore.rules); fb.farmId is
 // set once this phone is an authorized device of the farm. Paths below are relative to it:
@@ -203,7 +204,7 @@ export function listenAll(fb, handlers) {
 // happens while offline. Errors are logged.
 // A write the server refused (rules, removed phone...) vibrates once so it is not silent.
 const log = (p) =>
-  p.catch((e) => {
+  trackWrite(p).catch((e) => {
     console.error('[firestore]', e);
     vibrateFail();
   });

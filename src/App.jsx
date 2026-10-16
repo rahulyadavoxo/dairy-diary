@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { LangContext, loadLang, saveLang, makeT, useLang } from './i18n.js';
 import { isFirebaseConfigured, getFirebase } from './firebase.js';
+import { initPendingSync, pendingCount } from './pendingSync.js';
 import { listenAll, saveSettings } from './db.js';
 import { todayISO, monthOf, dmy } from './format.js';
 import NotConfigured from './screens/NotConfigured.jsx';
@@ -84,6 +85,7 @@ function Authed() {
       .then((f) => {
         if (!alive) return;
         setFb(f);
+        initPendingSync(f);
         unsub = f.authMod.onAuthStateChanged(f.auth, (u) => setUser(u || null));
       })
       .catch((e) => alive && setInitError(String(e && e.message ? e.message : e)));
@@ -313,6 +315,9 @@ function Main({ fb, user, farm, farmId }) {
       else if (ir) setImportReview(false);
       else if (dt) setDetail(null);
       else if (tb !== 'register') setTab('register');
+      // Entries still waiting for the server: go to the background instead of closing, so the
+      // upload finishes by itself when the internet comes back (v1.10.49).
+      else if (pendingCount() > 0) CapApp.minimizeApp();
       else CapApp.exitApp();
     }).then((h) => {
       handle = h;

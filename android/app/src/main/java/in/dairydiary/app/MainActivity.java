@@ -8,6 +8,7 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(WhatsAppSharePlugin.class); // must be BEFORE super.onCreate
         registerPlugin(ApkUpdaterPlugin.class);
+        registerPlugin(SyncKeeperPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }
