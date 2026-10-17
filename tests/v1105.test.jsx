@@ -111,7 +111,7 @@ describe('delivery card: Total box', () => {
     render(wrap(<Delivery {...props(fb)} />));
     // 1.10.27: the evening box starts empty (evening not delivered yet); fill it in
     fireEvent.change(box('qty-evening').querySelector('input'), { target: { value: '0.75' } });
-    expect(screen.getByTestId('deli-total').textContent).toContain('1.75');
+    expect(screen.getByTestId('sum-box').textContent).toContain('1.75');
     tap(screen.getByText(en.delivered));
     const e = lastEntry(fb, 'c1');
     expect([e.milkMorningL, e.milkEveningL, e.milkL]).toEqual([1, 0.75, 1.75]);

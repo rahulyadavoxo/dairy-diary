@@ -22,8 +22,9 @@ export default function PaneerGrams({ value, onChange, label, testId, className 
     onChange(gToKg(v));
   };
   return (
-    <label className={className} data-testid={testId}>
-      {label != null ? label : t('paneer')}
+    // <div>, not <label>: a tap beside the stepper must not press its − button
+    <div className={className + ' lbl'} data-testid={testId}>
+      <span>{label != null ? label : t('paneer')}</span>
       <div className="stepper">
         <button type="button" className="btn step" aria-label="−100" onClick={() => set(Math.floor((g - 1) / PANEER_STEP_G) * PANEER_STEP_G)}>
           −
@@ -35,6 +36,7 @@ export default function PaneerGrams({ value, onChange, label, testId, className 
           step={PANEER_STEP_G}
           min="0"
           placeholder="0"
+          aria-label={typeof label === 'string' ? label : t('paneer')}
           value={text}
           onChange={(e) => {
             setText(e.target.value);
@@ -46,6 +48,6 @@ export default function PaneerGrams({ value, onChange, label, testId, className 
           +
         </button>
       </div>
-    </label>
+    </div>
   );
 }

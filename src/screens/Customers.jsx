@@ -374,30 +374,30 @@ export function CustomerForm({ fb, initial, nextOrder, onDone }) {
         <input type="checkbox" checked={!!f.isSupplier} onChange={set('isSupplier')} /> 🏷️ {t('supplierHint')}
       </label>
       <div className="two">
-        <label>
-          {t('usualMorningL')}
+        <div className="lbl">
+          <span>{t('usualMorningL')}</span>
           <div className="stepper">
             <button type="button" className="btn step" onClick={() => stepUsual('usualMorningL', -250)}>
               −
             </button>
-            <input className="qty" type="number" inputMode="decimal" step="0.25" min="0" value={f.usualMorningL} onChange={set('usualMorningL')} />
+            <input className="qty" type="number" inputMode="decimal" step="0.25" min="0" value={f.usualMorningL} onChange={set('usualMorningL')} aria-label={t('usualMorningL')} />
             <button type="button" className="btn step" onClick={() => stepUsual('usualMorningL', 250)}>
               +
             </button>
           </div>
-        </label>
-        <label>
-          {t('usualEveningL')}
+        </div>
+        <div className="lbl">
+          <span>{t('usualEveningL')}</span>
           <div className="stepper">
             <button type="button" className="btn step" onClick={() => stepUsual('usualEveningL', -250)}>
               −
             </button>
-            <input className="qty" type="number" inputMode="decimal" step="0.25" min="0" value={f.usualEveningL} onChange={set('usualEveningL')} />
+            <input className="qty" type="number" inputMode="decimal" step="0.25" min="0" value={f.usualEveningL} onChange={set('usualEveningL')} aria-label={t('usualEveningL')} />
             <button type="button" className="btn step" onClick={() => stepUsual('usualEveningL', 250)}>
               +
             </button>
           </div>
-        </label>
+        </div>
       </div>
       <div className="card fold-card">
       <button

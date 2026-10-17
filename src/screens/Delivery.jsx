@@ -141,8 +141,10 @@ function QtyEdit({ label, value, onChange, testId, placeholder, allowEmpty, lock
     );
   }
   return (
-    <label className="deli-qty" data-testid={testId}>
-      {label}
+    // a <div>, not a <label>: tapping the empty space next to the stepper used to "click" the first
+    // button inside the label (−), so taps beside Total zeroed everything (bug, 17 Oct 2026)
+    <div className="deli-qty lbl" data-testid={testId}>
+      <span>{label}</span>
       <div className="stepper">
         <button type="button" className="btn step" onClick={() => onChange(step(value, -250))}>
           −
@@ -155,13 +157,31 @@ function QtyEdit({ label, value, onChange, testId, placeholder, allowEmpty, lock
           min="0"
           value={value == null ? '' : value}
           placeholder={placeholder}
+          aria-label={typeof label === 'string' ? label : undefined}
           onChange={(e) => onChange(e.target.value === '' && (placeholder || allowEmpty) ? null : Math.max(0, toMilli(e.target.value) / 1000))}
         />
         <button type="button" className="btn step" onClick={() => onChange(step(value, 250))}>
           +
         </button>
       </div>
-    </label>
+    </div>
+  );
+}
+
+/** Morning + evening boxes with lines joining into one read-only total box. */
+function SumJoin({ children, total, t }) {
+  return (
+    <div className="sum-join">
+      <div className="sum-boxes">{children}</div>
+      <div className="sum-bracket" aria-hidden="true" />
+      <div className="sum-out">
+        <span className="sum-line" aria-hidden="true" />
+        <div className="sum-box" data-testid="sum-box">
+          <small>{t('session_total')}</small>
+          {fmtQty(total)} L
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -264,23 +284,31 @@ function DeliveryCard({ c, initM, initE, initT, initPaneer, morningSaved, onDeli
       {paneerOn && <PaneerGrams label={t('paneer') + ' (' + t('gram') + ')'} value={paneer} onChange={setPaneer} testId="paneer-qty" />}
       {format === 'both' && (
         <>
-          <QtyEdit label={t('session_morning')} value={m} onChange={editM} testId="qty-morning" />
-          <QtyEdit label={t('session_evening')} value={e} onChange={editE} testId="qty-evening" allowEmpty={takesTwice(c)} />
+          <SumJoin total={total} t={t}>
+            <QtyEdit label={t('session_morning')} value={m} onChange={editM} testId="qty-morning" />
+            <QtyEdit label={t('session_evening')} value={e} onChange={editE} testId="qty-evening" allowEmpty={takesTwice(c)} />
+          </SumJoin>
           <QtyEdit label={t('session_total')} value={tot} onChange={editT} testId="qty-total" />
         </>
       )}
       {round === 'morning' && <QtyEdit label={'🌅 ' + t('session_morning')} value={m} onChange={editM} testId="qty-morning" />}
       {round === 'day' && (
-        <>
+        <SumJoin total={total} t={t}>
           <QtyEdit label={'🌅 ' + t('session_morning')} value={m} onChange={editM} testId="qty-morning" locked={mLock} onUnlock={() => setMLock(false)} />
           <QtyEdit label={'🌙 ' + t('session_evening')} value={e ?? 0} onChange={editE} testId="qty-evening" />
-        </>
+        </SumJoin>
       )}
       {format === 'total' && <QtyEdit label={t('session_total')} value={tot} onChange={editTotalOnly} testId="qty-total" />}
-      <p className="deli-total" data-testid="deli-total">
-        {round === 'morning' ? t('session_morning') : t('session_total')}: <b>{fmtQty(shownTotal)} {t('litre')}</b>
-        <span className="muted small"> · {t(usualKey)}: {fmtQty(shownUsual)} {t('litre')}</span>
-      </p>
+      {format === 'both' || round === 'day' ? (
+        <p className="deli-total muted small" data-testid="deli-total">
+          {t(usualKey)}: {fmtQty(shownUsual)} {t('litre')}
+        </p>
+      ) : (
+        <p className="deli-total" data-testid="deli-total">
+          {round === 'morning' ? t('session_morning') : t('session_total')}: <b>{fmtQty(shownTotal)} {t('litre')}</b>
+          <span className="muted small"> · {t(usualKey)}: {fmtQty(shownUsual)} {t('litre')}</span>
+        </p>
+      )}
       <div className="form-actions">
         {!edited && (
           <button type="button" className="btn big" onClick={asUsual} data-testid="as-usual-btn">

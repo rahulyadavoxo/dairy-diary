@@ -157,4 +157,20 @@ describe('1.10.51 delivery format', () => {
     fireEvent.change(ti, { target: { value: '10:30' } });
     expect(fb2.writes.find((w) => w.data && w.data.morningUntil).data.morningUntil).toBe('10:30');
   });
+
+  it('1.10.53: tapping beside a stepper presses nothing; morning + evening join into a read-only total box', () => {
+    const fb = mkFb();
+    render(wrap(<Delivery {...props(fb, [both])} />));
+    for (const id of ['qty-morning', 'qty-evening', 'qty-total']) {
+      expect(box(id).tagName).toBe('DIV');
+      fireEvent.click(box(id)); // the empty space next to the stepper
+    }
+    expect(input('qty-morning').value).toBe('1');
+    expect(input('qty-evening').value).toBe('1.5');
+    const sum = screen.getByTestId('sum-box');
+    expect(sum.textContent).toContain('2.5');
+    expect(sum.querySelector('input')).toBeNull();
+    plus('qty-morning');
+    expect(screen.getByTestId('sum-box').textContent).toContain('2.75');
+  });
 });

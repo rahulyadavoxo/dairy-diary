@@ -37,8 +37,8 @@ input, select, textarea {
   background: #fff;
 }
 input:focus { outline: 2px solid var(--green-2); border-color: transparent; }
-label { display: block; margin: 0.6rem 0; font-weight: 600; font-size: 0.95rem; }
-label > input, label > .stepper { margin-top: 0.3rem; font-weight: 400; }
+label, .lbl { display: block; margin: 0.6rem 0; font-weight: 600; font-size: 0.95rem; }
+label > input, label > .stepper, .lbl > input, .lbl > .stepper { margin-top: 0.3rem; font-weight: 400; }
 label.check { display: flex; gap: 0.6rem; align-items: center; }
 label.check input { width: 24px; min-height: 24px; }
 
@@ -248,7 +248,7 @@ hr.sep { border: 0; border-top: 1px solid var(--line); margin: 1rem 0; }
 .edited-tag { background: #d6ecd6; color: #1a6b1a; border: 1px solid #8fce8f; border-radius: 6px; padding: 0.05rem 0.35rem; font-size: 0.7rem; font-weight: 700; white-space: nowrap; }
 /* Customer form: the two usual-litre steppers must fit side by side on 360px phones */
 .form .two { align-items: end; }
-.form .two > label { min-width: 0; }
+.form .two > label, .form .two > .lbl { min-width: 0; }
 .form .two .stepper { min-width: 0; }
 .form .two .stepper .qty { flex: 1; min-width: 0; width: 100%; padding: 0.3rem 0.1rem; }
 .form .two .stepper .btn.step { flex: none; width: 40px; min-width: 40px; }
@@ -390,3 +390,12 @@ input.switch:focus-visible { outline: 3px solid #9fd3b2; outline-offset: 2px; }
 .fold-card > .section-toggle { display: flex; align-items: center; justify-content: space-between; gap: 0.8rem; min-height: 52px; width: 100%; background: none; border: 0; padding: 0.4rem 0; font: inherit; font-weight: 700; color: inherit; cursor: pointer; text-align: left; }
 .fold-card > .section-toggle + * { border-top: 1px solid var(--line); padding-top: 0.4rem; margin-top: 0; }
 .fold-card > p.muted { margin: 0 0 0.6rem; }
+
+/* morning + evening joined by a bracket into a read-only total box (user 17 Oct 2026) */
+.sum-join { display: flex; align-items: stretch; gap: 0; }
+.sum-join .sum-boxes { flex: none; }
+.sum-join .sum-bracket { flex: none; width: 18px; margin: 3.2rem 0 1.6rem 0.4rem; border: 2px solid var(--green); border-left: none; border-radius: 0 10px 10px 0; }
+.sum-join .sum-out { flex: 1; display: flex; align-items: center; min-width: 0; margin-top: 1.6rem; }
+.sum-join .sum-line { flex: none; width: 12px; height: 2px; background: var(--green); }
+.sum-join .sum-box { flex: 1; min-width: 64px; padding: 0.55rem 0.3rem; border: 2px solid var(--green); border-radius: 12px; background: #e8f3ec; color: var(--green); text-align: center; font-size: 1.3rem; font-weight: 800; line-height: 1.1; }
+.sum-join .sum-box small { display: block; font-size: 0.75rem; font-weight: 600; }
