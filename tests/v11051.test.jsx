@@ -173,4 +173,15 @@ describe('1.10.51 delivery format', () => {
     plus('qty-morning');
     expect(screen.getByTestId('sum-box').textContent).toContain('2.75');
   });
+
+  it('1.10.54: typing a Total switches the lines to come from the Total box', () => {
+    render(wrap(<Delivery {...props(mkFb(), [both])} />));
+    const join = () => screen.getByTestId('sum-box').closest('.sum-join');
+    expect(join().getAttribute('data-from')).toBe('me');
+    plus('qty-total');
+    expect(join().getAttribute('data-from')).toBe('total');
+    expect(screen.getByTestId('sum-box').textContent).toContain('0.25');
+    plus('qty-morning');
+    expect(join().getAttribute('data-from')).toBe('me');
+  });
 });

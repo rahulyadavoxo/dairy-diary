@@ -391,11 +391,12 @@ input.switch:focus-visible { outline: 3px solid #9fd3b2; outline-offset: 2px; }
 .fold-card > .section-toggle + * { border-top: 1px solid var(--line); padding-top: 0.4rem; margin-top: 0; }
 .fold-card > p.muted { margin: 0 0 0.6rem; }
 
-/* morning + evening joined by a bracket into a read-only total box (user 17 Oct 2026) */
-.sum-join { display: flex; align-items: stretch; gap: 0; }
+/* morning + evening joined by lines into a read-only total box (user 17 Oct 2026); the lines are an
+   SVG drawn from measured stepper positions (SumJoin in Delivery.jsx) */
+.sum-join { position: relative; display: flex; align-items: stretch; }
 .sum-join .sum-boxes { flex: none; }
-.sum-join .sum-bracket { flex: none; width: 18px; margin: 3.2rem 0 1.6rem 0.4rem; border: 2px solid var(--green); border-left: none; border-radius: 0 10px 10px 0; }
-.sum-join .sum-out { flex: 1; display: flex; align-items: center; min-width: 0; margin-top: 1.6rem; }
-.sum-join .sum-line { flex: none; width: 12px; height: 2px; background: var(--green); }
-.sum-join .sum-box { flex: 1; min-width: 64px; padding: 0.55rem 0.3rem; border: 2px solid var(--green); border-radius: 12px; background: #e8f3ec; color: var(--green); text-align: center; font-size: 1.3rem; font-weight: 800; line-height: 1.1; }
+.sum-join .sum-right { position: relative; flex: 1; min-width: 84px; margin-left: 28px; }
+.sum-join .sum-box { position: absolute; left: 0; right: 0; top: 3rem; padding: 0.55rem 0.3rem; border: 2px solid var(--green); border-radius: 12px; background: #e8f3ec; color: var(--green); text-align: center; font-size: 1.3rem; font-weight: 800; line-height: 1.1; }
 .sum-join .sum-box small { display: block; font-size: 0.75rem; font-weight: 600; }
+.sum-join .sum-lines { position: absolute; left: 0; top: 0; pointer-events: none; overflow: visible; }
+.sum-join .sum-lines path { stroke: var(--green); }

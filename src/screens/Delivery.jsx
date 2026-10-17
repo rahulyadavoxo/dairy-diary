@@ -3,7 +3,7 @@
 // One card per customer for the whole day: paneer toggle, morning, evening, total.
 // "As usual" fills the usual quantities; "Absent" records that the customer didn't take milk.
 // The back button re-opens an earlier customer for corrections.
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import PaneerGrams from '../components/PaneerGrams.jsx';
 import { useLang } from '../i18n.js';
 import { saveEntries, deleteEntry } from '../db.js';
@@ -168,19 +168,64 @@ function QtyEdit({ label, value, onChange, testId, placeholder, allowEmpty, lock
   );
 }
 
-/** Morning + evening boxes with lines joining into one read-only total box. */
-function SumJoin({ children, total, t }) {
+/** Morning + evening boxes with lines joining into one read-only total box (user 17 Oct 2026).
+    When the Total is typed instead (fromTotal), the morning/evening lines go and one line runs
+    from the Total box into it. Lines are drawn from the measured stepper positions. */
+function SumJoin({ children, total, fromTotal = false, t }) {
+  const ref = useRef(null);
+  const [geo, setGeo] = useState(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+    const measure = () => {
+      const base = el.getBoundingClientRect();
+      const st = [...el.querySelectorAll('.sum-boxes .stepper')].map((x) => x.getBoundingClientRect());
+      const boxEl = el.querySelector('.sum-box');
+      if (!boxEl || st.length < 2 || !base.width) return;
+      const box = boxEl.getBoundingClientRect();
+      const mid = (r) => Math.round(r.top + r.height / 2 - base.top);
+      const g = {
+        w: Math.round(base.width),
+        h: Math.round(base.height),
+        x0: Math.round(Math.max(...st.map((r) => r.right)) - base.left + 6),
+        bx: Math.round(box.left - base.left),
+        bh: Math.round(box.height),
+        ys: st.map(mid),
+      };
+      setGeo((prev) => (JSON.stringify(prev) === JSON.stringify(g) ? prev : g));
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null;
+    if (ro) ro.observe(el);
+    return () => {
+      window.removeEventListener('resize', measure);
+      if (ro) ro.disconnect();
+    };
+  });
+  const ym = geo ? Math.round((geo.ys[0] + geo.ys[1]) / 2) : null;
+  let path = '';
+  if (geo) {
+    const xb = Math.round((geo.x0 + geo.bx) / 2);
+    path =
+      fromTotal && geo.ys.length > 2
+        ? `M${geo.x0} ${geo.ys[2]} H${xb} V${ym} H${geo.bx}`
+        : `M${geo.x0} ${geo.ys[0]} H${xb} V${geo.ys[1]} H${geo.x0} M${xb} ${ym} H${geo.bx}`;
+  }
   return (
-    <div className="sum-join">
+    <div className={'sum-join' + (fromTotal ? ' from-total' : '')} ref={ref} data-from={fromTotal ? 'total' : 'me'}>
       <div className="sum-boxes">{children}</div>
-      <div className="sum-bracket" aria-hidden="true" />
-      <div className="sum-out">
-        <span className="sum-line" aria-hidden="true" />
-        <div className="sum-box" data-testid="sum-box">
+      <div className="sum-right">
+        <div className="sum-box" data-testid="sum-box" style={geo ? { top: ym - geo.bh / 2 } : undefined}>
           <small>{t('session_total')}</small>
           {fmtQty(total)} L
         </div>
       </div>
+      {geo && (
+        <svg className="sum-lines" width={geo.w} height={geo.h} aria-hidden="true">
+          <path d={path} fill="none" strokeWidth="2.5" strokeLinejoin="round" />
+        </svg>
+      )}
     </div>
   );
 }
@@ -284,11 +329,11 @@ function DeliveryCard({ c, initM, initE, initT, initPaneer, morningSaved, onDeli
       {paneerOn && <PaneerGrams label={t('paneer') + ' (' + t('gram') + ')'} value={paneer} onChange={setPaneer} testId="paneer-qty" />}
       {format === 'both' && (
         <>
-          <SumJoin total={total} t={t}>
+          <SumJoin total={total} fromTotal={tot > 0} t={t}>
             <QtyEdit label={t('session_morning')} value={m} onChange={editM} testId="qty-morning" />
             <QtyEdit label={t('session_evening')} value={e} onChange={editE} testId="qty-evening" allowEmpty={takesTwice(c)} />
+            <QtyEdit label={t('session_total')} value={tot} onChange={editT} testId="qty-total" />
           </SumJoin>
-          <QtyEdit label={t('session_total')} value={tot} onChange={editT} testId="qty-total" />
         </>
       )}
       {round === 'morning' && <QtyEdit label={'🌅 ' + t('session_morning')} value={m} onChange={editM} testId="qty-morning" />}
