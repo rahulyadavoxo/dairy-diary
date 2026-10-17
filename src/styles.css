@@ -198,8 +198,10 @@ hr.sep { border: 0; border-top: 1px solid var(--line); margin: 1rem 0; }
 .session-chips .btn { flex: 1; }
 .delivery-chip { background: #fff3dd; border-color: #e8c872; }
 .deli-card { text-align: center; }
-.round-switch { display: flex; gap: 0.5rem; margin: 0.4rem 0; }
-.round-switch .btn { flex: 1; min-height: 46px; font-size: 1.05rem; }
+.round-label { margin: 0.3rem 0; font-weight: 600; }
+.deli-qty.locked .locked-row { display: flex; align-items: center; justify-content: center; gap: 0.8rem; margin-top: 0.3rem; }
+.deli-qty.locked .locked-val { font-size: 1.3rem; font-weight: 700; color: #1f6f43; }
+.deli-qty.locked .icon-btn { min-width: 48px; min-height: 44px; font-size: 1.2rem; }
 .deli-card h2 { margin: 0.2rem 0 0.8rem; }
 .deli-qty { display: block; font-weight: 600; }
 .bill-preview { white-space: pre-wrap; background: #f8faf8; border: 1px solid var(--line); border-radius: 10px; padding: 0.7rem; font-size: 0.85rem; max-height: 40vh; overflow: auto; }

@@ -10,7 +10,7 @@ import { signOutAndWipe } from '../devices.js';
 import { clearCachedPhotos } from '../billCache.js';
 import { ringTimes, validRingTimes, ringPermission, askRingPermission } from '../reminders.js';
 import { usePinGate } from '../components/PinGate.jsx';
-import { ToggleBar, DELIVERY_FORMATS, deliveryFormat } from './Delivery.jsx';
+import { ToggleBar, DELIVERY_FORMATS, deliveryFormat, morningUntil } from './Delivery.jsx';
 
 // Single source of truth for the version (package.json, injected by vite.config.js).
 // eslint-disable-next-line no-undef
@@ -249,6 +249,17 @@ export default function Settings({ fb, user, settings, displayName, setDisplayNa
             testId={'deli-fmt-' + k}
           />
         ))}
+        {deliveryFormat(settings) === 'split' && (
+          <label className="ring-times" data-testid="morning-until">
+            🌅 {t('morningUntilLabel')}
+            <input
+              type="time"
+              value={morningUntil(settings)}
+              onChange={(e) => /^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(e.target.value) && saveSettings(fb, { morningUntil: e.target.value })}
+            />
+            <span className="muted small">{t('morningUntilHint')}</span>
+          </label>
+        )}
       </div>
 
       <form className="card ring-card" onSubmit={saveRing} noValidate>

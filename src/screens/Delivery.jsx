@@ -59,7 +59,9 @@ export function initEvening(en, c) {
     'both'  = morning + evening + total on one card (default, the old behaviour). */
 export const DELIVERY_FORMATS = ['split', 'total', 'both'];
 export const deliveryFormat = (settings) => (DELIVERY_FORMATS.includes(settings && settings.deliveryFormat) ? settings.deliveryFormat : 'both');
-/** Which round a split-format delivery opens on: morning until 14:00, then evening. */
+/** Split format (user 17 Oct 2026): before the morning time (Settings, settings.morningUntil
+    "HH:MM", default 14:00) only the morning is delivered; after it the card has morning + evening,
+    with a morning that is already delivered shown locked (✏️ to edit). */
 /** Total-only card: what is saved for the day, else the usual day. */
 export function totalInit(en, c) {
   if (en && !en.skip) {
@@ -71,7 +73,15 @@ export function totalInit(en, c) {
   }
   return usualMorning(c) + usualEvening(c);
 }
-export const roundFor = (now = new Date()) => (now.getHours() < 14 ? 'morning' : 'evening');
+export const MORNING_UNTIL = '14:00';
+export const morningUntil = (settings) => {
+  const v = settings && settings.morningUntil;
+  return /^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(v || '') ? v : MORNING_UNTIL;
+};
+export const roundFor = (now = new Date(), until = MORNING_UNTIL) => {
+  const [h, mi] = until.split(':').map(Number);
+  return now.getHours() * 60 + now.getMinutes() < h * 60 + mi ? 'morning' : 'day';
+};
 
 const usualFor = (c, session) =>
   session === 'morning' ? usualMorning(c) : session === 'evening' ? usualEvening(c) : usualMorning(c) + usualEvening(c);
@@ -113,7 +123,23 @@ function saveSkips(date, session, map) {
   }
 }
 
-function QtyEdit({ label, value, onChange, testId, placeholder, allowEmpty }) {
+function QtyEdit({ label, value, onChange, testId, placeholder, allowEmpty, locked, onUnlock }) {
+  if (locked) {
+    // already delivered: shown, not editable until the ✏️ is tapped
+    return (
+      <div className="deli-qty locked" data-testid={testId}>
+        {label}
+        <div className="locked-row">
+          <span className="locked-val" data-testid={testId + '-value'}>
+            {fmtQty(Number(value) || 0)} L ✓
+          </span>
+          <button type="button" className="btn icon-btn" aria-label="edit" data-testid={testId + '-edit'} onClick={onUnlock}>
+            ✏️
+          </button>
+        </div>
+      </div>
+    );
+  }
   return (
     <label className="deli-qty" data-testid={testId}>
       {label}
@@ -160,7 +186,7 @@ export function ToggleBar({ label, on, onChange, testId }) {
 
 // One card per customer for the whole day: Paneer (toggle, rarely sold) on top, then morning,
 // evening and the day's total. "As usual" (left) / "Delivered" (right); "Absent" = didn't take today.
-function DeliveryCard({ c, initM, initE, initT, initPaneer, morningSaved, onDelivered, onAbsent, onBack, canGoBack, lastDay = false, format = 'both', session = 'total' }) {
+function DeliveryCard({ c, initM, initE, initT, initPaneer, morningSaved, onDelivered, onAbsent, onBack, canGoBack, lastDay = false, format = 'both', session = 'total', morningLocked = false }) {
   const usualKey = lastDay ? 'sameAsLastDay' : 'asUsual';
   const { t } = useLang();
   const [m, setM] = useState(initM);
@@ -194,11 +220,12 @@ function DeliveryCard({ c, initM, initE, initT, initPaneer, morningSaved, onDeli
   // Evening left empty (null) = only the morning is delivered now; the day stays incomplete and
   // the customer comes back for the evening. A Total, or morning + evening, completes the day.
   // 'total' format: one box; 'split' format: only this round's box (deliver() keeps the other round).
-  const round = format === 'split' ? session : null;
+  const round = format === 'split' ? (session === 'morning' ? 'morning' : 'day') : null;
+  const [mLock, setMLock] = useState(morningLocked);
   const deliverNow = () => {
     if (format === 'total') return onDelivered({ milkMorningL: 0, milkEveningL: 0, milkL: tot || 0, paneerKg: pp, half: null }, 'delivered');
     if (round === 'morning') return onDelivered({ milkMorningL: m || 0, paneerKg: pp }, 'delivered');
-    if (round === 'evening') return onDelivered({ milkEveningL: e || 0, paneerKg: pp }, 'delivered');
+    if (round === 'day') return onDelivered({ milkMorningL: m || 0, milkEveningL: e || 0, paneerKg: pp, half: null }, 'delivered');
     return onDelivered(
       tot > 0
         ? { milkMorningL: 0, milkEveningL: 0, milkL: tot, paneerKg: pp, half: null }
@@ -211,7 +238,7 @@ function DeliveryCard({ c, initM, initE, initT, initPaneer, morningSaved, onDeli
   const asUsual = () => {
     if (format === 'total') return onDelivered({ milkMorningL: 0, milkEveningL: 0, milkL: usual, paneerKg: pp, half: null }, 'usual');
     if (round === 'morning') return onDelivered({ milkMorningL: usualMorning(c), paneerKg: pp }, 'usual');
-    if (round === 'evening') return onDelivered({ milkEveningL: usualEvening(c), paneerKg: pp }, 'usual');
+    if (round === 'day') return onDelivered({ milkMorningL: mLock || morningLocked ? m || 0 : usualMorning(c), milkEveningL: usualEvening(c), paneerKg: pp, half: null }, 'usual');
     return onDelivered(
       morningSaved
         ? { milkMorningL: m || 0, milkEveningL: usualEvening(c), paneerKg: pp, half: null }
@@ -223,8 +250,8 @@ function DeliveryCard({ c, initM, initE, initT, initPaneer, morningSaved, onDeli
     setTot(v);
     setEdited(true);
   };
-  const shownUsual = round === 'morning' ? usualMorning(c) : round === 'evening' ? usualEvening(c) : usual;
-  const shownTotal = format === 'total' ? Number(tot) || 0 : round === 'morning' ? Number(m) || 0 : round === 'evening' ? Number(e) || 0 : total;
+  const shownUsual = round === 'morning' ? usualMorning(c) : usual;
+  const shownTotal = format === 'total' ? Number(tot) || 0 : round === 'morning' ? Number(m) || 0 : total;
 
   return (
     <div className="card deli-card">
@@ -243,10 +270,15 @@ function DeliveryCard({ c, initM, initE, initT, initPaneer, morningSaved, onDeli
         </>
       )}
       {round === 'morning' && <QtyEdit label={'🌅 ' + t('session_morning')} value={m} onChange={editM} testId="qty-morning" />}
-      {round === 'evening' && <QtyEdit label={'🌙 ' + t('session_evening')} value={e ?? 0} onChange={editE} testId="qty-evening" />}
+      {round === 'day' && (
+        <>
+          <QtyEdit label={'🌅 ' + t('session_morning')} value={m} onChange={editM} testId="qty-morning" locked={mLock} onUnlock={() => setMLock(false)} />
+          <QtyEdit label={'🌙 ' + t('session_evening')} value={e ?? 0} onChange={editE} testId="qty-evening" />
+        </>
+      )}
       {format === 'total' && <QtyEdit label={t('session_total')} value={tot} onChange={editTotalOnly} testId="qty-total" />}
       <p className="deli-total" data-testid="deli-total">
-        {round ? t('session_' + round) : t('session_total')}: <b>{fmtQty(shownTotal)} {t('litre')}</b>
+        {round === 'morning' ? t('session_morning') : t('session_total')}: <b>{fmtQty(shownTotal)} {t('litre')}</b>
         <span className="muted small"> · {t(usualKey)}: {fmtQty(shownUsual)} {t('litre')}</span>
       </p>
       <div className="form-actions">
@@ -299,15 +331,25 @@ function saveAllUsual(date, snap) {
 export default function Delivery(props) {
   const { t } = useLang();
   const format = deliveryFormat(props.settings);
-  const [round, setRound] = useState(() => roundFor());
+  const until = morningUntil(props.settings);
+  const [round, setRound] = useState(() => roundFor(new Date(), until));
+  // the morning time passes while the screen is open -> switch to the whole-day card
+  useEffect(() => {
+    setRound(roundFor(new Date(), until));
+    const id = setInterval(() => setRound(roundFor(new Date(), until)), 30000);
+    return () => clearInterval(id);
+  }, [until]);
   // 'both' / 'total': one round for the whole day (Rahul 2026-10-14). 'split': a morning round and
   // an evening round, switchable at the top (each round is its own list, so it remounts).
-  const session = format === 'split' ? round : 'total';
-  return <DeliveryRound key={format + session} {...props} session={session} format={format} onRound={setRound} t={t} />;
+  const session = format === 'split' && round === 'morning' ? 'morning' : 'total';
+  return <DeliveryRound key={format + session} {...props} session={session} format={format} until={until} t={t} />;
 }
 
-function DeliveryRound({ fb, customers, days, settings, displayName, onBack, session, format = 'both', onRound, t }) {
+function DeliveryRound({ fb, customers, days, settings, displayName, onBack, session, format = 'both', until = MORNING_UNTIL, t }) {
   const split = format === 'split';
+  const roundOnly = split && session === 'morning'; // morning-only round (before the morning time)
+  /** Split, after the morning time: a morning already recorded today is shown locked. */
+  const morningDone = (en) => !!en && !en.skip && (en.half === 'morning' || (Number(en.milkMorningL) || 0) > 0);
   const date = todayISO();
   const day = days[date] || null;
   const saved = (day && day.entries) || {};
@@ -348,8 +390,8 @@ function DeliveryRound({ fb, customers, days, settings, displayName, onBack, ses
   // Done for this round: delivered now or earlier, or marked "didn't take" for the whole day in the register.
   // Paneer alone is not a milk delivery: a paneer-only "Delivered" is remembered via `skipped`.
   const isDelivered = (c) =>
-    !!doneNow[c.id] || (split ? deliveredFor(saved[c.id], session) : dayComplete(saved[c.id], c)) || !!(saved[c.id] && saved[c.id].skip);
-  const remaining = list.filter((c) => !isDelivered(c) && (!skipped[c.id] || (!split && emptyHalf(saved[c.id]))));
+    !!doneNow[c.id] || (roundOnly ? deliveredFor(saved[c.id], session) : dayComplete(saved[c.id], c)) || !!(saved[c.id] && saved[c.id].skip);
+  const remaining = list.filter((c) => !isDelivered(c) && (!skipped[c.id] || (!roundOnly && emptyHalf(saved[c.id]))));
   const done = list.length - remaining.length;
   const current = review ? byId[review.id] : remaining[0];
   const canGoBack = review ? review.pos > 0 : history.length > 0;
@@ -358,7 +400,7 @@ function DeliveryRound({ fb, customers, days, settings, displayName, onBack, ses
   useEffect(() => {
     if (history.length === 0) {
       const seeded = list
-        .filter((c) => (split ? deliveredFor(saved[c.id], session) : dayComplete(saved[c.id], c)) || !!(saved[c.id] && saved[c.id].skip) || (!!skipped[c.id] && (Number(saved[c.id] && saved[c.id].paneerKg) || 0) > 0))
+        .filter((c) => (roundOnly ? deliveredFor(saved[c.id], session) : dayComplete(saved[c.id], c)) || !!(saved[c.id] && saved[c.id].skip) || (!!skipped[c.id] && (Number(saved[c.id] && saved[c.id].paneerKg) || 0) > 0))
         .map((c) => {
           const en = saved[c.id] || {};
           if (en.skip) return { id: c.id, m: 0, e: 0, p: 0, total: 0, absent: true };
@@ -380,7 +422,6 @@ function DeliveryRound({ fb, customers, days, settings, displayName, onBack, ses
       merged.half = !hasEvening && takesTwice(c) ? 'morning' : null;
       if (!hasEvening) merged.milkEveningL = 0;
     }
-    if (split && session === 'evening') merged.half = null;
     if (split && prev.skip) {
       merged.milkMorningL = merged.milkMorningL || 0;
       merged.milkEveningL = merged.milkEveningL || 0;
@@ -414,9 +455,14 @@ function DeliveryRound({ fb, customers, days, settings, displayName, onBack, ses
 
   // Absent: didn't take milk today (the register's "didn't take" for the whole day).
   const markAbsent = (c) => {
-    if (split) {
-      // only this round: the other round's milk stays (a whole-day skip would wipe it)
-      deliver(c, session === 'morning' ? { milkMorningL: 0, paneerKg: 0 } : { milkEveningL: 0, paneerKg: 0 });
+    if (roundOnly) {
+      // only the morning: a whole-day skip would also block the evening
+      deliver(c, { milkMorningL: 0, paneerKg: 0 });
+      return;
+    }
+    if (split && morningDone(saved[c.id]) && !review) {
+      // after the morning time: the morning already delivered stays, evening = 0
+      deliver(c, { milkMorningL: Number(saved[c.id].milkMorningL) || 0, milkEveningL: 0, paneerKg: Number(saved[c.id].paneerKg) || 0, half: null });
       return;
     }
     const prev = saved[c.id] || {};
@@ -458,7 +504,7 @@ function DeliveryRound({ fb, customers, days, settings, displayName, onBack, ses
         const hasE = prev.half !== 'morning' && pe > 0;
         raw = { milkMorningL: usualMorning(c), milkEveningL: hasE ? pe : 0, half: !hasE && takesTwice(c) ? 'morning' : null };
       }
-      if (split && session === 'evening') raw = { milkMorningL: pm, milkEveningL: usualEvening(c), half: null };
+      if (split && session === 'total') raw = { milkMorningL: morningDone(prev) ? pm : usualMorning(c), milkEveningL: pe > 0 && prev.half !== 'morning' ? pe : usualEvening(c), half: null };
       rows[c.id] = normaliseEntry(c, { ...raw, paneerKg: prev.paneerKg || 0, skip: false, note: prev.note || '' }, settings);
       snap[c.id] = { prev: saved[c.id] || null, wrote: rows[c.id] };
       now[c.id] = true;
@@ -515,22 +561,9 @@ function DeliveryRound({ fb, customers, days, settings, displayName, onBack, ses
           🚚 {t('deliveryTitle')} <span className="muted small">({done}/{list.length})</span>
         </h1>
         {split && (
-          <div className="round-switch" role="tablist">
-            {['morning', 'evening'].map((r) => (
-              <button
-                key={r}
-                type="button"
-                role="tab"
-                aria-selected={session === r}
-                data-testid={'round-' + r}
-                className={'btn' + (session === r ? ' primary' : '')}
-                onClick={() => onRound && onRound(r)}
-              >
-                {r === 'morning' ? '🌅 ' : '🌙 '}
-                {t('session_' + r)}
-              </button>
-            ))}
-          </div>
+          <p className="round-label" data-testid={'round-' + (roundOnly ? 'morning' : 'day')}>
+            {roundOnly ? '🌅 ' + t('roundMorningUntil').replace('{time}', until) : '🌅 + 🌙 ' + t('roundDay')}
+          </p>
         )}
         {!settings.milkRatePaise && <p className="card warn small">{t('rateMissing')}</p>}
         {!review && (remaining.length > 0 || allUsual) && (
@@ -566,12 +599,18 @@ function DeliveryRound({ fb, customers, days, settings, displayName, onBack, ses
           <DeliveryCard
             key={current.id + (review ? '-review-' + review.pos : '')}
             c={current}
-            initM={review ? review.m || 0 : Number(saved[current.id]?.milkMorningL) || usualMorning(current)}
+            initM={
+              review
+                ? review.m || 0
+                : split && !roundOnly && morningDone(saved[current.id])
+                  ? Number(saved[current.id].milkMorningL) || 0
+                  : Number(saved[current.id]?.milkMorningL) || usualMorning(current)
+            }
             initE={
               review
                 ? review.e ?? null
                 : split
-                  ? Number(saved[current.id]?.half !== 'morning' && saved[current.id]?.milkEveningL) || usualEvening(current)
+                  ? Number(saved[current.id]?.half !== 'morning' && !saved[current.id]?.skip && saved[current.id]?.milkEveningL) || usualEvening(current)
                   : initEvening(saved[current.id], current)
             }
             morningSaved={!review && !!saved[current.id] && saved[current.id].half === 'morning' && takesTwice(current) && !emptyHalf(saved[current.id])}
@@ -586,6 +625,7 @@ function DeliveryRound({ fb, customers, days, settings, displayName, onBack, ses
             }
             format={format}
             session={session}
+            morningLocked={split && !roundOnly && !review && morningDone(saved[current.id])}
             initPaneer={review ? review.p || 0 : Number(saved[current.id]?.paneerKg) || 0}
             onDelivered={guarded((raw, kind) => {
               playSound(kind || 'delivered');

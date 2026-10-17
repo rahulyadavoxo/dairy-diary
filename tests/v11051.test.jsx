@@ -7,7 +7,7 @@ vi.mock('../src/feedback.js', () => ({ playSound: () => {}, vibrateFail: () => {
 
 import { LangContext, makeT, STRINGS } from '../src/i18n.js';
 import { todayISO, addDays } from '../src/format.js';
-import Delivery, { TAP_GUARD_MS, deliveryFormat, roundFor, totalInit } from '../src/screens/Delivery.jsx';
+import Delivery, { TAP_GUARD_MS, deliveryFormat, roundFor, totalInit, morningUntil } from '../src/screens/Delivery.jsx';
 import Settings from '../src/screens/Settings.jsx';
 import { resetCustomersView } from '../src/screens/Customers.jsx';
 
@@ -52,7 +52,11 @@ describe('1.10.51 delivery format', () => {
     expect(deliveryFormat({ deliveryFormat: 'zzz' })).toBe('both');
     expect(deliveryFormat({ deliveryFormat: 'split' })).toBe('split');
     expect(roundFor(new Date(2026, 9, 17, 9))).toBe('morning');
-    expect(roundFor(new Date(2026, 9, 17, 17))).toBe('evening');
+    expect(roundFor(new Date(2026, 9, 17, 17))).toBe('day');
+    expect(roundFor(new Date(2026, 9, 17, 10, 30), '10:30')).toBe('day');
+    expect(roundFor(new Date(2026, 9, 17, 10, 29), '10:30')).toBe('morning');
+    expect(morningUntil({ morningUntil: '9:00' })).toBe('14:00');
+    expect(morningUntil({ morningUntil: '09:00' })).toBe('09:00');
     expect(totalInit(undefined, both)).toBe(2.5);
     expect(totalInit({ milkMorningL: 1, milkEveningL: 0, half: 'morning' }, both)).toBe(2.5);
   });
@@ -80,8 +84,8 @@ describe('1.10.51 delivery format', () => {
 
   it('split morning: only the morning box; saved as half so the evening round still has it', () => {
     const fb = mkFb();
-    render(wrap(<Delivery {...props(fb, [both, mornOnly, eveOnly], { deliveryFormat: 'split' })} />));
-    tap(screen.getByTestId('round-morning'));
+    render(wrap(<Delivery {...props(fb, [both, mornOnly, eveOnly], { deliveryFormat: 'split', morningUntil: '23:59' })} />));
+    expect(screen.getByTestId('round-morning')).toBeTruthy();
     expect(screen.queryByTestId('qty-evening')).toBeNull();
     expect(screen.queryByTestId('qty-total')).toBeNull();
     expect(screen.getByText('Asha')).toBeTruthy();
@@ -97,23 +101,41 @@ describe('1.10.51 delivery format', () => {
     expect(screen.queryByText('Rinku')).toBeNull();
   });
 
-  it('split evening: keeps the morning milk; Absent zeroes only the evening', () => {
+  it('split after the morning time: delivered morning shown locked, ✏️ unlocks; evening saved with it', () => {
     const fb = mkFb();
-    const days = { [T]: { entries: { c1: { milkL: 1, milkMorningL: 1, milkEveningL: 0, half: 'morning' }, c3: { milkL: 0 } } } };
-    render(wrap(<Delivery {...props(fb, [both, eveOnly], { deliveryFormat: 'split' }, days)} />));
-    tap(screen.getByTestId('round-evening'));
-    expect(screen.queryByTestId('qty-morning')).toBeNull();
+    const days = { [T]: { entries: { c1: { milkL: 1, milkMorningL: 1, milkEveningL: 0, half: 'morning' } } } };
+    render(wrap(<Delivery {...props(fb, [both, eveOnly], { deliveryFormat: 'split', morningUntil: '00:00' }, days)} />));
+    expect(screen.getByTestId('round-day')).toBeTruthy();
+    expect(screen.getByTestId('qty-morning-value').textContent).toContain('1');
+    expect(box('qty-morning').querySelector('input')).toBeNull(); // not editable by tapping
     expect(input('qty-evening').value).toBe('1.5');
     tap(screen.getByText(en.delivered));
     const e = lastEntry(fb, 'c1');
-    expect(e).toMatchObject({ milkL: 2.5, milkEveningL: 1.5 }); // morning 1 kept (unchanged, not rewritten)
-    expect(e.milkMorningL ?? 1).toBe(1);
+    expect(e).toMatchObject({ milkL: 2.5, milkEveningL: 1.5 });
     expect(e.half || null).toBeNull();
+    // evening-only customer: both boxes editable (no morning delivered)
     expect(screen.getByText('Rinku')).toBeTruthy();
+    expect(input('qty-morning').value).toBe('0');
+    expect(input('qty-evening').value).toBe('1.25');
+  });
+
+  it('✏️ makes the delivered morning editable; Absent after the morning time keeps the morning', () => {
+    const fb = mkFb();
+    const days = { [T]: { entries: { c1: { milkL: 1, milkMorningL: 1, milkEveningL: 0, half: 'morning' } } } };
+    render(wrap(<Delivery {...props(fb, [both], { deliveryFormat: 'split', morningUntil: '00:00' }, days)} />));
+    fireEvent.click(screen.getByTestId('qty-morning-edit'));
+    expect(input('qty-morning').value).toBe('1');
+    plus('qty-morning');
+    tap(screen.getByText(en.delivered));
+    expect(lastEntry(fb, 'c1')).toMatchObject({ milkMorningL: 1.25, milkEveningL: 1.5 });
+    cleanup();
+    const fb2 = mkFb();
+    render(wrap(<Delivery {...props(fb2, [both], { deliveryFormat: 'split', morningUntil: '00:00' }, days)} />));
     tap(screen.getByText(en.absent));
-    const r = lastEntry(fb, 'c3');
-    expect(r.skip).toBeFalsy();
-    expect(r.milkEveningL || 0).toBe(0);
+    const a = lastEntry(fb2, 'c1');
+    expect(a.skip).toBeFalsy();
+    expect(a.half || null).toBeNull();
+    expect(a.milkMorningL ?? 1).toBe(1);
   });
 
   it('Settings: three toggle bars, only one on; tapping another saves it', () => {
@@ -124,7 +146,15 @@ describe('1.10.51 delivery format', () => {
     expect(screen.getByTestId('deli-fmt-both').getAttribute('aria-checked')).toBe('false');
     fireEvent.click(screen.getByTestId('deli-fmt-total')); // can't switch the only one off
     expect(fb.writes.some((w) => w.data && w.data.deliveryFormat)).toBe(false);
+    expect(screen.queryByTestId('morning-until')).toBeNull();
     fireEvent.click(screen.getByTestId('deli-fmt-split'));
     expect(fb.writes.find((w) => w.data && w.data.deliveryFormat).data.deliveryFormat).toBe('split');
+    cleanup();
+    const fb2 = mkFb();
+    render(wrap(<Settings fb={fb2} user={{}} settings={{ deliveryFormat: 'split' }} displayName="x" setDisplayName={() => {}} online farm={{}} farmId="f" />));
+    const ti = screen.getByTestId('morning-until').querySelector('input');
+    expect(ti.value).toBe('14:00');
+    fireEvent.change(ti, { target: { value: '10:30' } });
+    expect(fb2.writes.find((w) => w.data && w.data.morningUntil).data.morningUntil).toBe('10:30');
   });
 });
