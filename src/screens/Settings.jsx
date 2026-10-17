@@ -10,6 +10,7 @@ import { signOutAndWipe } from '../devices.js';
 import { clearCachedPhotos } from '../billCache.js';
 import { ringTimes, validRingTimes, ringPermission, askRingPermission } from '../reminders.js';
 import { usePinGate } from '../components/PinGate.jsx';
+import { ToggleBar, DELIVERY_FORMATS, deliveryFormat } from './Delivery.jsx';
 
 // Single source of truth for the version (package.json, injected by vite.config.js).
 // eslint-disable-next-line no-undef
@@ -232,6 +233,22 @@ export default function Settings({ fb, user, settings, displayName, setDisplayNa
             English
           </button>
         </div>
+      </div>
+
+      <div className="card" data-testid="delivery-format-card">
+        <p>
+          <b>🚚 {t('deliveryFormat')}</b>
+        </p>
+        <p className="muted small">{t('deliveryFormatHint')}</p>
+        {DELIVERY_FORMATS.map((k) => (
+          <ToggleBar
+            key={k}
+            label={t('deliFmt_' + k)}
+            on={deliveryFormat(settings) === k}
+            onChange={(v) => v && deliveryFormat(settings) !== k && saveSettings(fb, { deliveryFormat: k })}
+            testId={'deli-fmt-' + k}
+          />
+        ))}
       </div>
 
       <form className="card ring-card" onSubmit={saveRing} noValidate>

@@ -54,6 +54,25 @@ export function initEvening(en, c) {
   return usualEvening(c);
 }
 
+/** Delivery format (Settings, farm-wide, user 17 Oct 2026):
+    'split' = morning round and evening round separately, 'total' = one Total box only,
+    'both'  = morning + evening + total on one card (default, the old behaviour). */
+export const DELIVERY_FORMATS = ['split', 'total', 'both'];
+export const deliveryFormat = (settings) => (DELIVERY_FORMATS.includes(settings && settings.deliveryFormat) ? settings.deliveryFormat : 'both');
+/** Which round a split-format delivery opens on: morning until 14:00, then evening. */
+/** Total-only card: what is saved for the day, else the usual day. */
+export function totalInit(en, c) {
+  if (en && !en.skip) {
+    const m = Number(en.milkMorningL) || 0;
+    const e = en.half === 'morning' ? usualEvening(c) : Number(en.milkEveningL) || 0;
+    const sum = Math.round((m + e) * 1000) / 1000;
+    if (m > 0 || e > 0) return sum;
+    if ((Number(en.milkL) || 0) > 0) return Number(en.milkL);
+  }
+  return usualMorning(c) + usualEvening(c);
+}
+export const roundFor = (now = new Date()) => (now.getHours() < 14 ? 'morning' : 'evening');
+
 const usualFor = (c, session) =>
   session === 'morning' ? usualMorning(c) : session === 'evening' ? usualEvening(c) : usualMorning(c) + usualEvening(c);
 
@@ -141,7 +160,7 @@ export function ToggleBar({ label, on, onChange, testId }) {
 
 // One card per customer for the whole day: Paneer (toggle, rarely sold) on top, then morning,
 // evening and the day's total. "As usual" (left) / "Delivered" (right); "Absent" = didn't take today.
-function DeliveryCard({ c, initM, initE, initT, initPaneer, morningSaved, onDelivered, onAbsent, onBack, canGoBack, lastDay = false }) {
+function DeliveryCard({ c, initM, initE, initT, initPaneer, morningSaved, onDelivered, onAbsent, onBack, canGoBack, lastDay = false, format = 'both', session = 'total' }) {
   const usualKey = lastDay ? 'sameAsLastDay' : 'asUsual';
   const { t } = useLang();
   const [m, setM] = useState(initM);
@@ -174,22 +193,38 @@ function DeliveryCard({ c, initM, initE, initT, initPaneer, morningSaved, onDeli
   const usual = usualMorning(c) + usualEvening(c);
   // Evening left empty (null) = only the morning is delivered now; the day stays incomplete and
   // the customer comes back for the evening. A Total, or morning + evening, completes the day.
-  const deliverNow = () =>
-    onDelivered(
+  // 'total' format: one box; 'split' format: only this round's box (deliver() keeps the other round).
+  const round = format === 'split' ? session : null;
+  const deliverNow = () => {
+    if (format === 'total') return onDelivered({ milkMorningL: 0, milkEveningL: 0, milkL: tot || 0, paneerKg: pp, half: null }, 'delivered');
+    if (round === 'morning') return onDelivered({ milkMorningL: m || 0, paneerKg: pp }, 'delivered');
+    if (round === 'evening') return onDelivered({ milkEveningL: e || 0, paneerKg: pp }, 'delivered');
+    return onDelivered(
       tot > 0
         ? { milkMorningL: 0, milkEveningL: 0, milkL: tot, paneerKg: pp, half: null }
         : { milkMorningL: m || 0, milkEveningL: e || 0, paneerKg: pp, half: e == null && (m || 0) > 0 && takesTwice(c) ? 'morning' : null },
       'delivered',
     );
+  };
   // "As usual" fills the round being delivered now: the morning on the first visit (evening still
   // to come), the evening when the morning is already saved.
-  const asUsual = () =>
-    onDelivered(
+  const asUsual = () => {
+    if (format === 'total') return onDelivered({ milkMorningL: 0, milkEveningL: 0, milkL: usual, paneerKg: pp, half: null }, 'usual');
+    if (round === 'morning') return onDelivered({ milkMorningL: usualMorning(c), paneerKg: pp }, 'usual');
+    if (round === 'evening') return onDelivered({ milkEveningL: usualEvening(c), paneerKg: pp }, 'usual');
+    return onDelivered(
       morningSaved
         ? { milkMorningL: m || 0, milkEveningL: usualEvening(c), paneerKg: pp, half: null }
         : { milkMorningL: usualMorning(c), milkEveningL: e == null ? 0 : e, paneerKg: pp, half: e == null && usualMorning(c) > 0 && takesTwice(c) ? 'morning' : null },
       'usual',
     );
+  };
+  const editTotalOnly = (v) => {
+    setTot(v);
+    setEdited(true);
+  };
+  const shownUsual = round === 'morning' ? usualMorning(c) : round === 'evening' ? usualEvening(c) : usual;
+  const shownTotal = format === 'total' ? Number(tot) || 0 : round === 'morning' ? Number(m) || 0 : round === 'evening' ? Number(e) || 0 : total;
 
   return (
     <div className="card deli-card">
@@ -200,18 +235,19 @@ function DeliveryCard({ c, initM, initE, initT, initPaneer, morningSaved, onDeli
       </h2>
       <ToggleBar label={'🧀 ' + t('paneer')} on={paneerOn} onChange={setPaneerOn} testId="paneer-toggle" />
       {paneerOn && <PaneerGrams label={t('paneer') + ' (' + t('gram') + ')'} value={paneer} onChange={setPaneer} testId="paneer-qty" />}
-      <QtyEdit label={t('session_morning')} value={m} onChange={editM} testId="qty-morning" />
-      <QtyEdit
-        label={t('session_evening')}
-        value={e}
-        onChange={editE}
-        testId="qty-evening"
-        allowEmpty={takesTwice(c)}
-      />
-      <QtyEdit label={t('session_total')} value={tot} onChange={editT} testId="qty-total" />
+      {format === 'both' && (
+        <>
+          <QtyEdit label={t('session_morning')} value={m} onChange={editM} testId="qty-morning" />
+          <QtyEdit label={t('session_evening')} value={e} onChange={editE} testId="qty-evening" allowEmpty={takesTwice(c)} />
+          <QtyEdit label={t('session_total')} value={tot} onChange={editT} testId="qty-total" />
+        </>
+      )}
+      {round === 'morning' && <QtyEdit label={'🌅 ' + t('session_morning')} value={m} onChange={editM} testId="qty-morning" />}
+      {round === 'evening' && <QtyEdit label={'🌙 ' + t('session_evening')} value={e ?? 0} onChange={editE} testId="qty-evening" />}
+      {format === 'total' && <QtyEdit label={t('session_total')} value={tot} onChange={editTotalOnly} testId="qty-total" />}
       <p className="deli-total" data-testid="deli-total">
-        {t('session_total')}: <b>{fmtQty(total)} {t('litre')}</b>
-        <span className="muted small"> · {t(usualKey)}: {fmtQty(usual)} {t('litre')}</span>
+        {round ? t('session_' + round) : t('session_total')}: <b>{fmtQty(shownTotal)} {t('litre')}</b>
+        <span className="muted small"> · {t(usualKey)}: {fmtQty(shownUsual)} {t('litre')}</span>
       </p>
       <div className="form-actions">
         {!edited && (
@@ -262,11 +298,16 @@ function saveAllUsual(date, snap) {
 
 export default function Delivery(props) {
   const { t } = useLang();
-  // One round for the whole day (morning + evening on the same card), per Rahul 2026-10-14.
-  return <DeliveryRound {...props} session="total" t={t} />;
+  const format = deliveryFormat(props.settings);
+  const [round, setRound] = useState(() => roundFor());
+  // 'both' / 'total': one round for the whole day (Rahul 2026-10-14). 'split': a morning round and
+  // an evening round, switchable at the top (each round is its own list, so it remounts).
+  const session = format === 'split' ? round : 'total';
+  return <DeliveryRound key={format + session} {...props} session={session} format={format} onRound={setRound} t={t} />;
 }
 
-function DeliveryRound({ fb, customers, days, settings, displayName, onBack, session, t }) {
+function DeliveryRound({ fb, customers, days, settings, displayName, onBack, session, format = 'both', onRound, t }) {
+  const split = format === 'split';
   const date = todayISO();
   const day = days[date] || null;
   const saved = (day && day.entries) || {};
@@ -306,8 +347,9 @@ function DeliveryRound({ fb, customers, days, settings, displayName, onBack, ses
 
   // Done for this round: delivered now or earlier, or marked "didn't take" for the whole day in the register.
   // Paneer alone is not a milk delivery: a paneer-only "Delivered" is remembered via `skipped`.
-  const isDelivered = (c) => !!doneNow[c.id] || dayComplete(saved[c.id], c) || !!(saved[c.id] && saved[c.id].skip);
-  const remaining = list.filter((c) => !isDelivered(c) && (!skipped[c.id] || emptyHalf(saved[c.id])));
+  const isDelivered = (c) =>
+    !!doneNow[c.id] || (split ? deliveredFor(saved[c.id], session) : dayComplete(saved[c.id], c)) || !!(saved[c.id] && saved[c.id].skip);
+  const remaining = list.filter((c) => !isDelivered(c) && (!skipped[c.id] || (!split && emptyHalf(saved[c.id]))));
   const done = list.length - remaining.length;
   const current = review ? byId[review.id] : remaining[0];
   const canGoBack = review ? review.pos > 0 : history.length > 0;
@@ -316,7 +358,7 @@ function DeliveryRound({ fb, customers, days, settings, displayName, onBack, ses
   useEffect(() => {
     if (history.length === 0) {
       const seeded = list
-        .filter((c) => dayComplete(saved[c.id], c) || !!(saved[c.id] && saved[c.id].skip) || (!!skipped[c.id] && (Number(saved[c.id] && saved[c.id].paneerKg) || 0) > 0))
+        .filter((c) => (split ? deliveredFor(saved[c.id], session) : dayComplete(saved[c.id], c)) || !!(saved[c.id] && saved[c.id].skip) || (!!skipped[c.id] && (Number(saved[c.id] && saved[c.id].paneerKg) || 0) > 0))
         .map((c) => {
           const en = saved[c.id] || {};
           if (en.skip) return { id: c.id, m: 0, e: 0, p: 0, total: 0, absent: true };
@@ -332,8 +374,19 @@ function DeliveryRound({ fb, customers, days, settings, displayName, onBack, ses
     // other session's milk (e.g. evening delivery must keep the morning quantity) or the note.
     const prev = saved[c.id] || {};
     const merged = { ...raw };
-    if (session === 'morning' && prev.milkEveningL != null) merged.milkEveningL = Number(prev.milkEveningL) || 0;
-    if (session === 'evening' && prev.milkMorningL != null) merged.milkMorningL = Number(prev.milkMorningL) || 0;
+    if (split && session === 'morning') {
+      // evening still to come for a twice-a-day customer (unless an evening is already saved)
+      const hasEvening = !prev.skip && prev.half !== 'morning' && (Number(prev.milkEveningL) || 0) > 0;
+      merged.half = !hasEvening && takesTwice(c) ? 'morning' : null;
+      if (!hasEvening) merged.milkEveningL = 0;
+    }
+    if (split && session === 'evening') merged.half = null;
+    if (split && prev.skip) {
+      merged.milkMorningL = merged.milkMorningL || 0;
+      merged.milkEveningL = merged.milkEveningL || 0;
+    }
+    if (session === 'morning' && prev.milkEveningL != null && !(split && merged.half === 'morning')) merged.milkEveningL = Number(prev.milkEveningL) || 0;
+    if (session === 'evening' && prev.milkMorningL != null && !prev.skip) merged.milkMorningL = Number(prev.milkMorningL) || 0;
     // A total-only entry from earlier (no split): keep that milk in the other session's slot.
     const prevTotalOnly = (Number(prev.milkL) || 0) > 0 && !(Number(prev.milkMorningL) > 0) && !(Number(prev.milkEveningL) > 0);
     if (prevTotalOnly && !prev.skip) {
@@ -361,6 +414,11 @@ function DeliveryRound({ fb, customers, days, settings, displayName, onBack, ses
 
   // Absent: didn't take milk today (the register's "didn't take" for the whole day).
   const markAbsent = (c) => {
+    if (split) {
+      // only this round: the other round's milk stays (a whole-day skip would wipe it)
+      deliver(c, session === 'morning' ? { milkMorningL: 0, paneerKg: 0 } : { milkEveningL: 0, paneerKg: 0 });
+      return;
+    }
     const prev = saved[c.id] || {};
     const entry = normaliseEntry(c, { milkMorningL: 0, milkEveningL: 0, paneerKg: 0, skip: true, note: prev.note || '' }, settings);
     saveEntries(fb, date, { [c.id]: entry }, displayName, { [c.id]: saved[c.id] });
@@ -394,7 +452,13 @@ function DeliveryRound({ fb, customers, days, settings, displayName, onBack, ses
       // keep a round that is already recorded (e.g. morning entered in the Register)
       const pm = Number(prev.milkMorningL) || 0;
       const pe = Number(prev.milkEveningL) || 0;
-      const raw = { milkMorningL: pm > 0 ? pm : usualMorning(c), milkEveningL: pe > 0 ? pe : usualEvening(c) };
+      let raw = { milkMorningL: pm > 0 ? pm : usualMorning(c), milkEveningL: pe > 0 ? pe : usualEvening(c) };
+      if (format === 'total') raw = { milkMorningL: 0, milkEveningL: 0, milkL: usualMorning(c) + usualEvening(c) };
+      if (split && session === 'morning') {
+        const hasE = prev.half !== 'morning' && pe > 0;
+        raw = { milkMorningL: usualMorning(c), milkEveningL: hasE ? pe : 0, half: !hasE && takesTwice(c) ? 'morning' : null };
+      }
+      if (split && session === 'evening') raw = { milkMorningL: pm, milkEveningL: usualEvening(c), half: null };
       rows[c.id] = normaliseEntry(c, { ...raw, paneerKg: prev.paneerKg || 0, skip: false, note: prev.note || '' }, settings);
       snap[c.id] = { prev: saved[c.id] || null, wrote: rows[c.id] };
       now[c.id] = true;
@@ -450,6 +514,24 @@ function DeliveryRound({ fb, customers, days, settings, displayName, onBack, ses
         <h1>
           🚚 {t('deliveryTitle')} <span className="muted small">({done}/{list.length})</span>
         </h1>
+        {split && (
+          <div className="round-switch" role="tablist">
+            {['morning', 'evening'].map((r) => (
+              <button
+                key={r}
+                type="button"
+                role="tab"
+                aria-selected={session === r}
+                data-testid={'round-' + r}
+                className={'btn' + (session === r ? ' primary' : '')}
+                onClick={() => onRound && onRound(r)}
+              >
+                {r === 'morning' ? '🌅 ' : '🌙 '}
+                {t('session_' + r)}
+              </button>
+            ))}
+          </div>
+        )}
         {!settings.milkRatePaise && <p className="card warn small">{t('rateMissing')}</p>}
         {!review && (remaining.length > 0 || allUsual) && (
           <ToggleBar
@@ -485,9 +567,25 @@ function DeliveryRound({ fb, customers, days, settings, displayName, onBack, ses
             key={current.id + (review ? '-review-' + review.pos : '')}
             c={current}
             initM={review ? review.m || 0 : Number(saved[current.id]?.milkMorningL) || usualMorning(current)}
-            initE={review ? review.e ?? null : initEvening(saved[current.id], current)}
+            initE={
+              review
+                ? review.e ?? null
+                : split
+                  ? Number(saved[current.id]?.half !== 'morning' && saved[current.id]?.milkEveningL) || usualEvening(current)
+                  : initEvening(saved[current.id], current)
+            }
             morningSaved={!review && !!saved[current.id] && saved[current.id].half === 'morning' && takesTwice(current) && !emptyHalf(saved[current.id])}
-            initT={review && !((review.m || 0) + (review.e || 0)) ? review.total || 0 : 0}
+            initT={
+              format === 'total'
+                ? review
+                  ? review.total || (review.m || 0) + (review.e || 0)
+                  : totalInit(saved[current.id], current)
+                : review && !((review.m || 0) + (review.e || 0))
+                  ? review.total || 0
+                  : 0
+            }
+            format={format}
+            session={session}
             initPaneer={review ? review.p || 0 : Number(saved[current.id]?.paneerKg) || 0}
             onDelivered={guarded((raw, kind) => {
               playSound(kind || 'delivered');
