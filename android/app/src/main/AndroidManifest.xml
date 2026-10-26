@@ -33,6 +33,16 @@
             android:stopWithTask="false"
             android:foregroundServiceType="dataSync" />
 
+        <!-- v1.10.55: register ring checks whether any phone filled the day before it rings -->
+        <receiver
+            android:name=".RingReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
@@ -51,6 +61,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- 22:00 / 08:00 register rings must fire on time (auto-granted for alarm-type use on Android 13+) -->
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     <!-- in-app update: open the installer for the APK downloaded from the GitHub release -->

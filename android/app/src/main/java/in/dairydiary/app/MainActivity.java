@@ -9,6 +9,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(WhatsAppSharePlugin.class); // must be BEFORE super.onCreate
         registerPlugin(ApkUpdaterPlugin.class);
         registerPlugin(SyncKeeperPlugin.class);
+        registerPlugin(RingPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

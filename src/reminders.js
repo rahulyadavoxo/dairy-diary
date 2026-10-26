@@ -11,9 +11,13 @@
 // "Filled" = the day has at least one saved entry (milk, skip or paneer) for any customer,
 // including entries still waiting to sync from this phone.
 //
-// The rings are local notifications scheduled on each phone. A phone cancels its rings as soon as
-// it sees (through Firestore sync) that the day was filled; a phone that stays closed and offline
-// can't know that, so it may still ring.
+// The rings are scheduled on each phone. A phone cancels its rings as soon as it sees (through
+// Firestore sync) that the day was filled. v1.10.55 (user, 26 Oct 2026: "the brother filled it on
+// his phone but mine still rang"): on Android the ring is a native alarm (RingPlugin.java /
+// RingReceiver.java) that checks again when it fires, first this phone's filled list, then Firestore
+// over the internet. Filled by ANY phone = no ring, even if this app was closed all day. No
+// internet at ring time = it rings (better a ring too many than a missed register).
+// The ring plays on the ALARM stream at full volume (the user's volume comes back afterwards).
 
 import { Capacitor } from '@capacitor/core';
 import { addDays, isoDate } from './format.js';
@@ -119,6 +123,29 @@ const native = () => {
 
 let ready = null;
 let lastSig = '';
+let legacyCleared = false;
+
+/** Native ring (RingPlugin) when the APK has it; tests / web / old builds fall back to LN. */
+async function ringNative() {
+  try {
+    if (!Capacitor.isPluginAvailable || !Capacitor.isPluginAvailable('DdRing')) return null;
+    const { registerPlugin } = await import('@capacitor/core');
+    return { R: registerPlugin('DdRing') };
+  } catch {
+    return null;
+  }
+}
+
+/** Days (yesterday .. AHEAD days ahead) this phone already sees as filled. */
+export function filledDays({ now = new Date(), days, pendingDays }) {
+  const today = isoDate(now);
+  const out = [];
+  for (let k = -1; k <= AHEAD; k++) {
+    const d = addDays(today, k);
+    if (dayFilled(days, pendingDays, d)) out.push(d);
+  }
+  return out;
+}
 
 // NB: a Capacitor plugin proxy must never be the resolved value of a promise (await would call
 // its .then(), which the proxy reports as "not implemented"). Always pass it wrapped: { LN }.
@@ -179,14 +206,45 @@ async function setup(t) {
 }
 
 /** Bring this phone's pending rings in line with the register. Safe to call often. */
-export async function syncRings({ days, pendingDays, hasCustomers, t, dmy, now = new Date(), times = DEF_TIMES }) {
+// auth = { apiKey, projectId, farmId, refreshToken }: lets the native ring ask Firestore at ring time.
+export async function syncRings({ days, pendingDays, hasCustomers, t, dmy, now = new Date(), times = DEF_TIMES, auth = null }) {
   if (!native()) return;
   const plan = planRings({ now, days, pendingDays, hasCustomers, times });
+  const filled = filledDays({ now, days, pendingDays });
+  const a = auth || {};
   // the texts are part of the signature: a language change re-schedules the pending rings
-  const sig = [t('ringTitle'), t('ringNight'), t('ringMorning')].join('|') + '#' + plan.map((p) => `${p.id}@${p.at.getTime()}`).join(',');
+  const sig =
+    [t('ringTitle'), t('ringNight'), t('ringMorning')].join('|') +
+    '#' + plan.map((p) => `${p.id}@${p.at.getTime()}`).join(',') +
+    '#' + filled.join(',') +
+    '#' + [a.farmId || '', a.refreshToken ? a.refreshToken.length : 0].join(':');
   if (sig === lastSig) return;
   lastSig = sig;
+  const body = (p) => (p.kind === 'night' ? t('ringNight') : t('ringMorning')).replace('{date}', dmy(p.day));
   try {
+    const nat = await ringNative();
+    if (nat) {
+      const { R } = nat;
+      if (!ready) ready = askOnce();
+      const { LN } = await ready;
+      if (!legacyCleared) {
+        // the 1.10.12-1.10.54 rings were plain local notifications: drop them, the native ring owns these ids now
+        legacyCleared = true;
+        try {
+          await LN.cancel({ notifications: ALL_IDS.map((id) => ({ id })) });
+        } catch {
+          /* ignore */
+        }
+      }
+      await R.sync({
+        rings: plan.map((p) => ({ id: p.id, at: p.at.getTime(), kind: p.kind, day: p.day, title: '🥛 ' + t('ringTitle'), body: body(p) })),
+        filled,
+        auth: { apiKey: a.apiKey || '', projectId: a.projectId || '', farmId: a.farmId || '', refreshToken: a.refreshToken || '' },
+        closeTitle: t('ringClose'),
+        channelName: t('ringChannel'),
+      });
+      return;
+    }
     if (!ready) ready = setup(t);
     const { LN } = await ready;
     const keep = new Set(plan.map((p) => p.id));
@@ -197,7 +255,7 @@ export async function syncRings({ days, pendingDays, hasCustomers, t, dmy, now =
       notifications: plan.map((p) => ({
         id: p.id,
         title: '🥛 ' + t('ringTitle'),
-        body: (p.kind === 'night' ? t('ringNight') : t('ringMorning')).replace('{date}', dmy(p.day)),
+        body: body(p),
         schedule: { at: p.at, allowWhileIdle: true },
         channelId: RING_CHANNEL,
         sound: RING_SOUND,
@@ -213,6 +271,18 @@ export async function syncRings({ days, pendingDays, hasCustomers, t, dmy, now =
     lastSig = ''; // try again next time
     console.error('[rings]', e);
   }
+}
+
+/** Native ring path: only the Android 13+ notification permission is still asked through LN. */
+async function askOnce() {
+  const { LN } = await plugin();
+  try {
+    const p = await LN.checkPermissions();
+    if (p && p.display && p.display !== 'granted' && p.display !== 'denied') await LN.requestPermissions();
+  } catch {
+    /* ignore */
+  }
+  return { LN };
 }
 
 /** 'granted' | 'denied' | 'prompt' ... ; web counts as granted. */
@@ -253,12 +323,21 @@ export async function askRingPermission() {
 export function _resetRingsForTest() {
   ready = null;
   lastSig = '';
+  legacyCleared = false;
 }
 
 /** Signed out / removed from the farm: this phone stops ringing. */
 export async function cancelAllRings() {
   lastSig = '';
   if (!native()) return;
+  const nat = await ringNative();
+  if (nat) {
+    try {
+      await nat.R.cancelAll();
+    } catch {
+      /* ignore */
+    }
+  }
   try {
     const { LN } = await plugin();
     await LN.cancel({ notifications: ALL_IDS.map((id) => ({ id })) });

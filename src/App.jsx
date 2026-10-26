@@ -287,7 +287,10 @@ function Main({ fb, user, farm, farmId }) {
   const hasCustomers = customers.some((c) => c.active !== false);
   useEffect(() => {
     if (!loaded.days || !loaded.customers) return;
-    syncRings({ days, pendingDays, hasCustomers, t, dmy: (iso) => dmy(iso, lang), times: ringTimes(settings) });
+    const o = (fb.app && fb.app.options) || {};
+    const u = fb.auth && fb.auth.currentUser;
+    const auth = { apiKey: o.apiKey, projectId: o.projectId, farmId: fb.farmId, refreshToken: u && u.refreshToken };
+    syncRings({ days, pendingDays, hasCustomers, t, dmy: (iso) => dmy(iso, lang), times: ringTimes(settings), auth });
   }, [loaded, days, pendingDays, hasCustomers, lang, settings.ringNight, settings.ringMorning]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
