@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLang } from '../i18n.js';
-import { saveCustomer, saveOrder, entryChanges } from '../db.js';
+import { saveCustomer, saveOrder, entryChanges, applyPaneerRate } from '../db.js';
 import { sortCustomers, isPaused, matchesQuery } from './Register.jsx';
 import { dmy, fmtQty, paiseToInput, rupees, toPaise, todayISO } from '../format.js';
 import { pushBackHandler } from '../backStack.js';
@@ -48,7 +48,7 @@ export function resetCustomersView() {
   view.query = '';
 }
 
-export default function Customers({ fb, customers, settings, openCustomer }) {
+export default function Customers({ fb, customers, settings, days, openCustomer }) {
   const { t, lang } = useLang();
   const [editing, setEditing] = useState(null); // null | 'new' | customer
   const [importing, setImporting] = useState(false);
@@ -101,6 +101,7 @@ export default function Customers({ fb, customers, settings, openCustomer }) {
         initial={editing === 'new' ? null : editing}
         nextOrder={(active.length + inactive.length + 1) * 10}
         settings={settings}
+        days={days}
         onDone={(savedId) => {
           if (savedId) {
             storeLastEdited(savedId);
@@ -220,7 +221,7 @@ export default function Customers({ fb, customers, settings, openCustomer }) {
   );
 }
 
-export function CustomerForm({ fb, initial, nextOrder, onDone }) {
+export function CustomerForm({ fb, initial, nextOrder, onDone, days }) {
   const { t } = useLang();
   // Show / hide only (no setting changes): the milk / paneer special-rate switches (user, 16 Oct 2026).
   // "Set milk format" shows the As usual / Same as last day switches (user, 16 Oct 2026).
@@ -335,17 +336,23 @@ export function CustomerForm({ fb, initial, nextOrder, onDone }) {
       prefillMode: f.prefillMode === 'lastDay' ? 'lastDay' : 'usual',
     });
     let data = toData(f);
+    let paneerSync = () => {};
     if (initial) {
       // Only what was changed in this form: another phone may have paused / deactivated / edited
       // this customer meanwhile, and re-sending the old values would undo that.
+      const newPaneer = data.paneerRateOverridePaise;
       data = entryChanges(toData(f0.current), data);
+      // Paneer special rate set (re-saved) or changed / removed: this month's days follow it too.
+      if (newPaneer || 'paneerRateOverridePaise' in data) paneerSync = () => applyPaneerRate(fb, initial.id, newPaneer || null, days, todayISO().slice(0, 7) + '-01');
       if (!Object.keys(data).length) {
+        paneerSync();
         saveFeedback(true);
         return onDone(initial.id);
       }
     }
     if (!initial) data.order = nextOrder;
     const savedId = saveCustomer(fb, initial ? initial.id : null, data);
+    paneerSync();
     saveFeedback(true);
     onDone(savedId);
   };

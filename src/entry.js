@@ -28,7 +28,9 @@ export function normaliseEntry(customer, raw, settings) {
     skip: !!raw.skip,
     note: raw.note || '',
     milkRatePaise: mr > 0 ? mr : null,
-    paneerRatePaise: pr > 0 ? pr : null,
+    // v1.10.56: a day without paneer keeps no paneer rate, so paneer added later takes the
+    // customer's special rate of that time (it used to keep the default rate of the milk-only save).
+    paneerRatePaise: pr > 0 && q3(raw.paneerKg) > 0 ? pr : null,
     // 'morning' = only the morning is recorded so far (evening still to come): the day is NOT
     // complete yet (Edit this day count, Delivery list). null = the whole day is recorded.
     half: raw.half === 'morning' || raw.half === 'evening' ? raw.half : null,

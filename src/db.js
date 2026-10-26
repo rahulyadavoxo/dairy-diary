@@ -224,6 +224,30 @@ export function saveCustomer(fb, id, data) {
   return ref.id;
 }
 
+/** v1.10.56 (user, 26 Oct 2026): a changed / removed special paneer rate also applies to this
+ *  customer's days from `fromIso` on (the current month). Days with paneer get the new rate (null =
+ *  removed -> the default rate from Settings); days without paneer keep no rate. Only differing
+ *  entries are written. Returns the number of days changed. */
+export function applyPaneerRate(fb, customerId, ratePaise, days, fromIso) {
+  const { db, fsMod } = fb;
+  let batch = null;
+  let n = 0;
+  for (const [iso, d] of Object.entries(days || {})) {
+    if (iso < fromIso) continue;
+    const e = d && d.entries && d.entries[customerId];
+    if (!e) continue;
+    const hasPaneer = Number(e.paneerKg) > 0;
+    const want = hasPaneer && Number.isInteger(ratePaise) && ratePaise > 0 ? ratePaise : null;
+    const have = Number.isInteger(e.paneerRatePaise) && e.paneerRatePaise > 0 ? e.paneerRatePaise : null;
+    if (want === have) continue;
+    if (!batch) batch = fsMod.writeBatch(db);
+    batch.update(fdoc(fb, 'days', iso), { [`entries.${customerId}.paneerRatePaise`]: want });
+    n++;
+  }
+  if (n) log(batch.commit());
+  return n;
+}
+
 /** Re-number route order for the given ordered list of customer ids (only writes changed ones). */
 export function saveOrder(fb, orderedCustomers) {
   const { db, fsMod } = fb;
