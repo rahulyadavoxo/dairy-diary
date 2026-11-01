@@ -128,6 +128,8 @@ export const STRINGS = {
     rateNote: 'नया रेट सिर्फ़ आगे के रजिस्टर पर लगेगा। पुराने दिनों का रेट वही रहेगा।',
     online: 'ऑनलाइन',
     offline: 'ऑफ़लाइन — एंट्री फोन में सेव होंगी',
+    oldHistoryLoading: 'पुराना हिसाब (3 महीने से पहले का) अभी इस फोन पर नहीं आया — पिछला बाकी अधूरा हो सकता है। इंटरनेट चालू करें।',
+    dueToday: 'आज तक कुल बाकी',
     version: 'संस्करण',
     rateMissing: 'दूध का रेट अभी सेट नहीं है — सेटिंग में डालें।',
 
@@ -485,6 +487,8 @@ export const STRINGS = {
     rateNote: 'A new rate applies to entries saved from now on. Old days keep their rate.',
     online: 'Online',
     offline: 'Offline — entries are saved on the phone',
+    oldHistoryLoading: 'Older history (before 3 months) has not loaded on this phone yet — previous due may be incomplete. Turn on the internet.',
+    dueToday: 'Total due as of today',
     version: 'Version',
     rateMissing: 'Milk rate is not set yet — add it in Settings.',
 

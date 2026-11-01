@@ -1,5 +1,6 @@
 // Firestore data layer.
 import { deleteCachedPhoto } from './billCache.js';
+import { paneerRateFor, validRate } from './billing.js';
 import { vibrateFail } from './feedback.js';
 import { addMonths, todayISO } from './format.js';
 import { trackWrite } from './pendingSync.js';
@@ -86,10 +87,14 @@ export function listenAll(fb, handlers) {
   let oldDays = {};
   let oldPays = [];
   let oldReady = !windowed;
+  // money #7: false while the old part (before cutoff) may be missing on this phone (new / wiped
+  // phone offline: empty cache and no server read yet). 4th arg of handlers.days, so screens can
+  // warn that the previous due may be incomplete. Once true it stays true.
+  let oldConfirmed = !windowed;
 
   const emitDays = () => {
     if (stopped || liveDays === null || !oldReady) return;
-    handlers.days({ ...oldDays, ...liveDays }, livePending, liveFromCache);
+    handlers.days({ ...oldDays, ...liveDays }, livePending, liveFromCache, oldConfirmed);
   };
   const emitPays = () => {
     if (stopped || livePays === null || !oldReady) return;
@@ -156,9 +161,10 @@ export function listenAll(fb, handlers) {
         // 1) Instant: this phone's cache (also shows this phone's own unsynced old edits).
         try {
           const [dq, pq] = await fromCache();
-          if (!stopped) take(dq, pq);
           // the cache must still hold everything the last server read had (not wiped/evicted)
           cacheOk = !!mark && dq.docs.length >= (mark.nd || 0) && pq.docs.length >= (mark.np || 0);
+          if (cacheOk) oldConfirmed = true; // history is on this phone (maybe not the newest edit)
+          if (!stopped) take(dq, pq);
         } catch {
           /* no cache yet */
         }
@@ -171,6 +177,7 @@ export function listenAll(fb, handlers) {
         try {
           const [dq, pq] = await Promise.all([fs.getDocs(oldDaysQ), fs.getDocs(oldPaysQ)]);
           if (stopped) return;
+          if (!dq.metadata || !dq.metadata.fromCache) oldConfirmed = true; // before take() emits
           take(dq, pq);
           if (!dq.metadata || !dq.metadata.fromCache) {
             serverFor = v;
@@ -225,11 +232,14 @@ export function saveCustomer(fb, id, data) {
 }
 
 /** v1.10.56 (user, 26 Oct 2026): a changed / removed special paneer rate also applies to this
- *  customer's days from `fromIso` on (the current month). Days with paneer get the new rate (null =
- *  removed -> the default rate from Settings); days without paneer keep no rate. Only differing
- *  entries are written. Returns the number of days changed. */
-export function applyPaneerRate(fb, customerId, ratePaise, days, fromIso) {
+ *  customer's days from `fromIso` on (the current month). Days with paneer get the new rate; days
+ *  without paneer keep no rate. Only differing entries are written. Returns the number of days changed.
+ *  Removed (ratePaise null): paneer days get the Settings default rate in effect NOW
+ *  (`defaultPaneerPaise`), not null, so the month is frozen: a later Settings change or a new
+ *  special rate next month never reprices it (money #1). No valid default -> null as before. */
+export function applyPaneerRate(fb, customerId, ratePaise, days, fromIso, defaultPaneerPaise) {
   const { db, fsMod } = fb;
+  const rate = validRate(ratePaise) ? ratePaise : validRate(defaultPaneerPaise) ? defaultPaneerPaise : null;
   let batch = null;
   let n = 0;
   for (const [iso, d] of Object.entries(days || {})) {
@@ -237,14 +247,46 @@ export function applyPaneerRate(fb, customerId, ratePaise, days, fromIso) {
     const e = d && d.entries && d.entries[customerId];
     if (!e) continue;
     const hasPaneer = Number(e.paneerKg) > 0;
-    const want = hasPaneer && Number.isInteger(ratePaise) && ratePaise > 0 ? ratePaise : null;
-    const have = Number.isInteger(e.paneerRatePaise) && e.paneerRatePaise > 0 ? e.paneerRatePaise : null;
+    const want = hasPaneer && rate ? rate : null;
+    const have = validRate(e.paneerRatePaise) ? e.paneerRatePaise : null;
     if (want === have) continue;
     if (!batch) batch = fsMod.writeBatch(db);
     batch.update(fdoc(fb, 'days', iso), { [`entries.${customerId}.paneerRatePaise`]: want });
     n++;
   }
   if (n) log(batch.commit());
+  return n;
+}
+
+/** One-time repair (money #1): entries with paneer but no stored paneer rate (written as null by
+ *  1.10.56's "remove special rate") float with the current customer / Settings rate on every later
+ *  bill. Freeze each of them, from `fromIso` on, at exactly the rate billing uses for it right now
+ *  (billing.paneerRateFor), so no amount changes today and none changes later. Unknown (deleted)
+ *  customers are skipped (billing ignores them). Returns the number of entries written. */
+export function lockNullPaneerRates(fb, customers, days, settings, fromIso) {
+  const { db, fsMod } = fb;
+  const byId = new Map((customers || []).map((c) => [c.id, c]));
+  const perDay = {};
+  let n = 0;
+  for (const [iso, d] of Object.entries(days || {})) {
+    if (iso < fromIso || !d || !d.entries) continue;
+    for (const [cid, e] of Object.entries(d.entries)) {
+      const c = byId.get(cid);
+      if (!c || !e || !(Number(e.paneerKg) > 0) || validRate(e.paneerRatePaise)) continue;
+      const rate = paneerRateFor(settings, null, c);
+      if (!validRate(rate)) continue;
+      (perDay[iso] = perDay[iso] || {})[`entries.${cid}.paneerRatePaise`] = rate;
+      n++;
+    }
+  }
+  const isos = Object.keys(perDay).sort();
+  // one update per day document; a batch holds at most 500 writes
+  for (let i = 0; i < isos.length; i += 450) {
+    const batch = fsMod.writeBatch(db);
+    isos.slice(i, i + 450).forEach((iso) => batch.update(fdoc(fb, 'days', iso), perDay[iso]));
+    log(batch.commit());
+  }
+  if (isos.length) touchHistory(fb, isos[0]);
   return n;
 }
 
