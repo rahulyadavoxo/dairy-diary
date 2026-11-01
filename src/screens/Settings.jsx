@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { saveFeedback } from '../feedback.js';
 import { useLang } from '../i18n.js';
 import { saveSettings } from '../db.js';
@@ -55,16 +55,28 @@ export default function Settings({ fb, user, settings, displayName, setDisplayNa
       setRingMsg({ text: t('ringTimesInvalid'), err: true });
       saveFeedback(false);
     } else {
-      saveSettings(fb, { ringNight: ring.night, ringMorning: ring.morning });
+      // only the time that changed: a phone with stale settings must not send back the other one
+      const d = {};
+      if (ring.night !== nightStr) d.ringNight = ring.night;
+      if (ring.morning !== morningStr) d.ringMorning = ring.morning;
+      saveSettings(fb, d);
       setRingMsg({ text: t('ringTimesSaved'), err: false });
       saveFeedback(true);
     }
     setTimeout(() => setRingMsg({ text: '', err: false }), 2500);
   };
 
+  const pinBusy = useRef(false); // double tap while PBKDF2 runs: verify once
   const verifyCurrentPin = async (e) => {
     e.preventDefault();
-    const ok = await verifyPin(pin.trim());
+    if (pinBusy.current) return;
+    pinBusy.current = true;
+    let ok;
+    try {
+      ok = await verifyPin(pin.trim());
+    } finally {
+      pinBusy.current = false;
+    }
     if (ok) {
       setPinVerified(true);
       setPin('');
@@ -115,14 +127,20 @@ export default function Settings({ fb, user, settings, displayName, setDisplayNa
     setTimeout(() => setPinMsg(''), 2500);
   };
 
+  // Values last taken from the server. When another phone changes one of them, only the boxes this
+  // user has not touched follow it; typing in the other boxes is kept.
+  const synced = useRef(null);
   useEffect(() => {
-    setF({
+    const next = {
       milkRate: paiseToInput(settings.milkRatePaise),
       paneerRate: paiseToInput(settings.paneerRatePaise),
       farmName: settings.farmName || '',
       phone: settings.phone || '',
       upiId: settings.upiId || '',
-    });
+    };
+    const prev = synced.current;
+    synced.current = next;
+    setF((cur) => (prev ? Object.fromEntries(Object.keys(next).map((k) => [k, cur[k] === prev[k] ? next[k] : cur[k]])) : next));
   }, [settings.milkRatePaise, settings.paneerRatePaise, settings.farmName, settings.phone, settings.upiId]);
 
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
@@ -160,16 +178,26 @@ export default function Settings({ fb, user, settings, displayName, setDisplayNa
       saveFeedback(false);
       return;
     }
-    const data = { farmName: f.farmName.trim(), phone: f.phone.trim(), upiId: upiRaw };
+    // Write ONLY the fields that changed: a phone that was offline with old settings must not send
+    // back the old rate / UPI ID when its user changed just the name (merge write, last one wins).
+    const data = {};
+    const put = (k, v, old) => {
+      if (v !== old) data[k] = v;
+    };
+    put('farmName', f.farmName.trim(), settings.farmName || '');
+    put('phone', f.phone.trim(), settings.phone || '');
+    put('upiId', upiRaw, settings.upiId || '');
     const mr = toPaise(f.milkRate);
     const pr = toPaise(f.paneerRate);
-    if (mr !== null && mr > 0) data.milkRatePaise = mr;
-    if (pr !== null && pr > 0) data.paneerRatePaise = pr;
-    saveSettings(fb, data);
+    const mrOk = mr !== null && mr > 0;
+    const prOk = pr !== null && pr > 0;
+    if (mrOk && mr !== settings.milkRatePaise) data.milkRatePaise = mr;
+    if (prOk && pr !== settings.paneerRatePaise) data.paneerRatePaise = pr;
+    if (Object.keys(data).length) saveSettings(fb, data);
     setF((cur) => ({
       ...cur,
-      milkRate: data.milkRatePaise ? cur.milkRate : paiseToInput(settings.milkRatePaise),
-      paneerRate: data.paneerRatePaise ? cur.paneerRate : paiseToInput(settings.paneerRatePaise),
+      milkRate: mrOk ? cur.milkRate : paiseToInput(settings.milkRatePaise),
+      paneerRate: prOk ? cur.paneerRate : paiseToInput(settings.paneerRatePaise),
     }));
     const n = name.trim();
     if (n && n !== displayName) {
@@ -267,6 +295,10 @@ export default function Settings({ fb, user, settings, displayName, setDisplayNa
           <b>⏰ {t('ringSettings')}</b>
         </p>
         <p className="muted small">{t('ringSettingsHint')}</p>
+        {/* Xiaomi/Vivo/Oppo block the boot alarm reset unless Autostart is on (native review #14) */}
+        <p className="muted small" data-testid="ring-autostart-hint">
+          ℹ️ {t('ringAutostartHint')}
+        </p>
         {ringPerm !== 'granted' && (
           <div className="card warn" data-testid="ring-perm-off">
             <p className="error">⚠️ {t('ringPermOff')}</p>

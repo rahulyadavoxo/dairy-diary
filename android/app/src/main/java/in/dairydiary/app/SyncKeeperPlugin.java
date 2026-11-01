@@ -22,11 +22,18 @@ public class SyncKeeperPlugin extends Plugin {
     static volatile boolean pending = false;
     static volatile boolean inBackground = false;
 
+    private static final android.os.Handler MAIN = new android.os.Handler(android.os.Looper.getMainLooper());
+
     @PluginMethod
     public void setPending(PluginCall call) {
-        pending = Boolean.TRUE.equals(call.getBoolean("pending", false));
-        if (!pending) stop(getContext());
-        else if (inBackground) start(getContext());
+        final boolean p = Boolean.TRUE.equals(call.getBoolean("pending", false));
+        final Context ctx = getContext().getApplicationContext();
+        // pause/resume run on the main thread: serialise every start/stop there too
+        MAIN.post(() -> {
+            pending = p;
+            if (!p) stop(ctx);
+            else if (inBackground) start(ctx);
+        });
         call.resolve();
     }
 
@@ -53,24 +60,45 @@ public class SyncKeeperPlugin extends Plugin {
     @Override
     protected void handleOnPause() {
         inBackground = true;
-        if (pending) start(getContext());
+        if (pending) start(getContext().getApplicationContext());
     }
 
     @Override
     protected void handleOnResume() {
         inBackground = false;
-        stop(getContext());
+        stop(getContext().getApplicationContext());
     }
 
+    /** The screen (WebView with the uploader) is gone while the process lives on. */
+    @Override
+    protected void handleOnDestroy() {
+        Context ctx = getContext().getApplicationContext();
+        // nothing can upload any more: remind the user to open the app once (like onTaskRemoved)
+        if (pending) SyncKeepService.postReminder(ctx);
+        stop(ctx);
+    }
+
+    // start/stop: main thread only. A startForegroundService() must reach startForeground() before
+    // the service is stopped, or Android crashes the app ("did not then call startForeground").
+    static int startsInFlight = 0;
+
     static void start(Context ctx) {
+        SyncKeepService.stopWanted = false;
+        if (SyncKeepService.live != null) return; // already in the foreground
         try {
             ContextCompat.startForegroundService(ctx, new Intent(ctx, SyncKeepService.class));
+            startsInFlight++;
         } catch (Exception e) {
             // Android may refuse a start from the background; the data stays queued and uploads on next open.
         }
     }
 
     static void stop(Context ctx) {
+        if (startsInFlight > 0) {
+            SyncKeepService.stopWanted = true; // it stops itself right after startForeground()
+            return;
+        }
+        SyncKeepService.live = null;
         try {
             ctx.stopService(new Intent(ctx, SyncKeepService.class));
         } catch (Exception ignored) {

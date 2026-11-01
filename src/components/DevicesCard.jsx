@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { saveFeedback } from '../feedback.js';
 import { usePinGate } from './PinGate.jsx';
 import { useLang } from '../i18n.js';
@@ -51,7 +51,10 @@ export default function DevicesCard({ fb, farm, farmId, uid, online, now: nowPro
   const gate = usePinGate();
   // Adding or removing a phone needs the PIN (user, 15 Oct 2026). A new code ("New code") too.
   const addPhone = () => gate.ask(t('pinForAddPhone'), addPhoneNow);
+  const inFlight = useRef(false); // double tap: one code only (busy state updates a render later)
   const addPhoneNow = async () => {
+    if (inFlight.current) return;
+    inFlight.current = true;
     setErr('');
     setBusy(true);
     try {
@@ -63,6 +66,7 @@ export default function DevicesCard({ fb, farm, farmId, uid, online, now: nowPro
       console.error(e);
       setErr(t(e instanceof PairingError && e.reason === 'network' ? 'errNetwork' : 'codeFailed'));
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   };
@@ -75,12 +79,17 @@ export default function DevicesCard({ fb, farm, farmId, uid, online, now: nowPro
   const remove = (d) => {
     const self = d.uid === uid;
     gate.ask(t(self ? 'confirmLeave' : 'confirmRemoveDevice') + ` — ${d.name}`, async () => {
-      // Leaving: let this phone's own entries reach the server before it loses access.
-      if (self && fb.fsMod.waitForPendingWrites) await fb.fsMod.waitForPendingWrites(fb.db).catch(() => {});
-      return removeDevice(fb, farmId, d.uid).catch((e) => {
-        console.error(e);
-        setErr(t('errDenied'));
-      });
+      setBusy(true);
+      try {
+        // Leaving: let this phone's own entries reach the server before it loses access.
+        if (self && fb.fsMod.waitForPendingWrites) await fb.fsMod.waitForPendingWrites(fb.db).catch(() => {});
+        await removeDevice(fb, farmId, d.uid).catch((e) => {
+          console.error(e);
+          setErr(t('errDenied'));
+        });
+      } finally {
+        setBusy(false);
+      }
     });
   };
 
@@ -181,7 +190,7 @@ export default function DevicesCard({ fb, farm, farmId, uid, online, now: nowPro
       {err && <p className="error" role="alert">{err}</p>}
 
       {!owner && me && (
-        <button type="button" className="btn danger big leave" onClick={() => remove({ uid, name: me.name })}>
+        <button type="button" className="btn danger big leave" onClick={() => remove({ uid, name: me.name })} disabled={!online || busy}>
           {t('leaveFarm')}
         </button>
       )}

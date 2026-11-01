@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { LangContext, loadLang, saveLang, makeT, useLang } from './i18n.js';
-import { isFirebaseConfigured, getFirebase } from './firebase.js';
+import { isFirebaseConfigured, getFirebase, offlineSaveBroken, MEMCACHE_EVENT } from './firebase.js';
 import { initPendingSync, pendingCount } from './pendingSync.js';
 import { listenAll, saveSettings } from './db.js';
 import { todayISO, monthOf, dmy } from './format.js';
@@ -171,7 +171,9 @@ function FarmGate({ fb, user, farmId, onRemoved }) {
 
   const fbFarm = useMemo(() => ({ ...fb, farmId }), [fb, farmId]);
 
-  if (lockOut) return <Splash text={t('loading')} />;
+  // lockOut: wiping. Pending: our own 'leave' is still on its way to the server, just wait; never
+  // offer Sign out to an anonymous phone (it would strand the queued 'leave' and skip the wipe).
+  if (status === 'removed' && user.isAnonymous) return <Splash text={t('loading')} />;
   if (status === 'authorized') return <Main fb={fbFarm} user={user} farm={state.farm} farmId={farmId} />;
   if (status === 'error') {
     // A network/unknown error on the farm listener is NOT "farm does not exist": never offer
@@ -237,6 +239,14 @@ function Main({ fb, user, farm, farmId }) {
   const [payments, setPayments] = useState([]);
   const [loaded, setLoaded] = useState({ days: false, customers: false });
   const [online, setOnline] = useState(typeof navigator === 'undefined' ? true : navigator.onLine);
+  // Firestore could not use the phone's storage (full): offline entries would be lost on close.
+  const [memOnly, setMemOnly] = useState(offlineSaveBroken);
+  useEffect(() => {
+    const h = () => setMemOnly(true);
+    window.addEventListener(MEMCACHE_EVENT, h);
+    if (offlineSaveBroken()) setMemOnly(true);
+    return () => window.removeEventListener(MEMCACHE_EVENT, h);
+  }, []);
   const [month, setMonth] = useState(monthOf(todayISO()));
   // App left open into a new month: Hisaab follows if it was showing the (old) current month.
   const curMonth = useRef(monthOf(todayISO()));
@@ -369,6 +379,11 @@ function Main({ fb, user, farm, farmId }) {
   return (
     <div className="app">
       {!online && <div className="offline-bar">{t('offline')}</div>}
+      {memOnly && (
+        <div className="offline-bar" role="alert" data-testid="storage-full">
+          {t('storageFull')}
+        </div>
+      )}
       <main
         className="content"
         onTouchStart={(e) => {

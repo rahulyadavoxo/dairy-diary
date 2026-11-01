@@ -213,7 +213,9 @@ export async function joinFarm(fb, uid, codeInput, deviceName, nowMs = Date.now(
   }
   const data = snap.exists() ? snap.data() : null;
   const st = codeStatus(data, nowMs);
-  if (st !== 'ok') throw new PairingError(st);
+  // 'expired' by THIS phone's clock may only be a wrong clock (cheap phones after the battery ran out):
+  // let the server decide (the rules check the 10-minute limit with the server's own time).
+  if (st === 'notFound' || st === 'used') throw new PairingError(st);
   const batch = writeBatch(fb.db);
   batch.update(codeRef, { used: true, usedBy: uid, usedAt: serverTimestamp() });
   batch.update(farmRef(fb, data.farmId), {
@@ -222,7 +224,8 @@ export async function joinFarm(fb, uid, codeInput, deviceName, nowMs = Date.now(
   try {
     await batch.commit();
   } catch (e) {
-    throw new PairingError(classify(e), e);
+    const r = classify(e);
+    throw new PairingError(r === 'denied' && st === 'expired' ? 'expired' : r, e);
   }
   saveFarmId(uid, data.farmId);
   return data.farmId;

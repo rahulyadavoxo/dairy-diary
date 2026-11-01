@@ -37,9 +37,12 @@ function writeFails(v) {
   }
 }
 /** Seconds the user must still wait before the next PIN try (0 = may try now). */
+const MAX_WAIT_MS = 15 * 60000;
 export function pinWaitSeconds(now = Date.now()) {
   const { until } = readFails();
-  return until > now ? Math.ceil((until - now) / 1000) : 0;
+  // clock moved back (auto time fix): never wait longer than the longest lock
+  const left = Math.min((Number(until) || 0) - now, MAX_WAIT_MS);
+  return left > 0 ? Math.ceil(left / 1000) : 0;
 }
 
 // v2 PIN hash: PBKDF2-SHA256 with a random per-phone salt, "v2$<salt hex>$<hash hex>".
@@ -79,7 +82,7 @@ export async function verifyPin(pin) {
   const f = readFails();
   const n = f.n + 1;
   const extra = n - MAX_FREE_TRIES;
-  const until = extra > 0 ? Date.now() + Math.min(30000 * 2 ** (extra - 1), 15 * 60000) : 0;
+  const until = extra > 0 ? Date.now() + Math.min(30000 * 2 ** (extra - 1), MAX_WAIT_MS) : 0;
   writeFails({ n, until });
   return false;
 }

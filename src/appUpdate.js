@@ -56,8 +56,28 @@ export async function installedVersion() {
   }
 }
 
+/** Release found through the github.com redirect ({tag, apk}), for when the API is rate limited. */
+export function releaseFromTag(res) {
+  if (!res || !res.apk) return null; // APK not uploaded yet: same as pickRelease
+  const p = parseVer(res.tag);
+  if (!p) return null;
+  const version = p.join('.');
+  return { version, url: `https://github.com/${REPO}/releases/download/v${version}/dairy-diary-v${version}.apk` };
+}
+
+/** Native fallback (github.com has no CORS): { tag, apk } or null. Never rejects. */
+export async function latestTagNative() {
+  if (!Capacitor.isNativePlatform()) return null;
+  try {
+    const r = await ApkUpdater.latestTag();
+    return r ? { tag: r.tag, apk: !!r.apk } : null;
+  } catch {
+    return null;
+  }
+}
+
 /** { version, url } when a newer APK is available, null otherwise (or when it can't be known). */
-export async function checkForUpdate({ current, fetchImpl = globalThis.fetch, timeoutMs = 10000 } = {}) {
+export async function checkForUpdate({ current, fetchImpl = globalThis.fetch, timeoutMs = 10000, tagImpl = latestTagNative } = {}) {
   if (!current || !fetchImpl) return null;
   const ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
   const timer = ctl ? setTimeout(() => ctl.abort(), timeoutMs) : null;
@@ -67,8 +87,15 @@ export async function checkForUpdate({ current, fetchImpl = globalThis.fetch, ti
       cache: 'no-store',
       signal: ctl ? ctl.signal : undefined,
     });
-    if (!r || !r.ok) return null;
-    const rel = pickRelease(await r.json());
+    let rel;
+    if (r && (r.status === 403 || r.status === 429)) {
+      // GitHub API limit (60/hour per internet address; Jio/Airtel share one address between many
+      // phones): ask github.com itself, which has no such limit, so a forced update is not missed.
+      rel = tagImpl ? releaseFromTag(await tagImpl()) : null;
+    } else {
+      if (!r || !r.ok) return null;
+      rel = pickRelease(await r.json());
+    }
     if (!rel) return null;
     const c = cmpVer(rel.version, current);
     return c !== null && c > 0 ? rel : null;

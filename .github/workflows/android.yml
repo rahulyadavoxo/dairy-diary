@@ -11,9 +11,14 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
-        with: { persist-credentials: false }
+        # full history + tags: the version check reads the previous release's versionCode
+        with: { persist-credentials: false, fetch-depth: 0 }
       - uses: actions/setup-node@v7
         with: { node-version: 22 }
+      # tag == package.json version == versionName, and versionCode above the previous release.
+      # Otherwise every phone would see an update it can never install (sync review #1/#3).
+      - name: Check versions
+        run: bash scripts/check-versions.sh "$GITHUB_REF"
       - uses: actions/setup-java@v6
         with: { distribution: temurin, java-version: 21 }
       - uses: android-actions/setup-android@v4

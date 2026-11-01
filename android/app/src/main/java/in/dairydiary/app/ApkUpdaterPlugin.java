@@ -229,4 +229,51 @@ public class ApkUpdaterPlugin extends Plugin {
             call.reject("Install failed: " + e.getMessage(), "INSTALL_FAILED", e);
         }
     }
+
+    private static final String REPO_PAGE = "https://github.com/rahulyadavoxo/dairy-diary";
+
+    /** HEAD without following redirects: {status, Location header}. */
+    private static String[] head(String u) throws Exception {
+        HttpURLConnection c = (HttpURLConnection) new URL(u).openConnection();
+        try {
+            c.setInstanceFollowRedirects(false);
+            c.setConnectTimeout(CONNECT_TIMEOUT_MS);
+            c.setReadTimeout(10000);
+            c.setRequestMethod("HEAD");
+            int code = c.getResponseCode();
+            return new String[] { String.valueOf(code), c.getHeaderField("Location") };
+        } finally {
+            c.disconnect();
+        }
+    }
+
+    /**
+     * Fallback when api.github.com is rate limited (60/h per IP, shared behind carrier NAT):
+     * github.com/.../releases/latest redirects to .../releases/tag/vX.Y.Z (no API limit, no CORS
+     * in native code). Resolves {tag, apk} where apk = the release's APK file is already uploaded.
+     */
+    @PluginMethod
+    public void latestTag(final PluginCall call) {
+        new Thread(() -> {
+            try {
+                String[] r = head(REPO_PAGE + "/releases/latest");
+                String loc = r[1];
+                String tag = null;
+                if (loc != null && loc.contains("/releases/tag/")) tag = loc.substring(loc.lastIndexOf('/') + 1);
+                if (tag == null || !tag.matches("v\\d+\\.\\d+\\.\\d+")) {
+                    call.reject("No release tag", "NO_TAG");
+                    return;
+                }
+                // The APK asset is uploaded a little after the release is created: only report it once it exists.
+                String[] a = head(REPO_PAGE + "/releases/download/" + tag + "/dairy-diary-" + tag + ".apk");
+                int code = Integer.parseInt(a[0]);
+                JSObject out = new JSObject();
+                out.put("tag", tag);
+                out.put("apk", code >= 200 && code < 400);
+                call.resolve(out);
+            } catch (Exception e) {
+                call.reject("Tag check failed", "NO_TAG");
+            }
+        }).start();
+    }
 }

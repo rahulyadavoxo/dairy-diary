@@ -1,7 +1,7 @@
 // Firestore data layer.
 import { deleteCachedPhoto } from './billCache.js';
 import { vibrateFail } from './feedback.js';
-import { addMonths, todayISO } from './format.js';
+import { addDays, addMonths, todayISO } from './format.js';
 import { trackWrite } from './pendingSync.js';
 //
 // All data lives under farms/{farmId}/ (see src/devices.js and firestore.rules); fb.farmId is
@@ -64,7 +64,9 @@ function writeHistMark(mark) {
 /** Bump the old-history counter after a write to a date before the live window. */
 function touchHistory(fb, date) {
   const { fsMod } = fb;
-  if (!date || date >= liveCutoff() || !fsMod.increment) return;
+  // 2-day margin: a phone a little ahead (month-end midnight, slightly wrong clock) may already treat
+  // this month as old and serve it from cache, so bump for it too (an extra bump only costs a re-read).
+  if (!date || date >= liveCutoff(addDays(todayISO(), 2)) || !fsMod.increment) return;
   log(fsMod.setDoc(fdoc(fb, 'settings', 'history'), { v: fsMod.increment(1), at: Date.now() }, { merge: true }));
 }
 

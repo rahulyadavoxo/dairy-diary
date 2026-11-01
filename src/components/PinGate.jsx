@@ -4,7 +4,7 @@
 //
 //   const gate = usePinGate();
 //   gate.ask(t('pinForRates'), () => doIt());   ...   {gate.element}
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useLang } from '../i18n.js';
 import { getPinHash, verifyPin, pinWaitSeconds } from '../pinLock.js';
 import { pushBackHandler } from '../backStack.js';
@@ -27,19 +27,28 @@ export function usePinGate() {
     setReq({ title, onOk });
   };
 
+  // PBKDF2 takes up to a second on a cheap phone: a double tap (or Enter + OK) must not run the
+  // action twice (e.g. two pairing codes).
+  const busy = useRef(false);
   const submit = async () => {
-    const w0 = pinWaitSeconds();
-    if (w0 > 0) return setErr(t('pinWait').replace('{s}', w0));
-    const ok = await verifyPin(pin.trim());
-    if (!ok) {
-      saveFeedback(false);
-      const w = pinWaitSeconds();
-      setErr(w > 0 ? t('pinWait').replace('{s}', w) : t('pinWrong'));
-      return;
+    if (busy.current || !req) return;
+    busy.current = true;
+    try {
+      const w0 = pinWaitSeconds();
+      if (w0 > 0) return setErr(t('pinWait').replace('{s}', w0));
+      const ok = await verifyPin(pin.trim());
+      if (!ok) {
+        saveFeedback(false);
+        const w = pinWaitSeconds();
+        setErr(w > 0 ? t('pinWait').replace('{s}', w) : t('pinWrong'));
+        return;
+      }
+      const r = req;
+      setReq(null);
+      r.onOk();
+    } finally {
+      busy.current = false;
     }
-    const r = req;
-    setReq(null);
-    r.onOk();
   };
 
   const element = req ? (

@@ -165,12 +165,18 @@ describe('joinFarm / createPairingCode (client logic)', () => {
         '222222': { farmId: 'own', createdBy: 'own', createdAt: NOW, used: true },
       },
     });
-    await expect(joinFarm(fb, 'u', '111111', 'x', NOW)).rejects.toMatchObject({ reason: 'expired' });
     await expect(joinFarm(fb, 'u', '222222', 'x', NOW)).rejects.toMatchObject({ reason: 'used' });
     await expect(joinFarm(fb, 'u', '333333', 'x', NOW)).rejects.toMatchObject({ reason: 'notFound' });
     await expect(joinFarm(fb, 'u', '12', 'x', NOW)).rejects.toMatchObject({ reason: 'invalidCode' });
     await expect(joinFarm(fb, 'u', '111111', '  ', NOW)).rejects.toMatchObject({ reason: 'invalidName' });
     expect(writes).toEqual([]);
+  });
+  it('expired by this phone\'s clock: the server decides (refused -> "expired", accepted -> joined)', async () => {
+    const codes = { '111111': { farmId: 'own', createdBy: 'own', createdAt: NOW - CODE_TTL_MS - 1, used: false } };
+    const refused = fakeFb({ codes, failCommit: { code: 'permission-denied' } });
+    await expect(joinFarm(refused.fb, 'u', '111111', 'x', NOW)).rejects.toMatchObject({ reason: 'expired' });
+    const clockAhead = fakeFb({ codes }); // phone clock 10+ min ahead, server says the code is fine
+    await expect(joinFarm(clockAhead.fb, 'u', '111111', 'x', NOW)).resolves.toBe('own');
   });
   it('maps a server permission-denied (e.g. code raced/used) to "denied"', async () => {
     const { fb } = fakeFb({
@@ -209,7 +215,10 @@ describe('Gate screens', () => {
     expect(screen.getByTestId('login')).toBeTruthy();
   });
   it('join screen shows the expired-code error in English', async () => {
-    const { fb } = fakeFb({ codes: { '111111': { farmId: 'own', createdBy: 'own', createdAt: Date.now() - CODE_TTL_MS - 5, used: false } } });
+    const { fb } = fakeFb({
+      codes: { '111111': { farmId: 'own', createdBy: 'own', createdAt: Date.now() - CODE_TTL_MS - 5, used: false } },
+      failCommit: { code: 'permission-denied' }, // the rules refuse it (server time)
+    });
     render(withLang(<Gate fb={fb} user={{ uid: 'anon1', isAnonymous: true }} />, 'en'));
     fireEvent.change(screen.getByPlaceholderText('123456'), { target: { value: '111111' } });
     fireEvent.change(screen.getByPlaceholderText(STRINGS.en.deviceNamePlaceholder), { target: { value: 'Rahul' } });

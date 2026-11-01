@@ -78,7 +78,7 @@ describe('UpdateGate', () => {
     const api = mkApi();
     render(wrap(<UpdateGate api={api} native>{<p>APP</p>}</UpdateGate>));
     expect(await screen.findByTestId('update-gate')).toBeTruthy();
-    expect(screen.queryByText('APP')).toBeNull();
+    expect(screen.getByText('APP').closest('[data-testid="update-gate-app"]').style.display).toBe('none'); // hidden, still mounted (1.10.57)
     expect(screen.getByText(en.updBody.replace('{v}', '1.10.17'))).toBeTruthy();
     fireEvent.click(screen.getByTestId('update-btn'));
     await waitFor(() => expect(api.install).toHaveBeenCalledTimes(1));
@@ -101,7 +101,7 @@ describe('UpdateGate', () => {
     fireEvent.click(await screen.findByTestId('update-btn'));
     expect(await screen.findByText(en.updFailed)).toBeTruthy();
     expect(screen.getByTestId('update-btn').textContent).toBe(en.updRetry);
-    expect(screen.queryByText('APP')).toBeNull();
+    expect(screen.getByText('APP').closest('[data-testid="update-gate-app"]').style.display).toBe('none'); // hidden, still mounted (1.10.57)
     expect(api.install).not.toHaveBeenCalled();
   });
 });
@@ -137,7 +137,7 @@ describe('1.10.16: sync first, then the Update screen', () => {
     expect(screen.queryByTestId('update-gate')).toBeNull();
     done();
     expect(await screen.findByTestId('update-gate')).toBeTruthy();
-    expect(screen.queryByText('APP')).toBeNull();
+    expect(screen.getByText('APP').closest('[data-testid="update-gate-app"]').style.display).toBe('none'); // hidden, still mounted (1.10.57)
   });
   it('no update -> no sync wait at all', async () => {
     const api = { current: vi.fn(async () => '1.10.16'), check: vi.fn(async () => null), sync: vi.fn(), download: vi.fn(), install: vi.fn() };
