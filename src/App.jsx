@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { LangContext, loadLang, saveLang, makeT, useLang } from './i18n.js';
 import { isFirebaseConfigured, getFirebase, offlineSaveBroken, MEMCACHE_EVENT } from './firebase.js';
 import { initPendingSync, pendingCount } from './pendingSync.js';
-import { listenAll, saveSettings } from './db.js';
+import { listenAll, lockNullPaneerRates, saveSettings } from './db.js';
 import { todayISO, monthOf, dmy } from './format.js';
 import NotConfigured from './screens/NotConfigured.jsx';
 import Login from './screens/Login.jsx';
@@ -236,6 +236,7 @@ function Main({ fb, user, farm, farmId }) {
   const [days, setDays] = useState({});
   const [pendingDays, setPendingDays] = useState({});
   const [daysLive, setDaysLive] = useState(false); // last days snapshot came from the server
+  const [histOk, setHistOk] = useState(true); // false: history older than the live window not on this phone yet
   const [payments, setPayments] = useState([]);
   const [loaded, setLoaded] = useState({ days: false, customers: false });
   const [online, setOnline] = useState(typeof navigator === 'undefined' ? true : navigator.onLine);
@@ -280,8 +281,9 @@ function Main({ fb, user, farm, farmId }) {
           setCustomers(c);
           setLoaded((l) => (l.customers ? l : { ...l, customers: true }));
         },
-        days: (d, p, fromCache) => {
+        days: (d, p, fromCache, oldOk) => {
           setDays(d);
+          setHistOk(oldOk !== false);
           setPendingDays(p);
           setDaysLive(!fromCache);
           setLoaded((l) => (l.days ? l : { ...l, days: true }));
@@ -291,6 +293,19 @@ function Main({ fb, user, farm, farmId }) {
       }),
     [fb],
   );
+
+  // Money #1 one-time repair: freeze Oct/Nov paneer days stored without a rate at today's amount.
+  // Runs once per phone, only after a server-confirmed days snapshot, customers and settings.
+  useEffect(() => {
+    if (!loaded.days || !loaded.customers || !daysLive || !(settings.paneerRatePaise > 0)) return;
+    try {
+      if (localStorage.getItem('dd_lockPaneer_v1')) return;
+      localStorage.setItem('dd_lockPaneer_v1', String(Date.now()));
+    } catch {
+      return;
+    }
+    lockNullPaneerRates(fb, customers, days, settings, '2026-10-01');
+  }, [loaded, daysLive, settings, customers, days, fb]);
 
   // 22:00 / 08:00 register rings on this phone (see reminders.js). Only once both lists loaded,
   // so an empty first render never cancels or schedules the wrong rings.
@@ -346,7 +361,7 @@ function Main({ fb, user, farm, farmId }) {
 
   const farmName = farm && farm.name;
   const effSettings = useMemo(() => withFarmName(settings, farmName ? { name: farmName } : null), [settings, farmName]);
-  const data = { fb, user, settings: effSettings, customers, days, daysLive, pendingDays, payments, displayName, setDisplayName, online, farm, farmId };
+  const data = { fb, user, settings: effSettings, customers, days, daysLive, histOk, pendingDays, payments, displayName, setDisplayName, online, farm, farmId };
 
   let screen;
   if (delivery) {

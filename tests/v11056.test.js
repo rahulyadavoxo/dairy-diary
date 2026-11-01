@@ -40,7 +40,16 @@ describe('applyPaneerRate', () => {
     ]);
     expect(fb.commits).toBe(1);
   });
-  it('removed -> null, so the Settings default rate bills again', () => {
+  it('removed -> paneer days get the default rate in effect now (frozen), milk-only days null', () => {
+    const fb = mkFb();
+    applyPaneerRate(fb, 'c1', null, days, '2026-10-01', 35000);
+    expect(fb.ups).toEqual([
+      ['farms/f/days/2026-10-02', { 'entries.c1.paneerRatePaise': 35000 }],
+      ['farms/f/days/2026-10-03', { 'entries.c1.paneerRatePaise': null }],
+      ['farms/f/days/2026-10-04', { 'entries.c1.paneerRatePaise': 35000 }],
+    ]);
+  });
+  it('removed with no default rate known -> null (Settings default then applies)', () => {
     const fb = mkFb();
     applyPaneerRate(fb, 'c1', null, days, '2026-10-01');
     expect(fb.ups.map((u) => u[1]['entries.c1.paneerRatePaise'])).toEqual([null, null, null]);

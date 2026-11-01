@@ -25,7 +25,7 @@ export function resetHisaabView() {
   hisaabView.payFilter = 'all';
 }
 
-export default function Hisaab({ fb, customers, days, payments, settings, month, setMonth, openCustomer }) {
+export default function Hisaab({ fb, customers, days, payments, settings, month, setMonth, openCustomer, histOk = true }) {
   const { t, lang } = useLang();
   const [exporting, setExporting] = useState(false);
   const [exportErr, setExportErr] = useState('');
@@ -248,6 +248,7 @@ export default function Hisaab({ fb, customers, days, payments, settings, month,
             {t('advance')}: {rupees(res.totals.advancePaise)}
           </p>
         )}
+        {!histOk && <p className="card warn small" data-testid="old-history-loading">{t('oldHistoryLoading')}</p>}
       </header>
       <StickySearch>
         <input className="search" type="search" placeholder={t('search')} aria-label={t('search')} value={query} onChange={(e) => setQuery(e.target.value)} />

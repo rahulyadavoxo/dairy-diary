@@ -11,13 +11,13 @@ const H = {
   hi: {
     name: 'नाम', phone: 'फ़ोन', milkL: 'कुल दूध (L)', paneerG: 'पनीर (g)', milkRs: 'दूध ₹', paneerRs: 'पनीर ₹',
     billRs: 'इस महीने का बिल ₹', prevRs: 'पिछला बाकी ₹', paidRs: 'मिला ₹', balRs: 'कुल बाकी ₹',
-    total: 'कुल', customers: 'ग्राहक', suppliers: 'सप्लायर (जिनसे दूध लेते हैं)', payments: 'भुगतान',
+    total: 'कुल', customers: 'ग्राहक', suppliers: 'सप्लायर (जिनसे दूध लेते हैं)', payments: 'भुगतान', supPaid: 'सप्लायर को दिया',
     date: 'तारीख', amount: 'रकम ₹', mode: 'तरीका', note: 'नोट', absent: 'नहीं',
   },
   en: {
     name: 'Name', phone: 'Phone', milkL: 'Total milk (L)', paneerG: 'Paneer (g)', milkRs: 'Milk ₹', paneerRs: 'Paneer ₹',
     billRs: 'Bill this month ₹', prevRs: 'Previous due ₹', paidRs: 'Paid ₹', balRs: 'Balance ₹',
-    total: 'Total', customers: 'Customers', suppliers: 'Suppliers (we buy milk from them)', payments: 'Payments',
+    total: 'Total', customers: 'Customers', suppliers: 'Suppliers (we buy milk from them)', payments: 'Payments', supPaid: 'paid to suppliers',
     date: 'Date', amount: 'Amount ₹', mode: 'Mode', note: 'Note', absent: 'No',
   },
 };
@@ -73,10 +73,21 @@ export function monthCsv({ customers = [], days = {}, payments = [], settings = 
   const pays = payments
     .filter((p) => p.date && p.date.slice(0, 7) === month)
     .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
-  out.push(line([h.payments]));
-  out.push(line([h.date, h.name, h.amount, h.mode, h.note]));
-  pays.forEach((p) => out.push(line([p.date, names.get(p.customerId) || '', rs(p.amountPaise), p.mode || '', p.note || ''])));
-  out.push(line([h.total, '', rs(pays.reduce((s, p) => s + Math.round(p.amountPaise || 0), 0))]));
+  // money #5: money received from customers and money paid to suppliers are separate lists with
+  // their own totals (one mixed total did not match Hisaab's "collected").
+  const supIds = new Set(customers.filter((c) => c.isSupplier).map((c) => c.id));
+  const payBlock = (title, list) => {
+    out.push(line([title]));
+    out.push(line([h.date, h.name, h.amount, h.mode, h.note]));
+    list.forEach((p) => out.push(line([p.date, names.get(p.customerId) || '', rs(p.amountPaise), p.mode || '', p.note || ''])));
+    out.push(line([h.total, '', rs(list.reduce((s, p) => s + Math.round(p.amountPaise || 0), 0))]));
+  };
+  payBlock(h.payments, pays.filter((p) => !supIds.has(p.customerId)));
+  const supPays = pays.filter((p) => supIds.has(p.customerId));
+  if (supPays.length) {
+    out.push('');
+    payBlock(`${h.payments} – ${h.supPaid}`, supPays);
+  }
   return out.join('\r\n') + '\r\n';
 }
 

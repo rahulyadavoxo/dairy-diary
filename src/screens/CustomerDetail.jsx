@@ -8,14 +8,14 @@ import { renderBillImage, billFileName, billFingerprint } from '../billImage.js'
 import { validWaNumber, sendBillToWhatsApp } from '../waShare.js';
 import WaDirectHelp from '../components/WaDirectHelp.jsx';
 import { getCachedPhoto, putCachedPhoto } from '../billCache.js';
-import { dmy, fmtQty, mondayOffset, monthDates, paiseToInput, rupees, toPaise, todayISO, weekdaysMonFirst } from '../format.js';
+import { dmy, fmtQty, monthOf, mondayOffset, monthDates, paiseToInput, rupees, toPaise, todayISO, weekdaysMonFirst } from '../format.js';
 import { MonthNav } from './Hisaab.jsx';
 import { validUpiId, upiLink, qrDataUrl } from '../upi.js';
 
 /** The user closed the share sheet: not an error, and not a reason to open WhatsApp anyway. */
 export const isShareCancel = (e) => !!e && (e.name === 'AbortError' || /cancel/i.test(String(e.message || '')));
 
-export default function CustomerDetail({ fb, customers, days, payments, settings, displayName, customerId, month, setMonth, onBack }) {
+export default function CustomerDetail({ fb, customers, days, payments, settings, displayName, customerId, month, setMonth, onBack, histOk = true }) {
   const { t, lang } = useLang();
   const customer = customers.find((c) => c.id === customerId);
   const res = useMemo(
@@ -23,6 +23,14 @@ export default function CustomerDetail({ fb, customers, days, payments, settings
     [customer, days, payments, settings, month],
   );
   const row = res && res.rows[0];
+  // Money #2: the payment box and the UPI QR always work on the balance AS OF TODAY (payments are
+  // dated today), not on the closing balance of the month being viewed. Otherwise a payment made
+  // while an old month is open never lowers that month's balance and "Full" invites a 2nd payment.
+  const curMonth = monthOf(todayISO());
+  const curRes = useMemo(
+    () => (customer && month !== curMonth ? computeMonth({ customers: [customer], days, payments, settings, month: curMonth }) : null),
+    [customer, days, payments, settings, month, curMonth],
+  );
   const [amount, setAmount] = useState('');
   const [mode, setMode] = useState('cash');
   const [pick, setPick] = useState(null); // 'full' | 'part' chosen before an amount is typed
@@ -53,7 +61,8 @@ export default function CustomerDetail({ fb, customers, days, payments, settings
   // Full / Part follow the typed amount (user, 16 Oct 2026): less than due = Part -> "Add payment",
   // exactly due = Full -> "Paid", more than due = Full + the extra goes to advance. The balance
   // already carries an overpayment forward as advance (computeMonth), so nothing else is stored.
-  const duePaise = fullPaymentPaise(row.balancePaise);
+  const payRow = (curRes && curRes.rows[0]) || row; // balance as of today
+  const duePaise = fullPaymentPaise(payRow.balancePaise);
   const typedNow = toPaise(amount) || 0;
   const payKind =
     typedNow > 0
@@ -115,7 +124,7 @@ export default function CustomerDetail({ fb, customers, days, payments, settings
   // full amount due. Recomputed on every render, so it follows the amount live.
   const upiId = validUpiId(settings.upiId);
   const typedPaise = toPaise(amount);
-  const qrAmount = typedPaise > 0 ? typedPaise : fullPaymentPaise(row.balancePaise);
+  const qrAmount = typedPaise > 0 ? typedPaise : duePaise;
   // A supplier is paid BY the dairy: never show "scan to pay the dairy" on a supplier's page.
   const qrLink = !customer.isSupplier && upiId && qrAmount > 0
     ? upiLink({ upiId, payeeName: settings.farmName || 'Dairy', amountPaise: qrAmount, note: `${settings.farmName || 'Dairy'} - ${customer.name}` })
@@ -153,6 +162,7 @@ export default function CustomerDetail({ fb, customers, days, payments, settings
         <p className="muted small">{[customer.area, customer.phone].filter(Boolean).join(' · ')}</p>
         <MonthNav month={month} setMonth={setMonth} minMonth={firstDeliveryMonth(days)} />
       </header>
+      {!histOk && <p className="card warn small" data-testid="old-history-loading">{t('oldHistoryLoading')}</p>}
 
       <div className="card summary">
         <div className="kv">
@@ -221,6 +231,11 @@ export default function CustomerDetail({ fb, customers, days, payments, settings
 
       <h2>{t('recordPayment')}</h2>
       <form className="card pay" onSubmit={record} noValidate>
+        {month !== curMonth && (
+          <p className="small muted" data-testid="due-today">
+            {t('dueToday')}: <b>{payRow.balancePaise < 0 ? `${t('advance')} ` : ''}{rupees(Math.abs(payRow.balancePaise))}</b>
+          </p>
+        )}
         <div className="chips">
           <button
             type="button"
