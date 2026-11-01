@@ -30,7 +30,10 @@ function entryOn(days, cid, iso) {
 
 function milkOn(days, cid, iso) {
   const en = entryOn(days, cid, iso);
-  return en && !en.skip ? (en.milkL || 0) : 0;
+  if (!en || en.skip) return 0;
+  // same rule as billing.entryCharge: morning + evening win over the stored total when split
+  const s = toMilli(en.milkMorningL) + toMilli(en.milkEveningL);
+  return (s > 0 ? s : toMilli(en.milkL)) / 1000;
 }
 
 /** ✕ only for a day that was recorded with no milk (skip / 0 L), like the bill photo. A day with
@@ -339,7 +342,7 @@ export default function RegisterView({ fb, customers, days, daysLive = true, pen
         {visible.map((c) => {
           const num = active.findIndex((a) => a.id === c.id) + 1;
           const en = days[date] && days[date].entries && days[date].entries[c.id];
-          const has = en && !en.skip && (en.milkL || 0) > 0;
+          const has = milkOn(days, c.id, date) > 0;
           return (
             <li key={c.id}>
               <button type="button" className="card cust-card" onClick={() => setCalId(c.id)}>

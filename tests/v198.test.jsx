@@ -751,7 +751,7 @@ describe('1.10.11 customer form, special paneer rate, day editor', () => {
     fireEvent.click(within(card).getByText(en.deactivate));
     await waitFor(() => expect(fb.writes).toHaveLength(1));
     expect(fb.writes[0].data.active).toBe(false);
-    expect(done).toHaveBeenCalledWith(null);
+    expect(done).toHaveBeenCalledWith('c1'); // fix-entry #9: Deactivate goes through Save (marks last edited)
     expect(conf).not.toHaveBeenCalled();
   });
 

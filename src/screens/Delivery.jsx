@@ -278,6 +278,8 @@ function DeliveryCard({ c, initM, initE, initT, initPaneer, morningSaved, onDeli
     setTot(v);
     setM(0);
     setE(0);
+    // A typed Total hides "As usual" too (it ignored the Total and saved the usual quantity).
+    setEdited(true);
   };
   const sum = Math.round((Number(m || 0) + Number(e || 0)) * 1000) / 1000;
   const total = tot > 0 ? tot : sum;
@@ -307,7 +309,9 @@ function DeliveryCard({ c, initM, initE, initT, initPaneer, morningSaved, onDeli
     return onDelivered(
       morningSaved
         ? { milkMorningL: m || 0, milkEveningL: usualEvening(c), paneerKg: pp, half: null }
-        : { milkMorningL: usualMorning(c), milkEveningL: e == null ? 0 : e, paneerKg: pp, half: e == null && usualMorning(c) > 0 && takesTwice(c) ? 'morning' : null },
+        // As usual = the usual evening too, unless the evening box was cleared (null = evening still
+        // to come). Not `e`: in review (Back from Absent / a total-only entry) the box holds 0.
+        : { milkMorningL: usualMorning(c), milkEveningL: e == null ? 0 : usualEvening(c), paneerKg: pp, half: e == null && usualMorning(c) > 0 && takesTwice(c) ? 'morning' : null },
       'usual',
     );
   };
@@ -406,24 +410,32 @@ export default function Delivery(props) {
   const format = deliveryFormat(props.settings);
   const until = morningUntil(props.settings);
   const [round, setRound] = useState(() => roundFor(new Date(), until));
-  // the morning time passes while the screen is open -> switch to the whole-day card
+  const [, setDay] = useState(todayISO);
+  // the morning time passes while the screen is open -> switch to the whole-day card;
+  // midnight passes -> a fresh round for the new date (re-render picks up todayISO()).
   useEffect(() => {
-    setRound(roundFor(new Date(), until));
-    const id = setInterval(() => setRound(roundFor(new Date(), until)), 30000);
+    const tick = () => {
+      setRound(roundFor(new Date(), until));
+      setDay(todayISO());
+    };
+    tick();
+    const id = setInterval(tick, 30000);
     return () => clearInterval(id);
   }, [until]);
   // 'both' / 'total': one round for the whole day (Rahul 2026-10-14). 'split': a morning round and
   // an evening round, switchable at the top (each round is its own list, so it remounts).
   const session = format === 'split' && round === 'morning' ? 'morning' : 'total';
-  return <DeliveryRound key={format + session} {...props} session={session} format={format} until={until} t={t} />;
+  // A new day = a fresh round: doneNow / skipped / history / allUsual belong to one date, and every
+  // write of the round uses the date its state belongs to.
+  const date = todayISO();
+  return <DeliveryRound key={date + format + session} {...props} date={date} session={session} format={format} until={until} t={t} />;
 }
 
-function DeliveryRound({ fb, customers, days, settings, displayName, onBack, session, format = 'both', until = MORNING_UNTIL, t }) {
+function DeliveryRound({ fb, customers, days, settings, displayName, onBack, date, session, format = 'both', until = MORNING_UNTIL, t }) {
   const split = format === 'split';
   const roundOnly = split && session === 'morning'; // morning-only round (before the morning time)
   /** Split, after the morning time: a morning already recorded today is shown locked. */
   const morningDone = (en) => !!en && !en.skip && (en.half === 'morning' || (Number(en.milkMorningL) || 0) > 0);
-  const date = todayISO();
   const day = days[date] || null;
   const saved = (day && day.entries) || {};
   const prefilled = useMemo(
@@ -462,8 +474,11 @@ function DeliveryRound({ fb, customers, days, settings, displayName, onBack, ses
 
   // Done for this round: delivered now or earlier, or marked "didn't take" for the whole day in the register.
   // Paneer alone is not a milk delivery: a paneer-only "Delivered" is remembered via `skipped`.
-  const isDelivered = (c) =>
-    !!doneNow[c.id] || (roundOnly ? deliveredFor(saved[c.id], session) : dayComplete(saved[c.id], c)) || !!(saved[c.id] && saved[c.id].skip);
+  // Morning round: a half:'morning' entry means the morning round was done, even with 0 L (only the
+  // split morning round writes one with no milk = Absent in the morning), so another phone hides it too.
+  const morningRoundDone = (en) => deliveredFor(en, 'morning') || (!!en && !en.skip && en.half === 'morning');
+  const roundDone = (en, c) => (roundOnly ? morningRoundDone(en) : dayComplete(en, c));
+  const isDelivered = (c) => !!doneNow[c.id] || roundDone(saved[c.id], c) || !!(saved[c.id] && saved[c.id].skip);
   const remaining = list.filter((c) => !isDelivered(c) && (!skipped[c.id] || (!roundOnly && emptyHalf(saved[c.id]))));
   const done = list.length - remaining.length;
   const current = review ? byId[review.id] : remaining[0];
@@ -473,7 +488,7 @@ function DeliveryRound({ fb, customers, days, settings, displayName, onBack, ses
   useEffect(() => {
     if (history.length === 0) {
       const seeded = list
-        .filter((c) => (roundOnly ? deliveredFor(saved[c.id], session) : dayComplete(saved[c.id], c)) || !!(saved[c.id] && saved[c.id].skip) || (!!skipped[c.id] && (Number(saved[c.id] && saved[c.id].paneerKg) || 0) > 0))
+        .filter((c) => roundDone(saved[c.id], c) || !!(saved[c.id] && saved[c.id].skip) || (!!skipped[c.id] && (Number(saved[c.id] && saved[c.id].paneerKg) || 0) > 0))
         .map((c) => {
           const en = saved[c.id] || {};
           if (en.skip) return { id: c.id, m: 0, e: 0, p: 0, total: 0, absent: true };
@@ -529,11 +544,13 @@ function DeliveryRound({ fb, customers, days, settings, displayName, onBack, ses
 
   // Absent: didn't take milk today (the register's "didn't take" for the whole day).
   const markAbsent = (c) => {
-    if (roundOnly) {
+    if (roundOnly && takesTwice(c)) {
       // only the morning: a whole-day skip would also block the evening
       deliver(c, { milkMorningL: 0, paneerKg: 0 });
       return;
     }
+    // A once-a-day customer has no other round: Absent in the morning round = Absent for the day
+    // (a 0 L non-skip entry made the card come back, prefilled, after the morning time).
     if (split && morningDone(saved[c.id]) && !review) {
       // after the morning time: the morning already delivered stays, evening = 0
       deliver(c, { milkMorningL: Number(saved[c.id].milkMorningL) || 0, milkEveningL: 0, paneerKg: Number(saved[c.id].paneerKg) || 0, half: null });

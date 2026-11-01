@@ -221,7 +221,7 @@ export default function Customers({ fb, customers, settings, days, openCustomer 
   );
 }
 
-export function CustomerForm({ fb, initial, nextOrder, onDone, days }) {
+export function CustomerForm({ fb, initial, nextOrder, onDone, days, settings }) {
   const { t } = useLang();
   // Show / hide only (no setting changes): the milk / paneer special-rate switches (user, 16 Oct 2026).
   // "Set milk format" shows the As usual / Same as last day switches (user, 16 Oct 2026).
@@ -261,10 +261,12 @@ export function CustomerForm({ fb, initial, nextOrder, onDone, days }) {
   const [pinInput, setPinInput] = useState('');
   const [pinErr, setPinErr] = useState('');
   useEffect(() => (pinAsk ? pushBackHandler(() => setPinAsk(null)) : undefined), [pinAsk]);
+  // Deactivate saves the form's other unsaved edits together with active: false (it used to save
+  // only { active: false } and close, throwing the edits away). A form error keeps it open.
   const deactivateNow = () => {
-    saveCustomer(fb, initial.id, { active: false });
-    saveFeedback(true);
-    onDone(null);
+    const next = { ...f, active: false };
+    setF(next);
+    saveForm(next);
   };
   const askDeactivate = (kind) => {
     if (getPinHash()) {
@@ -299,10 +301,20 @@ export function CustomerForm({ fb, initial, nextOrder, onDone, days }) {
 
   const submit = (e) => {
     e.preventDefault();
+    saveForm(f);
+  };
+  function saveForm(f) {
     const fail = (m) => {
       saveFeedback(false);
       setErr(m);
     };
+    // "Until X" without "From" = paused from today until X (an empty From used to mean "since the
+    // beginning of time", hiding the customer on every past day). Only for a new / changed Until:
+    // an old record that already has Until-only keeps its value.
+    if (f.pauseTo && !f.pauseFrom && f.pauseTo !== ((initial && initial.pauseTo) || '')) {
+      f = { ...f, pauseFrom: todayISO() };
+      setF(f);
+    }
     if (!f.name.trim()) return fail(t('nameRequired'));
     if (f.pauseFrom && f.pauseTo && f.pauseFrom > f.pauseTo) return fail(`${t('pauseFrom')} > ${t('pauseTo')}`);
     // A pause starts today or later (user, 16 Oct 2026). A pause already running keeps its old start.
@@ -343,7 +355,7 @@ export function CustomerForm({ fb, initial, nextOrder, onDone, days }) {
       const newPaneer = data.paneerRateOverridePaise;
       data = entryChanges(toData(f0.current), data);
       // Paneer special rate set (re-saved) or changed / removed: this month's days follow it too.
-      if (newPaneer || 'paneerRateOverridePaise' in data) paneerSync = () => applyPaneerRate(fb, initial.id, newPaneer || null, days, todayISO().slice(0, 7) + '-01');
+      if (newPaneer || 'paneerRateOverridePaise' in data) paneerSync = () => applyPaneerRate(fb, initial.id, newPaneer || null, days, todayISO().slice(0, 7) + '-01', settings && settings.paneerRatePaise);
       if (!Object.keys(data).length) {
         paneerSync();
         saveFeedback(true);
@@ -355,7 +367,7 @@ export function CustomerForm({ fb, initial, nextOrder, onDone, days }) {
     paneerSync();
     saveFeedback(true);
     onDone(savedId);
-  };
+  }
 
   const stepUsual = (k, d) => setF({ ...f, [k]: Math.max(0, (Math.round(Number(f[k] || 0) * 1000) + d) / 1000) });
 
