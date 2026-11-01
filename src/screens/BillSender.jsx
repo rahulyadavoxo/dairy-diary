@@ -45,7 +45,7 @@ function readProgress(billMonth) {
   return null;
 }
 
-export default function BillSender({ fb, customers, days, payments, settings, month, onClose }) {
+export default function BillSender({ fb, customers, days, payments, settings, month, histOk = true, onClose }) {
   const { t, lang } = useLang();
   // Nov 2026 (user): the WhatsApp button sends the month open in Hisaab (current month by
   // default, an older month after going back). The 1st-of-month banner passes last month.
@@ -338,6 +338,7 @@ export default function BillSender({ fb, customers, days, payments, settings, mo
         ) : (
           <p className="muted small">{t('loading')}</p>
         )}
+        {!histOk && <p className="card warn small" data-testid="old-history-loading">{t('oldHistoryLoading')}</p>}
         {lastEmpty && (
           <div className="card warn" data-testid="wa-lastday-empty">
             <p className="error">⚠️ {t('waLastDayEmpty').replace('{d}', dmy(lastDay, lang))}</p>

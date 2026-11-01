@@ -5,7 +5,9 @@ import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.net.Uri;
 import android.os.Build;
+import android.os.PowerManager;
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -33,6 +35,48 @@ public class RingPlugin extends Plugin {
 
     static SharedPreferences prefs(Context ctx) {
         return ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+    }
+
+    /** Battery: is the app exempt from battery optimisation (Doze)? */
+    @PluginMethod
+    public void batteryStatus(PluginCall call) {
+        JSObject r = new JSObject();
+        boolean ok = true;
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                PowerManager pm = (PowerManager) getContext().getSystemService(Context.POWER_SERVICE);
+                ok = pm == null || pm.isIgnoringBatteryOptimizations(getContext().getPackageName());
+            }
+        } catch (Exception e) {
+            ok = true;
+        }
+        r.put("ignoring", ok);
+        call.resolve(r);
+    }
+
+    /** Opens the system "allow / don't optimise battery" dialog for this app. */
+    @PluginMethod
+    public void requestBatteryExemption(PluginCall call) {
+        JSObject r = new JSObject();
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                Intent i = new Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                        Uri.parse("package:" + getContext().getPackageName()));
+                i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                getContext().startActivity(i);
+            }
+            r.put("opened", true);
+        } catch (Exception e) {
+            try {
+                Intent i = new Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS);
+                i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                getContext().startActivity(i);
+                r.put("opened", true);
+            } catch (Exception e2) {
+                r.put("opened", false);
+            }
+        }
+        call.resolve(r);
     }
 
     @PluginMethod

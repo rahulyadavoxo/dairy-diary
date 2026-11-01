@@ -32,3 +32,14 @@ describe('BillSender month', () => {
     expect(c).not.toBe(b);
   });
 });
+
+describe('1.10.59 extras', () => {
+  it('BillSender shows the old-history warning when histOk is false', () => {
+    render(wrap(<BillSender {...props} month={cur} histOk={false} />));
+    expect(screen.getByTestId('old-history-loading')).toBeTruthy();
+  });
+  it('BillSender hides it when history is loaded', () => {
+    render(wrap(<BillSender {...props} month={cur} />));
+    expect(screen.queryByTestId('old-history-loading')).toBeNull();
+  });
+});

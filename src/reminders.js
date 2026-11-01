@@ -320,6 +320,30 @@ export async function askRingPermission() {
   return state;
 }
 
+/** Battery optimisation (native #14): true = exempt, false = optimised, null = unknown (web/old APK). */
+export async function batteryExempt() {
+  const n = await ringNative();
+  if (!n || typeof n.R.batteryStatus !== 'function') return null;
+  try {
+    const r = await n.R.batteryStatus();
+    return r && typeof r.ignoring === 'boolean' ? r.ignoring : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Opens Android's "don't optimise battery" dialog. Resolves to the new status. */
+export async function askBatteryExempt() {
+  const n = await ringNative();
+  if (!n || typeof n.R.requestBatteryExemption !== 'function') return null;
+  try {
+    await n.R.requestBatteryExemption();
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
 export function _resetRingsForTest() {
   ready = null;
   lastSig = '';

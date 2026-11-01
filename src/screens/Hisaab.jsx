@@ -154,7 +154,7 @@ export default function Hisaab({ fb, customers, days, payments, settings, month,
   const isLastDay = todayISO() === md[md.length - 1];
 
   if (sending) {
-    return <BillSender fb={fb} customers={customers} days={days} payments={payments} settings={settings} month={sending} onClose={() => setSending(false)} />;
+    return <BillSender fb={fb} customers={customers} days={days} payments={payments} settings={settings} month={sending} histOk={histOk} onClose={() => setSending(false)} />;
   }
   if (photos) {
     return <BillPhotos customers={customers} days={days} payments={payments} settings={settings} month={month} onClose={() => setPhotos(false)} />;

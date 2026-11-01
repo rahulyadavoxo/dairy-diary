@@ -8,7 +8,7 @@ import { getPinHash, hashPin, savePinHash, verifyPin, pinWaitSeconds } from '../
 import DevicesCard from '../components/DevicesCard.jsx';
 import { signOutAndWipe } from '../devices.js';
 import { clearCachedPhotos } from '../billCache.js';
-import { ringTimes, validRingTimes, ringPermission, askRingPermission } from '../reminders.js';
+import { ringTimes, validRingTimes, ringPermission, askRingPermission, batteryExempt, askBatteryExempt } from '../reminders.js';
 import { usePinGate } from '../components/PinGate.jsx';
 import { ToggleBar, DELIVERY_FORMATS, deliveryFormat, morningUntil } from './Delivery.jsx';
 
@@ -35,9 +35,13 @@ export default function Settings({ fb, user, settings, displayName, setDisplayNa
   const [ringMsg, setRingMsg] = useState({ text: '', err: false });
   // Notifications off -> the register ring can never show; warn and offer to turn them on.
   const [ringPerm, setRingPerm] = useState('granted');
+  const [battOk, setBattOk] = useState(null); // false = Android battery optimisation on (ring may be late)
   useEffect(() => {
     let live = true;
-    const check = () => ringPermission().then((p) => live && setRingPerm(p));
+    const check = () => {
+      ringPermission().then((p) => live && setRingPerm(p));
+      batteryExempt().then((b) => live && setBattOk(b));
+    };
     check();
     const onVis = () => document.visibilityState === 'visible' && check(); // back from Android settings
     document.addEventListener('visibilitychange', onVis);
@@ -299,6 +303,14 @@ export default function Settings({ fb, user, settings, displayName, setDisplayNa
         <p className="muted small" data-testid="ring-autostart-hint">
           ℹ️ {t('ringAutostartHint')}
         </p>
+        {battOk === false && (
+          <div className="card warn" data-testid="ring-battery-off">
+            <p className="small">🔋 {t('ringBatteryOff')}</p>
+            <button type="button" className="btn primary" onClick={() => askBatteryExempt()}>
+              {t('ringBatteryAllow')}
+            </button>
+          </div>
+        )}
         {ringPerm !== 'granted' && (
           <div className="card warn" data-testid="ring-perm-off">
             <p className="error">⚠️ {t('ringPermOff')}</p>
