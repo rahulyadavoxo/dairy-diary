@@ -6,9 +6,9 @@ import { useLang } from '../i18n.js';
 import { computeMonth, sortByDue, isPaidRow } from '../billing.js';
 import { getPinHash, verifyPin, pinWaitSeconds } from '../pinLock.js';
 import { preGenerateBillPhotos } from '../billPreGen.js';
-import { fmtQty, monthDates, rupees, todayISO, monthOf } from '../format.js';
+import { fmtQty, monthDates, rupees, todayISO, monthOf, addMonths } from '../format.js';
 import BillSender, { shouldPromptBills } from './BillSender.jsx';
-import BillPhotos, { defaultPhotoMonth } from './BillPhotos.jsx';
+import BillPhotos from './BillPhotos.jsx';
 import MonthNav from '../components/MonthNav.jsx';
 import { matchesQuery } from './Register.jsx';
 import { useScrollKeep } from '../scrollKeep.js';
@@ -154,10 +154,10 @@ export default function Hisaab({ fb, customers, days, payments, settings, month,
   const isLastDay = todayISO() === md[md.length - 1];
 
   if (sending) {
-    return <BillSender fb={fb} customers={customers} days={days} payments={payments} settings={settings} onClose={() => setSending(false)} />;
+    return <BillSender fb={fb} customers={customers} days={days} payments={payments} settings={settings} month={sending} onClose={() => setSending(false)} />;
   }
   if (photos) {
-    return <BillPhotos customers={customers} days={days} payments={payments} settings={settings} month={defaultPhotoMonth(month)} onClose={() => setPhotos(false)} />;
+    return <BillPhotos customers={customers} days={days} payments={payments} settings={settings} month={month} onClose={() => setPhotos(false)} />;
   }
 
   return (
@@ -169,7 +169,7 @@ export default function Hisaab({ fb, customers, days, payments, settings, month,
           <div className="card warn">
             <p><b>{t('waBillsTitle')}</b></p>
             <p className="small">{t('waBillsIntro')}</p>
-            <button type="button" className="btn whatsapp big" onClick={() => setSending(true)}>
+            <button type="button" className="btn whatsapp big" onClick={() => setSending(addMonths(monthOf(todayISO()), -1))}>
               {t('sendBills')}
             </button>
           </div>
@@ -178,7 +178,7 @@ export default function Hisaab({ fb, customers, days, payments, settings, month,
           <button
             type="button"
             className="btn small icon-only"
-            onClick={() => setSending(true)}
+            onClick={() => setSending(month)}
             aria-label={t('waBillsShort')}
             title={t('waBillsShort')}
           >

@@ -45,9 +45,12 @@ function readProgress(billMonth) {
   return null;
 }
 
-export default function BillSender({ fb, customers, days, payments, settings, onClose }) {
+export default function BillSender({ fb, customers, days, payments, settings, month, onClose }) {
   const { t, lang } = useLang();
-  const billMonth = addMonths(monthOf(todayISO()), -1);
+  // Nov 2026 (user): the WhatsApp button sends the month open in Hisaab (current month by
+  // default, an older month after going back). The 1st-of-month banner passes last month.
+  const billMonth = typeof month === 'string' && /^\d{4}-\d{2}$/.test(month) ? month : addMonths(monthOf(todayISO()), -1);
+  const isPastMonth = billMonth < monthOf(todayISO());
   const res = useMemo(
     () => computeMonth({ customers, days, payments, settings, month: billMonth }),
     [customers, days, payments, settings, billMonth],
@@ -78,8 +81,9 @@ export default function BillSender({ fb, customers, days, payments, settings, on
     return 0;
   });
   // Last day of the bill month (e.g. 31 Oct) still empty -> every bill misses that day.
-  const lastDay = addDays(`${monthOf(todayISO())}-01`, -1);
+  const lastDay = addDays(`${addMonths(billMonth, 1)}-01`, -1);
   const lastEmpty =
+    isPastMonth &&
     !dayFilled(days, null, lastDay) && (customers || []).some((c) => c.active !== false && !c.isSupplier);
   const [sendAnyway, setSendAnyway] = useState(false);
   const sendAnywayRef = useRef(false);
@@ -195,7 +199,7 @@ export default function BillSender({ fb, customers, days, payments, settings, on
   }, [idx, billMonth, targets]);
 
   const finish = () => {
-    saveSettings(fb, { billsSentForMonth: monthOf(todayISO()) });
+    if (billMonth === addMonths(monthOf(todayISO()), -1)) saveSettings(fb, { billsSentForMonth: monthOf(todayISO()) });
     try {
       localStorage.removeItem(PROG_KEY);
     } catch {
