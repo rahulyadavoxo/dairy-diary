@@ -256,7 +256,15 @@ export async function shareImage(blob, filename) {
   return 'downloaded';
 }
 
-export function billFileName(customerName, month) {
+/** File name of a bill photo. Unique per customer (native #3, Nov 2026): the customer id (ASCII
+ *  Firestore id) is in it, because Android turns Hindi letters into "_" - मोहन and रमेश (or two
+ *  "Ramesh Yadav") used to get the SAME file. An ASCII part of the name is kept when there is one. */
+export function billFileName(customerName, month, customerId) {
+  if (customerId) {
+    const id = String(customerId).replace(/[^A-Za-z0-9_-]+/g, '').slice(0, 32) || 'x';
+    const ascii = String(customerName || '').replace(/[^A-Za-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 24);
+    return `bill-${month}-${ascii ? `${ascii}-` : ''}${id}.png`;
+  }
   const safe = String(customerName || 'bill').replace(/[^\w\u0900-\u097F-]+/g, '_').slice(0, 40);
   return `bill-${month}-${safe}.png`;
 }

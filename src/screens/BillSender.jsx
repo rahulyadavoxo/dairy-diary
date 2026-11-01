@@ -11,13 +11,38 @@ import { validWaNumber, sendBillToWhatsApp, isShareCancel } from '../waShare.js'
 import WaDirectHelp from '../components/WaDirectHelp.jsx';
 import { getCachedPhoto, putCachedPhoto } from '../billCache.js';
 import { saveSettings } from '../db.js';
-import { addMonths, monthOf, todayISO, monthName, rupees } from '../format.js';
+import { addMonths, addDays, monthOf, todayISO, monthName, rupees, dmy } from '../format.js';
+import { dayFilled } from '../reminders.js';
 
 const PROG_KEY = 'dd_wa_progress';
 export const CHAIN_SECONDS = 3;
 
 export function shouldPromptBills(settings) {
   return todayISO().slice(8, 10) === '01' && settings.billsSentForMonth !== monthOf(todayISO());
+}
+
+/** Who gets a WhatsApp bill (money #3, Nov 2026): anyone with a phone who has something this
+ *  month OR still owes / has an advance - inactive ("band") customers included. */
+export const isBillTarget = (r) =>
+  !!r.customer.phone && !r.customer.isSupplier && (r.balancePaise !== 0 || r.hasActivity);
+
+/** The sending order is frozen per bill month (by customer id), so a list that changes during
+ *  sending (new customer, phone added, another phone's entries) never shifts the saved position.
+ *  Ids that join later go to the END. `saved` = ids from localStorage for this month (or null). */
+export function freezeOrder(prev, liveIds) {
+  const base = prev || [];
+  const extra = liveIds.filter((id) => !base.includes(id));
+  return extra.length ? base.concat(extra) : base;
+}
+
+function readProgress(billMonth) {
+  try {
+    const p = JSON.parse(localStorage.getItem(PROG_KEY));
+    if (p && p.month === billMonth) return p;
+  } catch {
+    /* ignore */
+  }
+  return null;
 }
 
 export default function BillSender({ fb, customers, days, payments, settings, onClose }) {
@@ -27,22 +52,38 @@ export default function BillSender({ fb, customers, days, payments, settings, on
     () => computeMonth({ customers, days, payments, settings, month: billMonth }),
     [customers, days, payments, settings, billMonth],
   );
-  const targets = useMemo(
-    () =>
-      res.rows.filter(
-        (r) => r.customer.phone && r.customer.active !== false && !r.customer.isSupplier && (r.balancePaise !== 0 || r.hasActivity),
-      ),
-    [res],
-  );
+  const order = useRef(null); // frozen customer-id order for this bill month
+  const targets = useMemo(() => {
+    const liveIds = res.rows.filter(isBillTarget).map((r) => r.customerId);
+    if (!order.current) {
+      const p = readProgress(billMonth);
+      if (p && Array.isArray(p.ids)) order.current = p.ids.filter((x) => typeof x === 'string');
+      else if (liveIds.length) order.current = [];
+    }
+    if (!order.current) return [];
+    order.current = freezeOrder(order.current, liveIds);
+    const byId = new Map(res.rows.map((r) => [r.customerId, r]));
+    // A frozen customer stays in place even if the row no longer qualifies (e.g. paid meanwhile);
+    // only a deleted customer (no row) drops out.
+    return order.current.map((id) => byId.get(id)).filter(Boolean);
+  }, [res, billMonth]);
   const [idx, setIdx] = useState(() => {
-    try {
-      const p = JSON.parse(localStorage.getItem(PROG_KEY));
-      if (p && p.month === billMonth && Number.isInteger(p.idx)) return Math.min(p.idx, Math.max(0, targets.length - 1));
-    } catch {
-      /* ignore */
+    const p = readProgress(billMonth);
+    if (p && Number.isInteger(p.idx)) {
+      // After the last customer the saved idx === length: keep it there ("all sent"), never back
+      // on the last customer (that invited a second send).
+      const len = Array.isArray(p.ids) ? Math.max(p.ids.length, targets.length) : targets.length;
+      return Math.max(0, Math.min(p.idx, len));
     }
     return 0;
   });
+  // Last day of the bill month (e.g. 31 Oct) still empty -> every bill misses that day.
+  const lastDay = addDays(`${monthOf(todayISO())}-01`, -1);
+  const lastEmpty =
+    !dayFilled(days, null, lastDay) && (customers || []).some((c) => c.active !== false && !c.isSupplier);
+  const [sendAnyway, setSendAnyway] = useState(false);
+  const sendAnywayRef = useRef(false);
+  const [askLastDay, setAskLastDay] = useState(null); // null, or the pickManually flag of the held press
   const [opened, setOpened] = useState(false);
   // Preview state + effect live ABOVE the early returns (Rules of Hooks): otherwise moving past
   // the last customer (idx === targets.length) renders fewer hooks and React crashes.
@@ -54,6 +95,8 @@ export default function BillSender({ fb, customers, days, payments, settings, on
   const [shareErr, setShareErr] = useState('');
   const [noNumber, setNoNumber] = useState(false);
   const curRow = idx < targets.length ? targets[idx] : null;
+  // Photo is remade whenever this customer's numbers change (payment from another phone, late data).
+  const curFp = curRow ? billFingerprint(curRow, settings) : '';
   // One-by-one chain (user, 16 Oct 2026): after a bill opens in WhatsApp and the user comes back,
   // the next customer's chat opens by itself after a 3 s countdown ("Ruko" stops it).
   // The user always presses Send in WhatsApp themselves - nothing is sent automatically.
@@ -76,7 +119,7 @@ export default function BillSender({ fb, customers, days, payments, settings, on
     setImgErr('');
     (async () => {
       try {
-        const fp = billFingerprint(curRow, settings);
+        const fp = curFp;
         let blob = await getCachedPhoto(curRow.customerId, billMonth, fp);
         if (!blob) {
           blob = await renderBillImage(curRow, billMonth, settings);
@@ -98,7 +141,7 @@ export default function BillSender({ fb, customers, days, payments, settings, on
       if (url) URL.revokeObjectURL(url); // free the preview image memory
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [idx, curRow && curRow.customerId]);
+  }, [idx, curRow && curRow.customerId, curFp]);
 
   // Back from WhatsApp -> start the countdown.
   useEffect(() => {
@@ -145,11 +188,11 @@ export default function BillSender({ fb, customers, days, payments, settings, on
 
   useEffect(() => {
     try {
-      localStorage.setItem(PROG_KEY, JSON.stringify({ month: billMonth, idx }));
+      localStorage.setItem(PROG_KEY, JSON.stringify({ month: billMonth, idx, ids: order.current || [] }));
     } catch {
       /* ignore */
     }
-  }, [idx, billMonth]);
+  }, [idx, billMonth, targets]);
 
   const finish = () => {
     saveSettings(fb, { billsSentForMonth: monthOf(todayISO()) });
@@ -192,6 +235,12 @@ export default function BillSender({ fb, customers, days, payments, settings, on
 
   const sharePhoto = async (pickManually = false) => {
     if (!imgBlob || blobFor !== row.customerId) return;
+    if (lastEmpty && !sendAnywayRef.current) {
+      // Warn first (user can still send); the chain stops here until they decide.
+      setAskLastDay(pickManually);
+      setChain(false);
+      return;
+    }
     const n = validWaNumber(row.customer.phone);
     if (!n && !pickManually) { setNoNumber(true); setShareErr(''); return; }
     setNoNumber(false);
@@ -199,7 +248,7 @@ export default function BillSender({ fb, customers, days, payments, settings, on
     try {
       await sendBillToWhatsApp({
         blob: imgBlob,
-        fileName: billFileName(row.customer.name, billMonth),
+        fileName: billFileName(row.customer.name, billMonth, row.customerId),
         phone: pickManually ? null : n,
       });
       setOpened(true);
@@ -238,6 +287,9 @@ export default function BillSender({ fb, customers, days, payments, settings, on
   };
 
   const nextCustomer = () => {
+    setCountdown(null); // the countdown must not move a second time (it skipped a customer)
+    setAutoOpen(false);
+    away.current = false;
     setOpened(false);
     setNoNumber(false);
     setShareErr('');
@@ -282,6 +334,32 @@ export default function BillSender({ fb, customers, days, payments, settings, on
         ) : (
           <p className="muted small">{t('loading')}</p>
         )}
+        {lastEmpty && (
+          <div className="card warn" data-testid="wa-lastday-empty">
+            <p className="error">⚠️ {t('waLastDayEmpty').replace('{d}', dmy(lastDay, lang))}</p>
+            {askLastDay !== null && !sendAnyway && (
+              <>
+                <button
+                  type="button"
+                  className="btn primary"
+                  data-testid="wa-send-anyway"
+                  onClick={() => {
+                    const pick = askLastDay;
+                    sendAnywayRef.current = true;
+                    setSendAnyway(true);
+                    setAskLastDay(null);
+                    if (shareRef.current) shareRef.current(pick);
+                  }}
+                >
+                  {t('waSendAnyway')}
+                </button>
+                <button type="button" className="btn" onClick={onClose} style={{ marginTop: '0.5rem' }}>
+                  {t('waFillFirst')}
+                </button>
+              </>
+            )}
+          </div>
+        )}
         {countdown !== null && (
           <div className="card warn" data-testid="chain-countdown">
             <p><b>{t('waChainNext').replace('{s}', countdown)}</b></p>
@@ -324,11 +402,11 @@ export default function BillSender({ fb, customers, days, payments, settings, on
               <p className="muted small" style={{ marginTop: '0.5rem' }}>{t('waNoNumber')}</p>
             )}
           </>
-        ) : (
+        ) : countdown === null ? (
           <button type="button" className="btn primary big" onClick={nextCustomer}>
             ✓ {t('waNext')}
           </button>
-        )}
+        ) : null}
       </div>
     </div>
   );

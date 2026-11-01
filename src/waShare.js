@@ -45,6 +45,30 @@ export async function sendBillToWhatsApp({ blob, fileName, phone }) {
 }
 
 /**
+ * Share many bill photos at once (Bill photos "Download all"). Android WebView has no
+ * navigator.share and ignores <a download> (no DownloadListener), so on the phone all photos go
+ * through ONE native share sheet. files: [{ blob, fileName }]. On the web: one by one.
+ */
+export async function shareManyImages(files) {
+  if (Capacitor.isNativePlatform()) {
+    const out = [];
+    for (const f of files) {
+      // eslint-disable-next-line no-await-in-loop
+      out.push({ base64: await blobToBase64(f.blob), fileName: f.fileName });
+    }
+    await WhatsAppShare.shareImages({ files: out });
+    return 'shared';
+  }
+  for (const f of files) {
+    // eslint-disable-next-line no-await-in-loop
+    await shareImage(f.blob, f.fileName);
+    // eslint-disable-next-line no-await-in-loop
+    await new Promise((r) => setTimeout(r, 600));
+  }
+  return 'shared';
+}
+
+/**
  * Open the customer's WhatsApp chat (no text, no photo). WhatsApp only honours the direct-chat
  * "jid" on a photo share when a chat with that number already exists, so for a new customer the
  * photo share lands on "Send to…". Opening the chat once (and sending any message) fixes it.
