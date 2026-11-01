@@ -4,8 +4,8 @@ import { firstDeliveryMonth } from '../firstMonth.js';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLang } from '../i18n.js';
 import { computeMonth } from '../billing.js';
-import { renderBillImage, shareImage, billFileName, billFingerprint } from '../billImage.js';
-import { validWaNumber, sendBillToWhatsApp } from '../waShare.js';
+import { renderBillImage, billFileName, billFingerprint } from '../billImage.js';
+import { validWaNumber, sendBillToWhatsApp, shareManyImages, isShareCancel } from '../waShare.js';
 import { putCachedPhoto } from '../billCache.js';
 import { addMonths, monthOf, todayISO } from '../format.js';
 import MonthNav from '../components/MonthNav.jsx';
@@ -25,12 +25,15 @@ export default function BillPhotos({ customers, days, payments, settings, month:
     [customers, days, payments, settings, month],
   );
   const targets = useMemo(
-    () => res.rows.filter((r) => r.customer.active !== false && !r.customer.isSupplier && r.hasActivity),
+    // Same rule as Hisaab / Send bills (money #3): inactive customers who still owe, and customers
+    // with only an old balance, get a photo too.
+    () => res.rows.filter((r) => !r.customer.isSupplier && (r.hasActivity || r.balancePaise !== 0)),
     [res],
   );
   const [photos, setPhotos] = useState([]); // [{id,name,url,blob}]
   const [working, setWorking] = useState(false);
   const [doneMsg, setDoneMsg] = useState('');
+  const [shareErr, setShareErr] = useState('');
 
   const urls = useRef([]);
   const setMonth = (m) => {
@@ -68,31 +71,33 @@ export default function BillPhotos({ customers, days, payments, settings, month:
     }
   };
 
+  const showErr = (e) => {
+    if (isShareCancel(e)) return;
+    console.error('[bill-photos] share', e);
+    setShareErr(e && e.code === 'NOT_INSTALLED' ? t('waNotInstalled') : t('shareFailed'));
+  };
+
   const shareOne = async (p) => {
+    setShareErr('');
     try {
       const c = customers.find((x) => x.id === p.id);
       await sendBillToWhatsApp({
         blob: p.blob,
-        fileName: billFileName(p.name, month),
+        fileName: billFileName(p.name, month, p.id),
         phone: validWaNumber(c && c.phone),
       });
     } catch (e) {
-      console.error('[bill-photos] share', e);
+      showErr(e);
     }
   };
 
   const downloadAll = async () => {
-    for (const p of photos) {
-      try {
-        // eslint-disable-next-line no-await-in-loop
-        await shareImage(p.blob, billFileName(p.name, month));
-      } catch (e) {
-        // user cancelled the share sheet (AbortError) — stop instead of an unhandled rejection
-        console.error('[bill-photos] share', e);
-        break;
-      }
-      // eslint-disable-next-line no-await-in-loop
-      await new Promise((r) => setTimeout(r, 600));
+    setShareErr('');
+    try {
+      await shareManyImages(photos.map((p) => ({ blob: p.blob, fileName: billFileName(p.name, month, p.id) })));
+    } catch (e) {
+      // cancelled share sheet -> quiet; anything else -> visible error (it used to fail silently)
+      showErr(e);
     }
   };
 
@@ -116,6 +121,7 @@ export default function BillPhotos({ customers, days, payments, settings, month:
             {t('downloadAll')} ({photos.length})
           </button>
           {doneMsg && <p className="ok small">{doneMsg}</p>}
+          {shareErr && <p className="err small" data-testid="photo-share-err">{shareErr}</p>}
           <ul className="rows photo-grid">
             {photos.map((p) => (
               <li key={p.id} className="card photo-card">

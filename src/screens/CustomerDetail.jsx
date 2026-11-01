@@ -108,7 +108,7 @@ export default function CustomerDetail({ fb, customers, days, payments, settings
       }
       await sendBillToWhatsApp({
         blob,
-        fileName: billFileName(customer.name, month),
+        fileName: billFileName(customer.name, month, customerId),
         phone: pickManually ? null : n,
       });
     } catch (e) {

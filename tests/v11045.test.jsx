@@ -19,7 +19,7 @@ vi.mock('../src/waShare.js', async (orig) => ({
 
 import BillSender, { CHAIN_SECONDS } from '../src/screens/BillSender.jsx';
 import { LangContext, makeT, STRINGS } from '../src/i18n.js';
-import { addMonths, monthOf, todayISO } from '../src/format.js';
+import { addDays, addMonths, monthOf, todayISO } from '../src/format.js';
 
 const en = STRINGS.en;
 const wrap = (ui) => <LangContext.Provider value={{ lang: 'en', t: makeT('en'), setLang: () => {} }}>{ui}</LangContext.Provider>;
@@ -44,7 +44,12 @@ describe('1.10.45 bills one by one: next chat opens after coming back', () => {
     { id: 'a', name: 'Asha', phone: '9876543210', order: 10 },
     { id: 'b', name: 'Bina', phone: '9876543211', order: 20 },
   ];
-  const days = { [`${bm}-05`]: { entries: { a: { milkL: 1 }, b: { milkL: 1 } } } };
+  // 1.10.57: last day of the month filled (an entry of a deleted customer: no money change), so the
+  // "register not filled" warning does not hold the first share.
+  const days = {
+    [`${bm}-05`]: { entries: { a: { milkL: 1 }, b: { milkL: 1 } } },
+    [addDays(`${monthOf(todayISO())}-01`, -1)]: { entries: { gone: { milkL: 1 } } },
+  };
   const props = { fb: {}, customers, days, payments: [], settings: { milkRatePaise: 6000 }, onClose: () => {} };
 
   it('share -> back -> countdown -> next chat opens; Stop cancels', async () => {
