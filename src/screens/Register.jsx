@@ -89,8 +89,15 @@ export default function DayEditor({ fb, customers, days, pendingDays = {}, setti
   // Opened from a customer's calendar, a day with no entry shows empty (0), exactly like the
   // calendar, not the usual litres (user, 16 Oct 2026).
   const ZERO = { milkL: 0, milkMorningL: 0, milkEveningL: 0, paneerKg: 0, skip: false, note: '' };
+  // Morning + evening win over the stored total when a split exists (same rule as billing): two
+  // phones may each have written their own session, and milkL is only as fresh as the last writer.
+  const fromSaved = (en) => {
+    const r = { ...ZERO, ...en };
+    const sum = toMilli(r.milkMorningL) + toMilli(r.milkEveningL);
+    return sum > 0 ? { ...r, milkL: sum / 1000 } : r;
+  };
   const rowFor = (c) =>
-    drafts[c.id] || (saved[c.id] ? { ...ZERO, ...saved[c.id] } : customerId ? { ...ZERO, skip: isPaused(c, date) } : defaultRow(c, date));
+    drafts[c.id] || (saved[c.id] ? fromSaved(saved[c.id]) : customerId ? { ...ZERO, skip: isPaused(c, date) } : defaultRow(c, date));
 
   // Saving here records the whole day, so a morning-only Delivery save becomes complete.
   const normalise = (c, r, st) => normaliseEntry(c, { ...r, half: null }, st);
@@ -190,6 +197,9 @@ export default function DayEditor({ fb, customers, days, pendingDays = {}, setti
     const fresh = active.filter((c) => !saved[c.id] && !drafts[c.id]).length;
     if (!customerId && fresh > 0 && !window.confirm(t('saveAllConfirm').replace('{n}', fresh))) return;
     active.forEach((c) => {
+      // Whole day: an untouched saved row is left as it is. Rewriting it only cleared its half
+      // flag, so every "Evening left" customer of today became complete with evening 0.
+      if (!customerId && saved[c.id] && !drafts[c.id]) return;
       if (!(c.id in bases.current)) bases.current[c.id] = saved[c.id];
       dirty.current[c.id] = rowFor(c);
     });

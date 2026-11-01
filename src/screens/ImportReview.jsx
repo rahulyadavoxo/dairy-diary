@@ -25,6 +25,13 @@ function getReviewDates() {
   return out;
 }
 
+/** Litres the app holds for a saved entry: morning + evening when split (same rule as billing). */
+function appMilk(en) {
+  if (!en || en.skip) return 0;
+  const s = Math.round(((Number(en.milkMorningL) || 0) + (Number(en.milkEveningL) || 0)) * 1000);
+  return (s > 0 ? s : Math.round((Number(en.milkL) || 0) * 1000)) / 1000;
+}
+
 /** Known renames: register name -> app customer name. */
 const ALIASES = {
   'Madhu Mishra': 'Madhu Muskan',
@@ -66,15 +73,13 @@ function CustomerDays({ fb, customer, regName, days, settings, displayName, onDo
   const [vals, setVals] = useState(() => {
     const init = {};
     dates.forEach((d) => {
-      // Pre-fill: transcription first (Oct 1-13), else app's saved value
-      const raw = regName ? (OCT_IMPORT[d] || {})[regName] : undefined;
-      const parsed = parseImportValue(raw);
-      if (parsed) {
-        init[d] = String(parsed.milkL);
-      } else {
-        const en = days[d] && days[d].entries && days[d].entries[customer.id];
-        init[d] = en && !en.skip && (en.milkL || 0) > 0 ? String(en.milkL) : '';
-      }
+      // Pre-fill: what the app already has wins (a day corrected in the app must not get the paper
+      // number back on "Save all days"); the register value is only the start for empty days.
+      const en = days[d] && days[d].entries && days[d].entries[customer.id];
+      const have = appMilk(en);
+      if (have > 0) { init[d] = String(have); return; }
+      const parsed = parseImportValue(regName ? (OCT_IMPORT[d] || {})[regName] : undefined);
+      init[d] = parsed ? String(parsed.milkL) : '';
     });
     return init;
   });
@@ -119,7 +124,7 @@ function CustomerDays({ fb, customer, regName, days, settings, displayName, onDo
         const n = Math.round(Number(vals[d]) * 1000) / 1000;
         const prev = (days[d] && days[d].entries && days[d].entries[customer.id]) || null;
         // Unchanged day already in the app: don't rewrite it.
-        if (prev && !prev.skip && Number(prev.milkL) === n) continue;
+        if (prev && !prev.skip && appMilk(prev) === n) continue;
         // Keep the register's morning+evening split when it matches the typed total.
         const parsed = regName ? parseImportValue((OCT_IMPORT[d] || {})[regName]) : null;
         const split = parsed && parsed.milkMorningL != null && parsed.milkL === n
@@ -131,12 +136,21 @@ function CustomerDays({ fb, customer, regName, days, settings, displayName, onDo
           {
             [customer.id]: normaliseEntry(
               customer,
-              // keep paneer and note already recorded for that day (they were overwritten with 0 / '')
-              { ...split, paneerKg: prev ? prev.paneerKg || 0 : 0, skip: false, note: prev ? prev.note || '' : '' },
+              // keep paneer and note already recorded for that day (they were overwritten with 0 / ''),
+              // and the day's rate snapshot: an old day keeps the rate it was billed at, not today's.
+              {
+                ...split,
+                paneerKg: prev ? prev.paneerKg || 0 : 0,
+                skip: false,
+                note: prev ? prev.note || '' : '',
+                milkRatePaise: prev ? prev.milkRatePaise : null,
+                paneerRatePaise: prev ? prev.paneerRatePaise : null,
+              },
               settings,
             ),
           },
           displayName,
+          { [customer.id]: prev }, // bases: write only the fields that changed
         );
       }
       setFlash(t('saved'));
@@ -154,7 +168,7 @@ function CustomerDays({ fb, customer, regName, days, settings, displayName, onDo
   const savedDays = dates.filter((d) => {
     if (deletedDays.has(d)) return false;
     const en = days[d] && days[d].entries && days[d].entries[customer.id];
-    return en && !en.skip && (en.milkL || 0) > 0;
+    return appMilk(en) > 0;
   });
 
   return (
