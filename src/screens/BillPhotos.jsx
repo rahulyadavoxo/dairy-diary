@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLang } from '../i18n.js';
 import { computeMonth } from '../billing.js';
 import { renderBillImage, billFileName, billFingerprint } from '../billImage.js';
-import { validWaNumber, sendBillToWhatsApp, shareManyImages, isShareCancel } from '../waShare.js';
+import { validWaNumber, sendBillToWhatsApp, shareManyImages, isShareCancel, chunkList, SHARE_CHUNK } from '../waShare.js';
 import { putCachedPhoto } from '../billCache.js';
 import { addMonths, monthOf, todayISO } from '../format.js';
 import MonthNav from '../components/MonthNav.jsx';
@@ -91,10 +91,12 @@ export default function BillPhotos({ customers, days, payments, settings, month:
     }
   };
 
-  const downloadAll = async () => {
+  // Big farms (recheck NEW-7): at most SHARE_CHUNK photos per share sheet, one button per part.
+  const parts = chunkList(photos, SHARE_CHUNK);
+  const downloadAll = async (list = photos) => {
     setShareErr('');
     try {
-      await shareManyImages(photos.map((p) => ({ blob: p.blob, fileName: billFileName(p.name, month, p.id) })));
+      await shareManyImages(list.map((p) => ({ blob: p.blob, fileName: billFileName(p.name, month, p.id) })));
     } catch (e) {
       // cancelled share sheet -> quiet; anything else -> visible error (it used to fail silently)
       showErr(e);
@@ -117,9 +119,27 @@ export default function BillPhotos({ customers, days, payments, settings, month:
         </button>
       ) : (
         <>
-          <button type="button" className="btn primary big" onClick={downloadAll}>
-            {t('downloadAll')} ({photos.length})
-          </button>
+          {parts.length <= 1 ? (
+            <button type="button" className="btn primary big" onClick={() => downloadAll(photos)}>
+              {t('downloadAll')} ({photos.length})
+            </button>
+          ) : (
+            parts.map((part, k) => {
+              const from = k * SHARE_CHUNK + 1;
+              return (
+                <button
+                  key={from}
+                  type="button"
+                  className="btn primary big"
+                  data-testid="download-part"
+                  onClick={() => downloadAll(part)}
+                  style={{ marginBottom: '0.5rem' }}
+                >
+                  {t('downloadAll')} ({from}–{from + part.length - 1} / {photos.length})
+                </button>
+              );
+            })
+          )}
           {doneMsg && <p className="ok small">{doneMsg}</p>}
           {shareErr && <p className="err small" data-testid="photo-share-err">{shareErr}</p>}
           <ul className="rows photo-grid">

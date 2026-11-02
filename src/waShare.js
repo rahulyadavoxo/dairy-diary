@@ -44,19 +44,54 @@ export async function sendBillToWhatsApp({ blob, fileName, phone }) {
   return shareImage(blob, fileName);
 }
 
+/** How many photos go in one share sheet ("Download all" on a big farm; WhatsApp takes ~30 max). */
+export const SHARE_CHUNK = 20;
+
+/** [[0..19], [20..39], ...] */
+export function chunkList(list, size = SHARE_CHUNK) {
+  const out = [];
+  for (let i = 0; i < list.length; i += size) out.push(list.slice(i, i + size));
+  return out;
+}
+
+const unimplemented = (e) => !!e && (e.code === 'UNIMPLEMENTED' || e instanceof TypeError);
+
 /**
  * Share many bill photos at once (Bill photos "Download all"). Android WebView has no
- * navigator.share and ignores <a download> (no DownloadListener), so on the phone all photos go
+ * navigator.share and ignores <a download> (no DownloadListener), so on the phone the photos go
  * through ONE native share sheet. files: [{ blob, fileName }]. On the web: one by one.
+ * Native (recheck NEW-7): every photo is written to a file with its own small bridge call
+ * (saveBill), then only the file NAMES are shared - never one huge base64 message (out of memory
+ * on cheap phones). Callers keep a call to SHARE_CHUNK photos (BillPhotos splits big farms).
  */
 export async function shareManyImages(files) {
   if (Capacitor.isNativePlatform()) {
-    const out = [];
-    for (const f of files) {
-      // eslint-disable-next-line no-await-in-loop
-      out.push({ base64: await blobToBase64(f.blob), fileName: f.fileName });
+    const names = [];
+    try {
+      for (const f of files) {
+        // eslint-disable-next-line no-await-in-loop
+        const base64 = await blobToBase64(f.blob);
+        // eslint-disable-next-line no-await-in-loop
+        const r = await WhatsAppShare.saveBill({ base64, fileName: f.fileName });
+        if (r && r.name) names.push(r.name);
+      }
+    } catch (e) {
+      if (!unimplemented(e)) throw e;
+      // an older app without saveBill: the old one-message way (small lists only reach here)
+      const out = [];
+      for (const f of files) {
+        // eslint-disable-next-line no-await-in-loop
+        out.push({ base64: await blobToBase64(f.blob), fileName: f.fileName });
+      }
+      await WhatsAppShare.shareImages({ files: out });
+      return 'shared';
     }
-    await WhatsAppShare.shareImages({ files: out });
+    if (!names.length) {
+      const err = new Error('No image');
+      err.code = 'NO_IMAGE';
+      throw err;
+    }
+    await WhatsAppShare.shareImages({ names });
     return 'shared';
   }
   for (const f of files) {

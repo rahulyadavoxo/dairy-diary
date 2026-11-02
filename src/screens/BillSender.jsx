@@ -14,7 +14,15 @@ import { saveSettings } from '../db.js';
 import { addMonths, addDays, monthOf, todayISO, monthName, rupees, dmy } from '../format.js';
 import { dayFilled } from '../reminders.js';
 
-const PROG_KEY = 'dd_wa_progress';
+// Progress is kept PER bill month (recheck Nov 2026): one shared slot let opening another month wipe
+// a half-done month, and a mid-month (partial) run was resumed as the final bill on the 1st.
+const OLD_PROG_KEY = 'dd_wa_progress';
+export const PROG_PREFIX = 'dd_wa_progress:';
+export const progKey = (m) => PROG_PREFIX + m;
+// Position "after customer X" (all sent so far). A customer that joins later is appended after X
+// and still shows up; END alone is "after everyone" for an empty order.
+const AFTER = 'after:';
+const END = AFTER;
 export const CHAIN_SECONDS = 3;
 
 export function shouldPromptBills(settings) {
@@ -35,14 +43,61 @@ export function freezeOrder(prev, liveIds) {
   return extra.length ? base.concat(extra) : base;
 }
 
-function readProgress(billMonth) {
+/** One-time move of the old single-slot progress. Only a month up to Oct 2026 is kept: before
+ *  1.10.58 the sender could only send a finished (past) month, so that progress is a final run.
+ *  A newer month in the old slot may be a mid-month run and is dropped (never resumed as final). */
+function migrateOldProgress() {
   try {
-    const p = JSON.parse(localStorage.getItem(PROG_KEY));
-    if (p && p.month === billMonth) return p;
+    const raw = localStorage.getItem(OLD_PROG_KEY);
+    if (raw === null) return;
+    localStorage.removeItem(OLD_PROG_KEY);
+    const old = JSON.parse(raw);
+    if (old && typeof old.month === 'string' && old.month <= '2026-10' && old.month < monthOf(todayISO())
+        && !localStorage.getItem(progKey(old.month))) {
+      localStorage.setItem(progKey(old.month), JSON.stringify({ ...old, past: true }));
+    }
   } catch {
     /* ignore */
   }
-  return null;
+}
+
+/** Saved progress of `billMonth`, only if it belongs to the same kind of run:
+ *  - a run made while the month was still running (partial bill) never counts for the final
+ *    (past-month) run, and
+ *  - a partial run is resumed only on the same day (the bill is different tomorrow). */
+export function readProgress(billMonth, isPast, today = todayISO()) {
+  migrateOldProgress();
+  try {
+    const p = JSON.parse(localStorage.getItem(progKey(billMonth)));
+    if (!p || p.month !== billMonth) return null;
+    if (!!p.past !== !!isPast) return null;
+    if (!isPast && p.day !== today) return null;
+    return p;
+  } catch {
+    return null;
+  }
+}
+
+function writeProgress(billMonth, p) {
+  try {
+    localStorage.setItem(progKey(billMonth), JSON.stringify(p));
+    // drop progress of months older than 3 months (localStorage must not keep growing)
+    const oldest = addMonths(monthOf(todayISO()), -3);
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(PROG_PREFIX) && k.slice(PROG_PREFIX.length) < oldest) localStorage.removeItem(k);
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+function clearProgress(billMonth) {
+  try {
+    localStorage.removeItem(progKey(billMonth));
+  } catch {
+    /* ignore */
+  }
 }
 
 export default function BillSender({ fb, customers, days, payments, settings, month, histOk = true, onClose }) {
@@ -51,6 +106,14 @@ export default function BillSender({ fb, customers, days, payments, settings, mo
   // default, an older month after going back). The 1st-of-month banner passes last month.
   const billMonth = typeof month === 'string' && /^\d{4}-\d{2}$/.test(month) ? month : addMonths(monthOf(todayISO()), -1);
   const isPastMonth = billMonth < monthOf(todayISO());
+  // Kind of run, fixed when the screen opens: a mid-month run that is still open after midnight on
+  // the 1st stays a partial run (it must never be saved/finished as the final bill).
+  const session = useRef(null);
+  if (!session.current || session.current.month !== billMonth) {
+    session.current = { month: billMonth, past: isPastMonth, saved: readProgress(billMonth, isPastMonth) };
+  }
+  const sessionPast = session.current.past;
+  const saved = session.current.saved;
   const res = useMemo(
     () => computeMonth({ customers, days, payments, settings, month: billMonth }),
     [customers, days, payments, settings, billMonth],
@@ -59,7 +122,7 @@ export default function BillSender({ fb, customers, days, payments, settings, mo
   const targets = useMemo(() => {
     const liveIds = res.rows.filter(isBillTarget).map((r) => r.customerId);
     if (!order.current) {
-      const p = readProgress(billMonth);
+      const p = saved;
       if (p && Array.isArray(p.ids)) order.current = p.ids.filter((x) => typeof x === 'string');
       else if (liveIds.length) order.current = [];
     }
@@ -67,19 +130,58 @@ export default function BillSender({ fb, customers, days, payments, settings, mo
     order.current = freezeOrder(order.current, liveIds);
     const byId = new Map(res.rows.map((r) => [r.customerId, r]));
     // A frozen customer stays in place even if the row no longer qualifies (e.g. paid meanwhile);
-    // only a deleted customer (no row) drops out.
+    // only a deleted customer (no row) drops out. Its id stays in the frozen order, so the
+    // position (kept by customer id, below) never shifts onto the wrong customer.
     return order.current.map((id) => byId.get(id)).filter(Boolean);
-  }, [res, billMonth]);
-  const [idx, setIdx] = useState(() => {
-    const p = readProgress(billMonth);
-    if (p && Number.isInteger(p.idx)) {
+  }, [res, billMonth, saved]);
+  // The position is a customer ID, not a number (recheck NEW-4): when an EARLIER customer is
+  // deleted during sending, the current one stays current and nobody is skipped.
+  const [curId, setCurId] = useState(() => {
+    const p = saved;
+    if (!p) return null;
+    if (typeof p.curId === 'string') return p.curId;
+    if (Number.isInteger(p.idx)) {
+      const ids = Array.isArray(p.ids) ? p.ids : (order.current || []);
+      const len = Math.max(ids.length, targets.length);
       // After the last customer the saved idx === length: keep it there ("all sent"), never back
       // on the last customer (that invited a second send).
-      const len = Array.isArray(p.ids) ? Math.max(p.ids.length, targets.length) : targets.length;
-      return Math.max(0, Math.min(p.idx, len));
+      if (p.idx >= len) return ids.length ? AFTER + ids[ids.length - 1] : END;
+      if (p.idx <= 0) return null;
+      return ids[p.idx] || (targets[p.idx] && targets[p.idx].customerId) || null;
     }
-    return 0;
+    return null;
   });
+  /** Index in `targets` of a position id: a deleted id points at the next customer still there. */
+  const idxOf = (id) => {
+    if (id === null || id === undefined) return 0;
+    const ord = order.current || [];
+    const after = id.startsWith(AFTER);
+    const key = after ? id.slice(AFTER.length) : id;
+    if (after && !key) return targets.length;
+    const at = ord.indexOf(key);
+    if (at < 0) return after ? targets.length : 0;
+    let n = 0;
+    let live = false;
+    for (const r of targets) {
+      const k = ord.indexOf(r.customerId);
+      if (k < at) n++;
+      else if (k === at) live = true;
+    }
+    return after && live ? n + 1 : n;
+  };
+  const idx = Math.min(idxOf(curId), targets.length);
+  const idxRef = useRef(idx);
+  idxRef.current = idx;
+  const targetsRef = useRef(targets);
+  targetsRef.current = targets;
+  /** Move to position i (0..length); i === length = "all sent". */
+  const setIdx = (next) => {
+    const tg = targetsRef.current;
+    const i = Math.max(0, typeof next === 'function' ? next(idxRef.current) : next);
+    const id = i >= tg.length ? (tg.length ? AFTER + tg[tg.length - 1].customerId : END) : tg[i].customerId;
+    idxRef.current = Math.min(i, tg.length);
+    setCurId(id);
+  };
   // Last day of the bill month (e.g. 31 Oct) still empty -> every bill misses that day.
   const lastDay = addDays(`${addMonths(billMonth, 1)}-01`, -1);
   const lastEmpty =
@@ -190,21 +292,30 @@ export default function BillSender({ fb, customers, days, payments, settings, mo
     else setChain(false);
   }, [autoOpen, curRow, imgBlob, blobFor]);
 
+  // Saved per month, with the kind of run (past = final bill) and the day (partial runs resume
+  // only the same day). Nothing is written while there is no list yet.
   useEffect(() => {
-    try {
-      localStorage.setItem(PROG_KEY, JSON.stringify({ month: billMonth, idx, ids: order.current || [] }));
-    } catch {
-      /* ignore */
-    }
-  }, [idx, billMonth, targets]);
+    if (!order.current) return;
+    const id = idx >= targets.length
+      ? (targets.length ? AFTER + targets[targets.length - 1].customerId : END)
+      : targets[idx].customerId;
+    writeProgress(billMonth, {
+      month: billMonth,
+      past: sessionPast,
+      day: todayISO(),
+      idx,
+      curId: id,
+      ids: order.current,
+    });
+  }, [idx, billMonth, targets, sessionPast]);
 
   const finish = () => {
-    if (billMonth === addMonths(monthOf(todayISO()), -1)) saveSettings(fb, { billsSentForMonth: monthOf(todayISO()) });
-    try {
-      localStorage.removeItem(PROG_KEY);
-    } catch {
-      /* ignore */
+    // Only a finished FINAL run (a past month, opened as past) marks the month's bills as sent.
+    const thisMonth = monthOf(todayISO());
+    if (sessionPast && billMonth < thisMonth && billMonth === addMonths(thisMonth, -1)) {
+      saveSettings(fb, { billsSentForMonth: thisMonth });
     }
+    clearProgress(billMonth);
     onClose();
   };
 
@@ -227,6 +338,25 @@ export default function BillSender({ fb, customers, days, payments, settings, mo
       <div className="screen">
         <div className="center-screen">
           <h2>{t('waAllSent')}</h2>
+          {/* Way back (recheck NEW-3): "Next" pressed by mistake on the last one, or WhatsApp didn't open. */}
+          <button
+            type="button"
+            className="btn ghost"
+            data-testid="wa-prev-end"
+            onClick={() => {
+              setCountdown(null);
+              setChain(false);
+              setAutoOpen(false);
+              away.current = false;
+              setOpened(false);
+              setNoNumber(false);
+              setShareErr('');
+              setIdx(targets.length - 1);
+            }}
+            style={{ marginBottom: '0.75rem' }}
+          >
+            ← {t('waPrev')}
+          </button>
           <button type="button" className="btn primary big" onClick={finish}>
             {t('waDone')}
           </button>
