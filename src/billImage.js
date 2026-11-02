@@ -1,6 +1,6 @@
 // Render a customer's monthly bill as a PNG image (canvas 2D).
 // Design: header + month calendar (date-wise milk) + structured summary + footer.
-import { fmtQty, monthName, rupees, todayISO, weekdaysMonFirst } from './format.js';
+import { fmtQty, monthName, MONTHS, rupees, todayISO, weekdaysMonFirst } from './format.js';
 
 const W = 1080;
 const CELL_H = 104;
@@ -43,6 +43,14 @@ export function fitText(g, s, maxW) {
 }
 
 const fontOf = (size, bold) => `${bold ? '700' : '400'} ${size}px sans-serif`;
+
+/** "20 नवंबर तक / till 20 November" when `month` is the month of `today` (bill not final yet), else ''. */
+export function billAsOfText(month, today = todayISO()) {
+  if (!month || !today || month !== today.slice(0, 7)) return '';
+  const d = Number(today.slice(8, 10));
+  const m = Number(today.slice(5, 7)) - 1;
+  return `${d} ${MONTHS.hi[m]} तक / till ${d} ${MONTHS.en[m]}`;
+}
 
 /** Height the bill needs: no big empty band at the bottom (it was a fixed 1920 px). */
 export function billHeight(row, month) {
@@ -95,6 +103,9 @@ export function renderBillImage(row, month, settings = {}) {
     g.font = fontOf(32, false);
     const monthW = g.measureText(monthTxt).width;
     text(g, monthTxt, W - 60, 150, { size: 32, color: '#c8e6c9', align: 'right' });
+    // A current-month bill is only "so far": say till which date (recheck NEW-8, Nov 2026).
+    const asOf = billAsOfText(month);
+    if (asOf) text(g, asOf, W - 60, 188, { size: 26, color: '#fff', bold: true, align: 'right' });
     g.font = fontOf(38, true);
     text(g, fitText(g, cu.name, W - 120 - monthW - 30), 60, 150, { size: 38, color: '#fff', bold: true });
 
