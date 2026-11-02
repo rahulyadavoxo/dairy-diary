@@ -1,4 +1,5 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeAll } from 'vitest';
+import { execSync } from 'node:child_process';
 import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
 import { readFileSync } from 'node:fs';
 import { LangContext, makeT, STRINGS } from '../src/i18n.js';
@@ -56,33 +57,36 @@ describe('auto-bill message', () => {
 
 describe('WhatsApp connect UI', () => {
   const fb = { farmId: 'f', fsMod: { doc: (_d, ...p) => ({ path: p.join('/') }), setDoc: vi.fn(async () => {}) } };
-  it('owner connects with Phone number ID + token through the waConnect function', async () => {
-    const callFn = vi.fn(async () => ({ display: 'Yadav Dairy +91 98765' }));
-    render(wrap(<AutoBillCard fb={fb} settings={{}} farmId="f" isOwner callFn={callFn} />));
+  const api = (o = {}) => ({ connect: vi.fn(async () => ({ display: 'Yadav Dairy +91 98765' })), disconnect: vi.fn(async () => {}), test: vi.fn(async () => ({})), ...o });
+  it('owner connects with Phone number ID + token', async () => {
+    const a = api();
+    render(wrap(<AutoBillCard fb={fb} settings={{}} isOwner waApi={a} />));
     fireEvent.click(screen.getByTestId('wa-connect'));
     fireEvent.change(screen.getByTestId('wa-pnid'), { target: { value: '123456789' } });
     fireEvent.change(screen.getByTestId('wa-token'), { target: { value: 'EAAG-secret-token-xxxxxxxx' } });
     fireEvent.click(screen.getByTestId('wa-connect-submit'));
-    await waitFor(() => expect(callFn).toHaveBeenCalledWith('waConnect', { farmId: 'f', phoneNumberId: '123456789', accessToken: 'EAAG-secret-token-xxxxxxxx', templateName: 'dd_bill', templateLang: 'hi' }));
+    await waitFor(() => expect(a.connect).toHaveBeenCalledWith(fb, { phoneNumberId: '123456789', accessToken: 'EAAG-secret-token-xxxxxxxx', templateName: 'dd_bill', templateLang: 'hi' }));
     expect(await screen.findByText(/Yadav Dairy \+91 98765/)).toBeTruthy();
   });
-  it('a joined phone cannot connect; connected state shows last run and test send', async () => {
-    const { unmount } = render(wrap(<AutoBillCard fb={fb} settings={{}} farmId="f" isOwner={false} callFn={vi.fn()} />));
+  it('a joined phone cannot connect or test; owner sees last run and can test', async () => {
+    const { unmount } = render(wrap(<AutoBillCard fb={fb} settings={{ autoBill: { connected: true } }} isOwner={false} waApi={api()} />));
+    expect(screen.queryByTestId('wa-test')).toBeNull();
+    unmount();
+    const r2 = render(wrap(<AutoBillCard fb={fb} settings={{}} isOwner={false} waApi={api()} />));
     expect(screen.queryByTestId('wa-connect')).toBeNull();
     expect(screen.getByText(en.waOwnerOnly)).toBeTruthy();
-    unmount();
-    const callFn = vi.fn(async () => ({ id: 'x' }));
-    render(wrap(<AutoBillCard fb={fb} settings={{ autoBill: { connected: true, display: 'D', lastRun: { month: '2026-10', sent: 40, failed: 2 } } }} farmId="f" isOwner callFn={callFn} />));
+    r2.unmount();
+    const a = api();
+    const settings = { autoBill: { connected: true, display: 'D', lastRun: { month: '2026-10', sent: 40, failed: 2 } } };
+    render(wrap(<AutoBillCard fb={fb} settings={settings} isOwner waApi={a} />));
     expect(screen.getByTestId('autobill-lastrun').textContent).toContain('✓ 40');
     fireEvent.change(screen.getByTestId('wa-test-phone'), { target: { value: '9876543210' } });
     fireEvent.click(screen.getByTestId('wa-test'));
-    await waitFor(() => expect(callFn).toHaveBeenCalledWith('waTest', { farmId: 'f', phone: '9876543210' }));
+    await waitFor(() => expect(a.test).toHaveBeenCalledWith(fb, '9876543210', settings));
   });
-  it('a function error is shown', async () => {
-    const callFn = vi.fn(async () => {
-      throw new Error('FirebaseError: WhatsApp: 190: Invalid OAuth access token');
-    });
-    render(wrap(<AutoBillCard fb={fb} settings={{}} farmId="f" isOwner callFn={callFn} />));
+  it('a Meta error is shown', async () => {
+    const a = api({ connect: vi.fn(async () => { throw new Error('WhatsApp: 190: Invalid OAuth access token'); }) });
+    render(wrap(<AutoBillCard fb={fb} settings={{}} isOwner waApi={a} />));
     fireEvent.click(screen.getByTestId('wa-connect'));
     fireEvent.change(screen.getByTestId('wa-pnid'), { target: { value: '123456789' } });
     fireEvent.change(screen.getByTestId('wa-token'), { target: { value: 'EAAG-secret-token-xxxxxxxx' } });
@@ -96,10 +100,80 @@ describe('WhatsApp connect UI', () => {
     expect(decodeURIComponent(open.mock.calls[0][0])).toContain('rahulyadavoxo.github.io/dairy-diary/download.html');
     open.mockRestore();
   });
-  it('functions reuse the shared bill code and the client never reads waPrivate', () => {
-    const fn = readFileSync('functions/index.js', 'utf8');
-    expect(fn).toContain("from './shared/billing.js'");
-    expect(readFileSync('firestore.rules', 'utf8')).not.toContain('waPrivate');
-    expect(readFileSync('docs/download.html', 'utf8')).toContain('releases/latest');
+  it('rules: waPrivate only for the owner account; cron logs no ids', () => {
+    const rules = readFileSync('firestore.rules', 'utf8');
+    expect(rules).toMatch(/match \/waPrivate\/\{docId\}[\s\S]*request\.auth\.uid == farmId/);
+    expect(readFileSync('functions/cron.mjs', 'utf8')).toContain('log: () => {}');
+    expect(readFileSync('.github/workflows/autobill.yml', 'utf8')).toContain("cron: '*/15 * * * *'");
+  });
+});
+
+// ---- server runner with a fake Firestore + fake Meta ----
+function fakeDb(docs) {
+  const store = new Map(Object.entries(docs));
+  const snap = (path) => ({ id: path.split('/').pop(), exists: store.has(path), data: () => (store.has(path) ? JSON.parse(JSON.stringify(store.get(path))) : undefined) });
+  const merge = (a, b) => {
+    const o = { ...(a || {}) };
+    for (const [k, v] of Object.entries(b)) o[k] = v && typeof v === 'object' && !Array.isArray(v) && o[k] && typeof o[k] === 'object' ? merge(o[k], v) : v;
+    return o;
+  };
+  return {
+    store,
+    doc: (path) => ({ get: async () => snap(path), set: async (v, opt) => store.set(path, opt && opt.merge ? merge(store.get(path), v) : v) }),
+    collection: (path) => ({ get: async () => ({ docs: [...store.keys()].filter((k) => k.startsWith(path + '/') && k.split('/').length === path.split('/').length + 1).map(snap) }) }),
+    collectionGroup: (name) => ({
+      get: async () => ({ docs: [...store.keys()].filter((k) => k.split('/').slice(-2)[0] === name).map((k) => ({ ...snap(k), ref: { parent: { parent: { id: k.split('/')[1] } } } })) }),
+    }),
+  };
+}
+
+describe('auto-bill runner (GitHub cron)', () => {
+  beforeAll(() => execSync('bash scripts/sync-functions-shared.sh'));
+  const base = () => ({
+    'farms/F/settings/main': { farmName: 'Yadav Dairy', autoBill: { enabled: true, day: 1, time: '09:00' } },
+    'farms/F/waPrivate/main': { phoneNumberId: '111222333', accessToken: 'tok-xxxxxxxxxxxxxxxxxxxx', template: { name: 'dd_bill', lang: 'hi' } },
+    'farms/F/customers/a': { name: 'Ramesh', phone: '9876543210' },
+    'farms/F/customers/b': { name: 'Suresh', phone: '9876500001' },
+    'farms/F/days/2026-11-03': { entries: { a: { milkL: 2, milkRatePaise: 6000 }, b: { milkL: 1, milkRatePaise: 6000 } } },
+  });
+  const now = new Date('2026-12-01T04:00:00Z'); // 1 Dec 09:30 IST
+  it('sends each customer once, marks the month done, never resends', async () => {
+    const { runAll } = await import('../functions/runner.js');
+    const db = fakeDb(base());
+    const calls = [];
+    globalThis.fetch = vi.fn(async (url, o) => {
+      calls.push(JSON.parse(o.body));
+      return { ok: true, json: async () => ({ messages: [{ id: 'wamid.' + calls.length }] }) };
+    });
+    const r = await runAll(db, { now, log: () => {} });
+    expect(r).toEqual({ checked: 1, sentRuns: 1 });
+    expect(calls.map((c) => c.to)).toEqual(['919876543210', '919876500001']);
+    expect(calls[0].template.components[0].parameters.map((p) => p.text)).toEqual(['Ramesh', expect.stringMatching(/नवंबर/), '₹120', '₹120 बाकी', 'Yadav Dairy']);
+    const s = db.store.get('farms/F/settings/main').autoBill;
+    expect(s.doneMonth).toBe('2026-11');
+    expect(s.lastRun).toMatchObject({ month: '2026-11', sent: 2, failed: 0, done: true });
+    await runAll(db, { now, log: () => {} });
+    expect(calls).toHaveLength(2);
+  });
+  it('a bad token stops the run and the next run resumes', async () => {
+    const { runAll } = await import('../functions/runner.js');
+    const db = fakeDb(base());
+    globalThis.fetch = vi.fn(async () => ({ ok: false, status: 401, json: async () => ({ error: { code: 190, message: 'Invalid OAuth access token' } }) }));
+    await runAll(db, { now, log: () => {} });
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+    const s = db.store.get('farms/F/settings/main').autoBill;
+    expect(s.doneMonth).toBeUndefined();
+    expect(s.lastRun.error).toMatch(/^190/);
+    globalThis.fetch = vi.fn(async () => ({ ok: true, json: async () => ({ messages: [{ id: 'm' }] }) }));
+    await runAll(db, { now, log: () => {} });
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+    expect(db.store.get('farms/F/settings/main').autoBill.doneMonth).toBe('2026-11');
+  });
+  it('nothing is sent before the day/time', async () => {
+    const { runAll } = await import('../functions/runner.js');
+    const db = fakeDb(base());
+    globalThis.fetch = vi.fn();
+    await runAll(db, { now: new Date('2026-12-01T03:00:00Z'), log: () => {} });
+    expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 });

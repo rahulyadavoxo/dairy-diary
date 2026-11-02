@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { saveFeedback } from '../feedback.js';
 import { useLang } from '../i18n.js';
 import { saveSettings } from '../db.js';
-import { callFn as defaultCallFn } from '../firebase.js';
+import { WA_API } from '../waCloud.js';
 import { TEMPLATE_DEFAULT } from '../autoBill.js';
 import { paiseToInput, toPaise } from '../format.js';
 import { validUpiId } from '../upi.js';
@@ -362,7 +362,7 @@ export default function Settings({ fb, user, settings, displayName, setDisplayNa
         </button>
       </form>
 
-      <AutoBillCard fb={fb} settings={settings} farmId={farmId} isOwner={!!user && user.uid === farmId} />
+      <AutoBillCard fb={fb} settings={settings} isOwner={!!user && user.uid === farmId} />
       <ShareAppCard />
 
       <div className="card">
@@ -448,8 +448,9 @@ export default function Settings({ fb, user, settings, displayName, setDisplayNa
 
 
 /** WhatsApp auto-bill (Nov 2026): day/time setting + "WhatsApp जोड़ो" (owner) + test send.
- *  Bills are sent by the autoBillTick Cloud Function; it writes connected/display/lastRun here. */
-export function AutoBillCard({ fb, settings, isOwner = true, farmId, callFn = defaultCallFn }) {
+ *  Bills are sent by the GitHub Actions cron (functions/cron.mjs); it writes lastRun here.
+ *  The owner's phone checks the ids with Meta, stores them in farms/{id}/waPrivate/main, sends tests. */
+export function AutoBillCard({ fb, settings, isOwner = true, waApi = WA_API }) {
   const { t } = useLang();
   const cur = settings.autoBill || {};
   const base = { enabled: !!cur.enabled, day: Number(cur.day) || 1, time: cur.time || '09:00' };
@@ -478,7 +479,7 @@ export function AutoBillCard({ fb, settings, isOwner = true, farmId, callFn = de
     setBusy(true);
     say('');
     try {
-      const r = await callFn('waConnect', { farmId, ...conn });
+      const r = await waApi.connect(fb, conn);
       setConn(null);
       say(t('waConnected') + (r && r.display ? ': ' + r.display : ''));
     } catch (e2) {
@@ -491,7 +492,7 @@ export function AutoBillCard({ fb, settings, isOwner = true, farmId, callFn = de
     if (!window.confirm(t('waDisconnectAsk'))) return;
     setBusy(true);
     try {
-      await callFn('waDisconnect', { farmId });
+      await waApi.disconnect(fb);
       say(t('waDisconnected'));
     } catch (e2) {
       say(fnErr(e2), true);
@@ -503,7 +504,7 @@ export function AutoBillCard({ fb, settings, isOwner = true, farmId, callFn = de
     if (String(testPhone).replace(/\D/g, '').length < 10) return say(t('waTestPhone'), true);
     setBusy(true);
     try {
-      await callFn('waTest', { farmId, phone: testPhone });
+      await waApi.test(fb, testPhone, settings);
       say(t('waTestSent'));
     } catch (e2) {
       say(fnErr(e2), true);
@@ -557,14 +558,15 @@ export function AutoBillCard({ fb, settings, isOwner = true, farmId, callFn = de
             <p className="muted small" data-testid="autobill-lastrun">
               {t('autoBillLast')}: {lr.month} — ✓ {lr.sent || 0}
               {lr.failed ? ` · ✗ ${lr.failed}` : ''}
+              {lr.error ? ` · ${lr.error}` : ''}
             </p>
           )}
-          <div className="form-inline">
+          {isOwner && <div className="form-inline">
             <input type="tel" inputMode="tel" placeholder={t('waTestPhone')} value={testPhone} onChange={(e) => setTestPhone(e.target.value)} data-testid="wa-test-phone" />
             <button type="button" className="btn small" onClick={test} disabled={busy} data-testid="wa-test">
               {t('waTestBtn')}
             </button>
-          </div>
+          </div>}
           {isOwner && (
             <button type="button" className="btn small ghost" onClick={disconnect} disabled={busy}>
               {t('waDisconnect')}

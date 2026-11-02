@@ -158,6 +158,13 @@ service cloud.firestore {
         allow read, write: if coll in ['customers', 'days', 'payments', 'settings']
           && isMember(farmId);
       }
+
+      // WhatsApp auto-bill keys (Nov 2026): only the owner's own account (farmId == uid).
+      // Joined phones never see the token. The GitHub cron reads it with the Admin SDK.
+      match /waPrivate/{docId} {
+        allow read, write: if docId == 'main' && signedIn()
+          && request.auth.uid == farmId && isMember(farmId);
+      }
     }
 
     // ---------------------------------------------------------------- pairing codes

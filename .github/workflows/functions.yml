@@ -1,11 +1,10 @@
 name: Deploy WhatsApp auto-bill functions
 # Needs: Firebase Blaze plan, and repo secret FIREBASE_SERVICE_ACCOUNT (JSON key of a service
 # account with the "Firebase Admin" + "Cloud Functions Admin" + "Service Account User" roles).
+# OPTIONAL (Blaze only). Manual run only. The free GitHub cron (autobill.yml) is what sends now;
+# turn that off if this is ever deployed, so the two don't both send.
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths: ['functions/**', 'src/billing.js', 'src/format.js', 'src/autoBill.js', 'firebase.json']
 permissions:
   contents: read
 jobs:

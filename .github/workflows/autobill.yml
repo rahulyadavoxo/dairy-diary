@@ -1,0 +1,42 @@
+name: WhatsApp auto-bill (cron)
+# Free server for auto-bills: every 15 min, sends last month's bills for each dairy whose
+# Settings day+time has come (functions/runner.js). GitHub may start a run 5-30 min late.
+# Needs repo secret FIREBASE_SERVICE_ACCOUNT (Firebase Console → Project settings →
+# Service accounts → Generate new private key → paste the whole JSON). No Blaze needed.
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: autobill
+  cancel-in-progress: false
+jobs:
+  send:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Skip when the secret is not set yet
+        id: chk
+        env:
+          SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: if [ -z "$SA" ]; then echo "skip=1" >> "$GITHUB_OUTPUT"; echo "FIREBASE_SERVICE_ACCOUNT not set - nothing sent"; fi
+      - uses: actions/checkout@v7
+        if: steps.chk.outputs.skip != '1'
+      - uses: actions/setup-node@v7
+        if: steps.chk.outputs.skip != '1'
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+      - name: Send due bills
+        if: steps.chk.outputs.skip != '1'
+        env:
+          SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          bash scripts/sync-functions-shared.sh
+          cd functions && npm ci --omit=dev --no-audit --no-fund
+          echo "$SA" > "$RUNNER_TEMP/sa.json"
+          GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/sa.json" node cron.mjs
+          rm -f "$RUNNER_TEMP/sa.json"
