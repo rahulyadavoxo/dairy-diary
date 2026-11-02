@@ -360,6 +360,8 @@ export default function Settings({ fb, user, settings, displayName, setDisplayNa
         </button>
       </form>
 
+      <AutoBillCard fb={fb} settings={settings} />
+
       <div className="card">
         <p>
           <b>🔒 {t('totalsLock')}</b>
@@ -438,5 +440,66 @@ export default function Settings({ fb, user, settings, displayName, setDisplayNa
         </p>
       </div>
     </div>
+  );
+}
+
+
+/** WhatsApp auto-bill settings (Nov 2026). Only the setting is saved for now: sending starts
+ *  once the dairy's WhatsApp (Cloud API) is connected - settings.autoBill.connected stays false. */
+export function AutoBillCard({ fb, settings }) {
+  const { t } = useLang();
+  const cur = settings.autoBill || {};
+  const base = { enabled: !!cur.enabled, day: Number(cur.day) || 1, time: cur.time || '09:00' };
+  const [f, setF] = useState(base);
+  const [msg, setMsg] = useState('');
+  const dirty = f.enabled !== base.enabled || f.day !== base.day || f.time !== base.time;
+  const save = (e) => {
+    e.preventDefault();
+    if (!dirty) return;
+    const day = Math.min(28, Math.max(1, Math.round(Number(f.day) || 1)));
+    const time = /^\d{2}:\d{2}$/.test(f.time) ? f.time : '09:00';
+    saveSettings(fb, { autoBill: { ...cur, enabled: f.enabled, day, time } });
+    setF({ enabled: f.enabled, day, time });
+    setMsg(t('saved'));
+    setTimeout(() => setMsg(''), 2500);
+  };
+  return (
+    <form className="card" onSubmit={save} data-testid="autobill-card">
+      <p>
+        <b>🤖 {t('autoBillTitle')}</b>
+      </p>
+      <p className="muted small">{t('autoBillHint')}</p>
+      <div className="lbl" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+        <input
+          type="checkbox"
+          id="dd-autobill-on"
+          data-testid="autobill-on"
+          checked={f.enabled}
+          onChange={(e) => setF({ ...f, enabled: e.target.checked })}
+        />
+        <span onClick={() => setF({ ...f, enabled: !f.enabled })}>{t('autoBillOn')}</span>
+      </div>
+      <div className="form-inline">
+        <div className="lbl small">
+          {t('autoBillDay')}
+          <select data-testid="autobill-day" value={f.day} onChange={(e) => setF({ ...f, day: Number(e.target.value) })}>
+            {Array.from({ length: 28 }, (_, i) => i + 1).map((d) => (
+              <option key={d} value={d}>
+                {d}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="lbl small">
+          {t('autoBillTime')}
+          <input type="time" data-testid="autobill-time" value={f.time} onChange={(e) => setF({ ...f, time: e.target.value })} />
+        </div>
+      </div>
+      {f.enabled && !cur.connected && <p className="muted small">{t('autoBillPending')}</p>}
+      {msg && <p className="ok small">{msg}</p>}
+      <button type="submit" className={'btn small ' + (dirty ? 'primary' : 'saved-btn')} data-testid="autobill-save">
+        {dirty ? t('autoBillSave') : '✓ ' + t('savedState')}
+      </button>
+    </form>
   );
 }

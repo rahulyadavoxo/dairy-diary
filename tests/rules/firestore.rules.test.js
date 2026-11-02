@@ -71,9 +71,13 @@ describe.skipIf(!HOST)('firestore.rules (emulator)', () => {
     it('anonymous user cannot create a farm', async () => {
       await assertFails(createFarm(fbOf(anonCtx(STRANGER)), STRANGER, 'Hacker'));
     });
-    it('another email/password account cannot create a farm', async () => {
-      const ctx = env.authenticatedContext('evil', { email: 'evil@example.com', firebase: { sign_in_provider: 'password' } });
-      await assertFails(createFarm(fbOf(ctx), 'evil', 'Evil'));
+    it('sign-up: another email/password account can create ITS OWN farm, never someone else\'s', async () => {
+      const ctx = env.authenticatedContext('newdairy', { email: 'new@example.com', firebase: { sign_in_provider: 'password' } });
+      await assertSucceeds(createFarm(fbOf(ctx), 'newdairy', 'New'));
+      const db = ctx.firestore();
+      await assertFails(
+        setDoc(doc(db, 'farms', 'someoneElse'), { ownerUid: 'newdairy', createdAt: serverTimestamp(), devices: { newdairy: { name: 'a', addedAt: serverTimestamp(), addedBy: 'newdairy' } } }),
+      );
     });
     it('owner email via a non-password provider token is rejected', async () => {
       const ctx = env.authenticatedContext('x', { email: OWNER_EMAIL, firebase: { sign_in_provider: 'custom' } });
