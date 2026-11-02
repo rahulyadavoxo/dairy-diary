@@ -310,8 +310,11 @@ export function CustomerForm({ fb, initial, nextOrder, onDone, days, settings })
     };
     // "Until X" without "From" = paused from today until X (an empty From used to mean "since the
     // beginning of time", hiding the customer on every past day). Only for a new / changed Until:
-    // an old record that already has Until-only keeps its value.
-    if (f.pauseTo && !f.pauseFrom && f.pauseTo !== ((initial && initial.pauseTo) || '')) {
+    // an old record that already has Until-only keeps its value. Clearing only From of an existing
+    // pause counts as a change too.
+    const pauseEdited =
+      f.pauseTo !== ((initial && initial.pauseTo) || '') || f.pauseFrom !== ((initial && initial.pauseFrom) || '');
+    if (f.pauseTo && !f.pauseFrom && pauseEdited) {
       f = { ...f, pauseFrom: todayISO() };
       setF(f);
     }

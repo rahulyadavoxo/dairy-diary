@@ -251,7 +251,10 @@ export function ToggleBar({ label, on, onChange, testId }) {
 
 // One card per customer for the whole day: Paneer (toggle, rarely sold) on top, then morning,
 // evening and the day's total. "As usual" (left) / "Delivered" (right); "Absent" = didn't take today.
-function DeliveryCard({ c, initM, initE, initT, initPaneer, morningSaved, onDelivered, onAbsent, onBack, canGoBack, lastDay = false, format = 'both', session = 'total', morningLocked = false }) {
+function DeliveryCard({ c, initM, initE, initT, initPaneer, morningSaved, onDelivered, onAbsent, onBack, canGoBack, lastDay = false, format = 'both', session = 'total', morningLocked = false, twice }) {
+  // twice a day: from the customer's profile (a "Same as last day" copy with yesterday's evening 0
+  // must not turn a twice-a-day customer into a once-a-day one)
+  const isTwice = twice === undefined ? takesTwice(c) : twice;
   const usualKey = lastDay ? 'sameAsLastDay' : 'asUsual';
   const { t } = useLang();
   const [m, setM] = useState(initM);
@@ -296,7 +299,7 @@ function DeliveryCard({ c, initM, initE, initT, initPaneer, morningSaved, onDeli
     return onDelivered(
       tot > 0
         ? { milkMorningL: 0, milkEveningL: 0, milkL: tot, paneerKg: pp, half: null }
-        : { milkMorningL: m || 0, milkEveningL: e || 0, paneerKg: pp, half: e == null && (m || 0) > 0 && takesTwice(c) ? 'morning' : null },
+        : { milkMorningL: m || 0, milkEveningL: e || 0, paneerKg: pp, half: e == null && (m || 0) > 0 && isTwice ? 'morning' : null },
       'delivered',
     );
   };
@@ -311,7 +314,7 @@ function DeliveryCard({ c, initM, initE, initT, initPaneer, morningSaved, onDeli
         ? { milkMorningL: m || 0, milkEveningL: usualEvening(c), paneerKg: pp, half: null }
         // As usual = the usual evening too, unless the evening box was cleared (null = evening still
         // to come). Not `e`: in review (Back from Absent / a total-only entry) the box holds 0.
-        : { milkMorningL: usualMorning(c), milkEveningL: e == null ? 0 : usualEvening(c), paneerKg: pp, half: e == null && usualMorning(c) > 0 && takesTwice(c) ? 'morning' : null },
+        : { milkMorningL: usualMorning(c), milkEveningL: e == null ? 0 : usualEvening(c), paneerKg: pp, half: e == null && usualMorning(c) > 0 && isTwice ? 'morning' : null },
       'usual',
     );
   };
@@ -335,7 +338,7 @@ function DeliveryCard({ c, initM, initE, initT, initPaneer, morningSaved, onDeli
         <>
           <SumJoin total={total} fromTotal={tot > 0} t={t}>
             <QtyEdit label={t('session_morning')} value={m} onChange={editM} testId="qty-morning" />
-            <QtyEdit label={t('session_evening')} value={e} onChange={editE} testId="qty-evening" allowEmpty={takesTwice(c)} />
+            <QtyEdit label={t('session_evening')} value={e} onChange={editE} testId="qty-evening" allowEmpty={isTwice} />
             <QtyEdit label={t('session_total')} value={tot} onChange={editT} testId="qty-total" />
           </SumJoin>
         </>
@@ -442,6 +445,12 @@ function DeliveryRound({ fb, customers, days, settings, displayName, onBack, dat
     () => customers.map((c) => (prefillLastDay(c) ? withLastDay(c, days, date) : c)),
     [customers, days, date],
   );
+  // "Twice a day" is decided from the profile too, not only from the prefilled copy: with
+  // "Same as last day" yesterday's evening 0 made a twice-a-day customer look once-a-day, so a
+  // split morning Absent / As usual closed the whole day and the evening was never recorded.
+  const profile = useMemo(() => Object.fromEntries(customers.map((c) => [c.id, c])), [customers]);
+  const twiceC = (c) => (takesTwice(c) ? c : profile[c.id] && takesTwice(profile[c.id]) ? profile[c.id] : c);
+  const twice = (c) => takesTwice(twiceC(c));
   const lastDay = prefilled.length > 0 && prefilled.every((c) => prefillLastDay(c));
   const list = useMemo(() => deliveryList(prefilled, saved, date, session), [prefilled, saved, date, session]);
   const byId = useMemo(() => Object.fromEntries(list.map((c) => [c.id, c])), [list]);
@@ -477,7 +486,7 @@ function DeliveryRound({ fb, customers, days, settings, displayName, onBack, dat
   // Morning round: a half:'morning' entry means the morning round was done, even with 0 L (only the
   // split morning round writes one with no milk = Absent in the morning), so another phone hides it too.
   const morningRoundDone = (en) => deliveredFor(en, 'morning') || (!!en && !en.skip && en.half === 'morning');
-  const roundDone = (en, c) => (roundOnly ? morningRoundDone(en) : dayComplete(en, c));
+  const roundDone = (en, c) => (roundOnly ? morningRoundDone(en) : dayComplete(en, twiceC(c)));
   const isDelivered = (c) => !!doneNow[c.id] || roundDone(saved[c.id], c) || !!(saved[c.id] && saved[c.id].skip);
   const remaining = list.filter((c) => !isDelivered(c) && (!skipped[c.id] || (!roundOnly && emptyHalf(saved[c.id]))));
   const done = list.length - remaining.length;
@@ -507,7 +516,7 @@ function DeliveryRound({ fb, customers, days, settings, displayName, onBack, dat
     if (split && session === 'morning') {
       // evening still to come for a twice-a-day customer (unless an evening is already saved)
       const hasEvening = !prev.skip && prev.half !== 'morning' && (Number(prev.milkEveningL) || 0) > 0;
-      merged.half = !hasEvening && takesTwice(c) ? 'morning' : null;
+      merged.half = !hasEvening && twice(c) ? 'morning' : null;
       if (!hasEvening) merged.milkEveningL = 0;
     }
     if (split && prev.skip) {
@@ -544,7 +553,7 @@ function DeliveryRound({ fb, customers, days, settings, displayName, onBack, dat
 
   // Absent: didn't take milk today (the register's "didn't take" for the whole day).
   const markAbsent = (c) => {
-    if (roundOnly && takesTwice(c)) {
+    if (roundOnly && twice(c)) {
       // only the morning: a whole-day skip would also block the evening
       deliver(c, { milkMorningL: 0, paneerKg: 0 });
       return;
@@ -593,7 +602,7 @@ function DeliveryRound({ fb, customers, days, settings, displayName, onBack, dat
       if (format === 'total') raw = { milkMorningL: 0, milkEveningL: 0, milkL: usualMorning(c) + usualEvening(c) };
       if (split && session === 'morning') {
         const hasE = prev.half !== 'morning' && pe > 0;
-        raw = { milkMorningL: usualMorning(c), milkEveningL: hasE ? pe : 0, half: !hasE && takesTwice(c) ? 'morning' : null };
+        raw = { milkMorningL: usualMorning(c), milkEveningL: hasE ? pe : 0, half: !hasE && twice(c) ? 'morning' : null };
       }
       if (split && session === 'total') raw = { milkMorningL: morningDone(prev) ? pm : usualMorning(c), milkEveningL: pe > 0 && prev.half !== 'morning' ? pe : usualEvening(c), half: null };
       rows[c.id] = normaliseEntry(c, { ...raw, milkRatePaise: prev.milkRatePaise, paneerKg: prev.paneerKg || 0, skip: false, note: prev.note || '' }, settings);
@@ -704,7 +713,7 @@ function DeliveryRound({ fb, customers, days, settings, displayName, onBack, dat
                   ? Number(saved[current.id]?.half !== 'morning' && !saved[current.id]?.skip && saved[current.id]?.milkEveningL) || usualEvening(current)
                   : initEvening(saved[current.id], current)
             }
-            morningSaved={!review && !!saved[current.id] && saved[current.id].half === 'morning' && takesTwice(current) && !emptyHalf(saved[current.id])}
+            morningSaved={!review && !!saved[current.id] && saved[current.id].half === 'morning' && twice(current) && !emptyHalf(saved[current.id])}
             initT={
               format === 'total'
                 ? review
@@ -717,6 +726,7 @@ function DeliveryRound({ fb, customers, days, settings, displayName, onBack, dat
             format={format}
             session={session}
             morningLocked={split && !roundOnly && !review && morningDone(saved[current.id])}
+            twice={twice(current)}
             initPaneer={review ? review.p || 0 : Number(saved[current.id]?.paneerKg) || 0}
             onDelivered={guarded((raw, kind) => {
               playSound(kind || 'delivered');

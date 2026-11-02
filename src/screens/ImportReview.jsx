@@ -7,7 +7,7 @@ import { useMemo, useState, useEffect } from 'react';
 import { saveFeedback } from '../feedback.js';
 import { useLang } from '../i18n.js';
 import { saveEntries, deleteEntry } from '../db.js';
-import { normaliseEntry } from '../entry.js';
+import { normaliseEntry, emptyHalf } from '../entry.js';
 import { sortCustomers } from './RegisterView.jsx';
 import { OCT_IMPORT, IMPORT_DATES, parseImportValue } from '../octoberImport.js';
 import { dmy, todayISO, addDays } from '../format.js';
@@ -76,8 +76,13 @@ function CustomerDays({ fb, customer, regName, days, settings, displayName, onDo
       // Pre-fill: what the app already has wins (a day corrected in the app must not get the paper
       // number back on "Save all days"); the register value is only the start for empty days.
       const en = days[d] && days[d].entries && days[d].entries[customer.id];
-      const have = appMilk(en);
-      if (have > 0) { init[d] = String(have); return; }
+      // Any real entry wins, including Absent / 0 L (an empty box is not written by Save all; the
+      // register value is still shown next to the date to type in on purpose).
+      if (en && !emptyHalf(en)) {
+        const have = appMilk(en);
+        init[d] = have > 0 ? String(have) : '';
+        return;
+      }
       const parsed = parseImportValue(regName ? (OCT_IMPORT[d] || {})[regName] : undefined);
       init[d] = parsed ? String(parsed.milkL) : '';
     });

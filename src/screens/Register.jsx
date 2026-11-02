@@ -196,10 +196,12 @@ export default function DayEditor({ fb, customers, days, pendingDays = {}, setti
     // entries (= bills) for that day, so ask first when editing the whole day.
     const fresh = active.filter((c) => !saved[c.id] && !drafts[c.id]).length;
     if (!customerId && fresh > 0 && !window.confirm(t('saveAllConfirm').replace('{n}', fresh))) return;
+    const isToday = date === todayISO();
     active.forEach((c) => {
-      // Whole day: an untouched saved row is left as it is. Rewriting it only cleared its half
-      // flag, so every "Evening left" customer of today became complete with evening 0.
-      if (!customerId && saved[c.id] && !drafts[c.id]) return;
+      // Whole day: an untouched saved row is left as it is. Today an "Evening left" row stays open
+      // (rewriting it cleared the half flag = evening 0 before the evening round). A PAST day:
+      // Save all records the whole day, so a half row is closed (evening 0), as before 1.10.57.
+      if (!customerId && saved[c.id] && !drafts[c.id] && (isToday || !saved[c.id].half)) return;
       if (!(c.id in bases.current)) bases.current[c.id] = saved[c.id];
       dirty.current[c.id] = rowFor(c);
     });
