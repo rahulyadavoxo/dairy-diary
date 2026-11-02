@@ -73,3 +73,6 @@ jobs:
           cp app-release.apk "dairy-diary-${GITHUB_REF_NAME}.apk"
           gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --title "Dairy Diary ${GITHUB_REF_NAME}" --notes "Signed release APK built by CI."
           gh release upload "$GITHUB_REF_NAME" "dairy-diary-${GITHUB_REF_NAME}.apk" --clobber
+          # Fixed-name copy so the website can link releases/latest/download/dairy-diary.apk
+          cp app-release.apk dairy-diary.apk
+          gh release upload "$GITHUB_REF_NAME" dairy-diary.apk --clobber

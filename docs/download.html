@@ -2,7 +2,7 @@
 <nav><a href="index.html">Dairy Diary</a><a href="privacy.html">Privacy Policy</a><a href="terms.html">Terms</a></nav>
 <h1>🥛 डेयरी डायरी डाउनलोड करें</h1>
 <p>दूध का रोज़ का रजिस्टर, महीने का हिसाब और WhatsApp पर बिल — एक ऐप में। मुफ़्त।</p>
-<p><a id="dl" class="btn" href="https://github.com/rahulyadavoxo/dairy-diary/releases/latest" style="display:inline-block;background:#1f7a4d;color:#fff;padding:12px 18px;border-radius:10px;text-decoration:none;font-weight:600">⬇️ ऐप डाउनलोड करें (Android)</a></p>
+<p><a id="dl" class="btn" href="https://github.com/rahulyadavoxo/dairy-diary/releases/download/v1.10.63/dairy-diary-v1.10.63.apk" style="display:inline-block;background:#1f7a4d;color:#fff;padding:12px 18px;border-radius:10px;text-decoration:none;font-weight:600">⬇️ ऐप डाउनलोड करें (Android)</a></p>
 <p class="muted" id="dlinfo">बटन दबाते ही नया ऐप सीधे डाउनलोड होगा।</p>
 
 <h2>कैसे इंस्टॉल करें</h2>
@@ -24,14 +24,14 @@
   fetch('https://api.github.com/repos/rahulyadavoxo/dairy-diary/releases/latest',{headers:{Accept:'application/vnd.github+json'}})
   .then(function(r){if(!r.ok)throw 0;return r.json();})
   .then(function(rel){
-    var apk=(rel.assets||[]).find(function(x){return /\.apk$/i.test(x.name);});
+    var apk=(rel.assets||[]).find(function(x){return /^dairy-diary-v.*\.apk$/i.test(x.name);})||(rel.assets||[]).find(function(x){return /\.apk$/i.test(x.name);});
     if(!apk)throw 0;
     a.href=apk.browser_download_url;
     a.setAttribute('download',apk.name);
     var mb=(apk.size/1048576).toFixed(1);
     info.textContent='नया वर्ज़न '+rel.tag_name+' ('+mb+' MB) — बटन दबाते ही सीधे डाउनलोड होगा।';
   })
-  .catch(function(){info.textContent='खुलने वाले पेज पर "Assets" में .apk फ़ाइल पर दबाएं।';});
+  .catch(function(){});
 })();
 </script>
 </body></html>
