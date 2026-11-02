@@ -1,0 +1,10 @@
+{
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "runtime": "nodejs22",
+      "predeploy": ["bash scripts/sync-functions-shared.sh"]
+    }
+  ]
+}

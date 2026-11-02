@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { saveFeedback } from '../feedback.js';
 import { useLang } from '../i18n.js';
 import { saveSettings } from '../db.js';
+import { callFn as defaultCallFn } from '../firebase.js';
+import { TEMPLATE_DEFAULT } from '../autoBill.js';
 import { paiseToInput, toPaise } from '../format.js';
 import { validUpiId } from '../upi.js';
 import { getPinHash, hashPin, savePinHash, verifyPin, pinWaitSeconds } from '../pinLock.js';
@@ -360,7 +362,8 @@ export default function Settings({ fb, user, settings, displayName, setDisplayNa
         </button>
       </form>
 
-      <AutoBillCard fb={fb} settings={settings} />
+      <AutoBillCard fb={fb} settings={settings} farmId={farmId} isOwner={!!user && user.uid === farmId} />
+      <ShareAppCard />
 
       <div className="card">
         <p>
@@ -444,62 +447,197 @@ export default function Settings({ fb, user, settings, displayName, setDisplayNa
 }
 
 
-/** WhatsApp auto-bill settings (Nov 2026). Only the setting is saved for now: sending starts
- *  once the dairy's WhatsApp (Cloud API) is connected - settings.autoBill.connected stays false. */
-export function AutoBillCard({ fb, settings }) {
+/** WhatsApp auto-bill (Nov 2026): day/time setting + "WhatsApp जोड़ो" (owner) + test send.
+ *  Bills are sent by the autoBillTick Cloud Function; it writes connected/display/lastRun here. */
+export function AutoBillCard({ fb, settings, isOwner = true, farmId, callFn = defaultCallFn }) {
   const { t } = useLang();
   const cur = settings.autoBill || {};
   const base = { enabled: !!cur.enabled, day: Number(cur.day) || 1, time: cur.time || '09:00' };
   const [f, setF] = useState(base);
-  const [msg, setMsg] = useState('');
+  const [msg, setMsg] = useState({ text: '', err: false });
+  const [conn, setConn] = useState(null); // connect form open
+  const [busy, setBusy] = useState(false);
+  const [testPhone, setTestPhone] = useState('');
   const dirty = f.enabled !== base.enabled || f.day !== base.day || f.time !== base.time;
+  const say = (text, err = false) => setMsg({ text, err });
+  const fnErr = (e) => String((e && e.message) || e || '').replace(/^.*?WhatsApp:/, 'WhatsApp:').slice(0, 200);
+
   const save = (e) => {
     e.preventDefault();
     if (!dirty) return;
     const day = Math.min(28, Math.max(1, Math.round(Number(f.day) || 1)));
     const time = /^\d{2}:\d{2}$/.test(f.time) ? f.time : '09:00';
-    saveSettings(fb, { autoBill: { ...cur, enabled: f.enabled, day, time } });
+    // Only these three: connected/display/lastRun belong to the server (merge keeps them).
+    saveSettings(fb, { autoBill: { enabled: f.enabled, day, time } });
     setF({ enabled: f.enabled, day, time });
-    setMsg(t('saved'));
-    setTimeout(() => setMsg(''), 2500);
+    say(t('saved'));
+    setTimeout(() => setMsg({ text: '', err: false }), 2500);
+  };
+  const connect = async (e) => {
+    e.preventDefault();
+    setBusy(true);
+    say('');
+    try {
+      const r = await callFn('waConnect', { farmId, ...conn });
+      setConn(null);
+      say(t('waConnected') + (r && r.display ? ': ' + r.display : ''));
+    } catch (e2) {
+      say(t('waConnectFailed') + ' ' + fnErr(e2), true);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const disconnect = async () => {
+    if (!window.confirm(t('waDisconnectAsk'))) return;
+    setBusy(true);
+    try {
+      await callFn('waDisconnect', { farmId });
+      say(t('waDisconnected'));
+    } catch (e2) {
+      say(fnErr(e2), true);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const test = async () => {
+    if (String(testPhone).replace(/\D/g, '').length < 10) return say(t('waTestPhone'), true);
+    setBusy(true);
+    try {
+      await callFn('waTest', { farmId, phone: testPhone });
+      say(t('waTestSent'));
+    } catch (e2) {
+      say(fnErr(e2), true);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const lr = cur.lastRun;
+
+  return (
+    <div className="card" data-testid="autobill-card">
+      <form onSubmit={save}>
+        <p>
+          <b>🤖 {t('autoBillTitle')}</b>
+        </p>
+        <p className="muted small">{t('autoBillHint')}</p>
+        <div className="lbl" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+          <input type="checkbox" id="dd-autobill-on" data-testid="autobill-on" checked={f.enabled} onChange={(e) => setF({ ...f, enabled: e.target.checked })} />
+          <span onClick={() => setF({ ...f, enabled: !f.enabled })}>{t('autoBillOn')}</span>
+        </div>
+        <div className="form-inline">
+          <div className="lbl small">
+            {t('autoBillDay')}
+            <select data-testid="autobill-day" value={f.day} onChange={(e) => setF({ ...f, day: Number(e.target.value) })}>
+              {Array.from({ length: 28 }, (_, i) => i + 1).map((d) => (
+                <option key={d} value={d}>
+                  {d}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="lbl small">
+            {t('autoBillTime')}
+            <input type="time" data-testid="autobill-time" value={f.time} onChange={(e) => setF({ ...f, time: e.target.value })} />
+          </div>
+        </div>
+        {f.enabled && !cur.connected && <p className="muted small">{t('autoBillPending')}</p>}
+        <button type="submit" className={'btn small ' + (dirty ? 'primary' : 'saved-btn')} data-testid="autobill-save">
+          {dirty ? t('autoBillSave') : '✓ ' + t('savedState')}
+        </button>
+      </form>
+
+      <hr className="sep" />
+      {cur.connected ? (
+        <>
+          <p className="small" data-testid="wa-connected">
+            ✅ {t('waConnected')}
+            {cur.display ? ': ' + cur.display : ''}
+          </p>
+          {lr && lr.month && (
+            <p className="muted small" data-testid="autobill-lastrun">
+              {t('autoBillLast')}: {lr.month} — ✓ {lr.sent || 0}
+              {lr.failed ? ` · ✗ ${lr.failed}` : ''}
+            </p>
+          )}
+          <div className="form-inline">
+            <input type="tel" inputMode="tel" placeholder={t('waTestPhone')} value={testPhone} onChange={(e) => setTestPhone(e.target.value)} data-testid="wa-test-phone" />
+            <button type="button" className="btn small" onClick={test} disabled={busy} data-testid="wa-test">
+              {t('waTestBtn')}
+            </button>
+          </div>
+          {isOwner && (
+            <button type="button" className="btn small ghost" onClick={disconnect} disabled={busy}>
+              {t('waDisconnect')}
+            </button>
+          )}
+        </>
+      ) : isOwner ? (
+        conn ? (
+          <form onSubmit={connect} data-testid="wa-connect-form">
+            <p className="muted small">{t('waConnectHint')}</p>
+            <div className="lbl small">
+              Phone number ID
+              <input inputMode="numeric" value={conn.phoneNumberId} onChange={(e) => setConn({ ...conn, phoneNumberId: e.target.value })} required data-testid="wa-pnid" />
+            </div>
+            <div className="lbl small">
+              Access token
+              <input type="password" autoComplete="off" value={conn.accessToken} onChange={(e) => setConn({ ...conn, accessToken: e.target.value })} required data-testid="wa-token" />
+            </div>
+            <div className="form-inline">
+              <div className="lbl small">
+                {t('waTemplate')}
+                <input value={conn.templateName} onChange={(e) => setConn({ ...conn, templateName: e.target.value })} />
+              </div>
+              <div className="lbl small">
+                {t('waTemplateLang')}
+                <input value={conn.templateLang} maxLength={10} onChange={(e) => setConn({ ...conn, templateLang: e.target.value })} />
+              </div>
+            </div>
+            <div className="chips">
+              <button type="submit" className="btn small primary" disabled={busy} data-testid="wa-connect-submit">
+                {busy ? t('loading') : t('waConnectBtn')}
+              </button>
+              <button type="button" className="btn small ghost" onClick={() => setConn(null)} disabled={busy}>
+                {t('back')}
+              </button>
+            </div>
+          </form>
+        ) : (
+          <button
+            type="button"
+            className="btn small primary"
+            data-testid="wa-connect"
+            onClick={() => setConn({ phoneNumberId: '', accessToken: '', templateName: TEMPLATE_DEFAULT.name, templateLang: TEMPLATE_DEFAULT.lang })}
+          >
+            🔗 {t('waConnectBtn')}
+          </button>
+        )
+      ) : (
+        <p className="muted small">{t('waOwnerOnly')}</p>
+      )}
+      {msg.text && <p className={(msg.err ? 'error' : 'ok') + ' small'}>{msg.text}</p>}
+    </div>
+  );
+}
+
+const APP_PAGE = 'https://rahulyadavoxo.github.io/dairy-diary/download.html';
+
+/** Share the app with another dairy: WhatsApp message with the download Page link. */
+export function ShareAppCard() {
+  const { t } = useLang();
+  const share = () => {
+    const text = `${t('shareAppText')}\n${APP_PAGE}`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
   };
   return (
-    <form className="card" onSubmit={save} data-testid="autobill-card">
+    <div className="card" data-testid="share-app-card">
       <p>
-        <b>🤖 {t('autoBillTitle')}</b>
+        <b>📲 {t('shareAppTitle')}</b>
       </p>
-      <p className="muted small">{t('autoBillHint')}</p>
-      <div className="lbl" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-        <input
-          type="checkbox"
-          id="dd-autobill-on"
-          data-testid="autobill-on"
-          checked={f.enabled}
-          onChange={(e) => setF({ ...f, enabled: e.target.checked })}
-        />
-        <span onClick={() => setF({ ...f, enabled: !f.enabled })}>{t('autoBillOn')}</span>
-      </div>
-      <div className="form-inline">
-        <div className="lbl small">
-          {t('autoBillDay')}
-          <select data-testid="autobill-day" value={f.day} onChange={(e) => setF({ ...f, day: Number(e.target.value) })}>
-            {Array.from({ length: 28 }, (_, i) => i + 1).map((d) => (
-              <option key={d} value={d}>
-                {d}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="lbl small">
-          {t('autoBillTime')}
-          <input type="time" data-testid="autobill-time" value={f.time} onChange={(e) => setF({ ...f, time: e.target.value })} />
-        </div>
-      </div>
-      {f.enabled && !cur.connected && <p className="muted small">{t('autoBillPending')}</p>}
-      {msg && <p className="ok small">{msg}</p>}
-      <button type="submit" className={'btn small ' + (dirty ? 'primary' : 'saved-btn')} data-testid="autobill-save">
-        {dirty ? t('autoBillSave') : '✓ ' + t('savedState')}
+      <p className="muted small">{t('shareAppHint')}</p>
+      <button type="button" className="btn small" onClick={share} data-testid="share-app">
+        {t('shareAppBtn')}
       </button>
-    </form>
+    </div>
   );
 }

@@ -83,3 +83,11 @@ async function initFirebase() {
   cached = { app, auth, db, authMod, fsMod };
   return cached;
 }
+
+/** Call a Cloud Function (WhatsApp auto-bill, region asia-south1). Loaded only when used. */
+export async function callFn(name, data) {
+  const { app } = await getFirebase();
+  const m = await import('firebase/functions');
+  const res = await m.httpsCallable(m.getFunctions(app, 'asia-south1'), name)(data || {});
+  return res && res.data;
+}

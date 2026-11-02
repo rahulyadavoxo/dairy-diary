@@ -28,7 +28,7 @@ function storeLastEdited(id) {
   }
 }
 
-const EMPTY = { name: '', phone: '', area: '', usualMorningL: 0.5, usualEveningL: 0.5, customRate: false, rateOverride: '', customPaneerRate: false, paneerRateOverride: '', openingDue: '', openingAdv: false, pauseFrom: '', pauseTo: '', active: true, isSupplier: false, prefillMode: 'usual' };
+const EMPTY = { name: '', phone: '', area: '', usualMorningL: 0.5, usualEveningL: 0.5, customRate: false, rateOverride: '', customPaneerRate: false, paneerRateOverride: '', openingDue: '', openingAdv: false, pauseFrom: '', pauseTo: '', active: true, isSupplier: false, waAutoBill: true, prefillMode: 'usual' };
 
 const round3 = (n) => Math.max(0, Math.round(Number(n || 0) * 1000) / 1000);
 
@@ -249,6 +249,7 @@ export function CustomerForm({ fb, initial, nextOrder, onDone, days, settings })
           pauseTo: initial.pauseTo || '',
           active: initial.active !== false,
           isSupplier: !!initial.isSupplier,
+          waAutoBill: initial.waAutoBill !== false,
           prefillMode: initial.prefillMode === 'lastDay' ? 'lastDay' : 'usual',
         }
       : EMPTY,
@@ -348,6 +349,7 @@ export function CustomerForm({ fb, initial, nextOrder, onDone, days, settings })
       pauseTo: f.pauseTo || '',
       active: !!f.active,
       isSupplier: !!f.isSupplier,
+      waAutoBill: f.waAutoBill !== false,
       prefillMode: f.prefillMode === 'lastDay' ? 'lastDay' : 'usual',
     });
     let data = toData(f);
@@ -394,6 +396,9 @@ export function CustomerForm({ fb, initial, nextOrder, onDone, days, settings })
       </label>
       <label className="check">
         <input type="checkbox" checked={!!f.isSupplier} onChange={set('isSupplier')} /> 🏷️ {t('supplierHint')}
+      </label>
+      <label className="check">
+        <input type="checkbox" checked={f.waAutoBill !== false} onChange={set('waAutoBill')} data-testid="cust-wa-autobill" /> 🤖 {t('custAutoBill')}
       </label>
       <div className="two">
         <div className="lbl">
