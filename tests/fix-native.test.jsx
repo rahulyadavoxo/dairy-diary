@@ -11,7 +11,7 @@ vi.mock('@capacitor/core', async (orig) => {
     Capacitor: { ...real.Capacitor, isNativePlatform: () => state.native },
     registerPlugin: (name, ...rest) =>
       name === 'WhatsAppShare'
-        ? { shareImages: vi.fn(async (o) => { state.shareImages.push(o); }), shareImage: vi.fn(async () => ({})) }
+        ? { shareImages: vi.fn(async (o) => { state.shareImages.push(o); }), shareImage: vi.fn(async () => ({})), saveBill: vi.fn(async (o) => ({ name: `${o.fileName.replace(/[^A-Za-z0-9._-]/g, '_')}-${state.shareImages.length}-${Math.random().toString(36).slice(2)}.png` })) }
         : real.registerPlugin(name, ...rest),
   };
 });
@@ -171,7 +171,7 @@ describe('#5 frozen order', () => {
   });
   it('a customer added mid-session (id sorts first) does not shift the current one', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
-    localStorage.setItem('dd_wa_progress', JSON.stringify({ month: bm, idx: 1, ids: ['a', 'b', 'c'] }));
+    localStorage.setItem(`dd_wa_progress:${bm}`, JSON.stringify({ month: bm, past: true, idx: 1, ids: ['a', 'b', 'c'] }));
     const { rerender } = render(wrap(<BillSender {...props} />));
     await flush();
     expect(screen.getByRole('heading', { level: 2 }).textContent).toContain('b');
@@ -181,14 +181,14 @@ describe('#5 frozen order', () => {
     await flush();
     expect(screen.getByRole('heading', { level: 2 }).textContent).toContain('b');
     expect(title()).toContain('2/4');
-    const saved = JSON.parse(localStorage.getItem('dd_wa_progress'));
+    const saved = JSON.parse(localStorage.getItem(`dd_wa_progress:${bm}`));
     expect(saved.ids).toEqual(['a', 'b', 'c', '0new']);
   });
 });
 
 describe('#11 resume after the last customer', () => {
   it('saved idx === length shows "all sent", not the last customer again', async () => {
-    localStorage.setItem('dd_wa_progress', JSON.stringify({ month: bm, idx: 3, ids: ['a', 'b', 'c'] }));
+    localStorage.setItem(`dd_wa_progress:${bm}`, JSON.stringify({ month: bm, past: true, idx: 3, ids: ['a', 'b', 'c'] }));
     render(wrap(<BillSender {...props} />));
     expect(screen.getByText(en.waAllSent)).toBeTruthy();
   });
@@ -230,10 +230,10 @@ describe('#10 Download all on the phone', () => {
       { blob: new Blob(['y']), fileName: billFileName('रमेश', bm, 'r2') },
     ]);
     expect(state.shareImages).toHaveLength(1);
-    const files = state.shareImages[0].files;
-    expect(files).toHaveLength(2);
-    expect(files[0].fileName).not.toBe(files[1].fileName);
-    expect(files[0].base64).toBeTruthy();
+    const names = state.shareImages[0].names;
+    expect(names).toHaveLength(2);
+    expect(names[0]).not.toBe(names[1]);
+    expect(state.shareImages[0].files).toBeUndefined();
   });
 });
 

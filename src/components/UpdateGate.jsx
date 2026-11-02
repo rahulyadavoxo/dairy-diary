@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { useLang } from '../i18n.js';
 import { setBackOwner } from '../backStack.js';
+import { App as CapApp } from '@capacitor/app';
 import { checkForUpdate, installedVersion, downloadUpdate, installUpdate, waitForSync, CHECK_EVERY_MS, POLL_WHILE_OPEN_MS } from '../appUpdate.js';
 
 // A release this phone can never install (the native side refuses the file for good: versionCode
@@ -183,9 +184,11 @@ export default function UpdateGate({ children, api = real, native = Capacitor.is
   useEffect(() => {
     if (!shown) return undefined;
     return setBackOwner(() => {
-      import('@capacitor/app')
-        .then(({ App }) => App.minimizeApp())
-        .catch(() => {});
+      try {
+        Promise.resolve(CapApp.minimizeApp()).catch(() => {});
+      } catch {
+        /* web: nothing to minimise */
+      }
     });
   }, [shown]);
 

@@ -98,16 +98,52 @@ public class WhatsAppSharePlugin extends Plugin {
     }
 
     /** Bill photos "Download all": every photo in ONE Android share sheet (WebView cannot download blobs). */
+    /** Writes ONE bill photo to the bills folder (small bridge call) and returns its file name. */
+    @PluginMethod
+    public void saveBill(PluginCall call) {
+        String b64 = call.getString("base64");
+        String fileName = call.getString("fileName", "bill.png");
+        if (b64 == null || b64.isEmpty()) { call.reject("No image", "NO_IMAGE"); return; }
+        try {
+            File dir = billsDir();
+            File f = new File(dir, safeBase(fileName) + "-" + System.currentTimeMillis() + "-" + (++saveSeq) + ".png");
+            try (FileOutputStream out = new FileOutputStream(f)) {
+                out.write(Base64.decode(b64, Base64.DEFAULT));
+            }
+            JSObject r = new JSObject();
+            r.put("name", f.getName());
+            call.resolve(r);
+        } catch (Exception e) {
+            call.reject("Save failed: " + e.getMessage(), "SAVE_FAILED", e);
+        }
+    }
+
+    private static int saveSeq = 0;
+
     @PluginMethod
     public void shareImages(PluginCall call) {
         JSArray arr = call.getArray("files");
-        if (arr == null || arr.length() == 0) { call.reject("No image", "NO_IMAGE"); return; }
+        JSArray names = call.getArray("names");
+        boolean byName = names != null && names.length() > 0;
+        if (!byName && (arr == null || arr.length() == 0)) { call.reject("No image", "NO_IMAGE"); return; }
         try {
             File dir = billsDir();
             ArrayList<Uri> uris = new ArrayList<>();
             ClipData clip = null;
             long stamp = System.currentTimeMillis();
-            for (int k = 0; k < arr.length(); k++) {
+            if (byName) {
+                for (int k = 0; k < names.length(); k++) {
+                    String n = names.getString(k);
+                    if (n == null || !n.matches("[A-Za-z0-9._-]+") || n.contains("..")) continue;
+                    File f = new File(dir, n);
+                    if (!f.isFile()) continue;
+                    Uri uri = FileProvider.getUriForFile(getContext(), getContext().getPackageName() + ".fileprovider", f);
+                    uris.add(uri);
+                    if (clip == null) clip = ClipData.newRawUri("bill", uri);
+                    else clip.addItem(new ClipData.Item(uri));
+                }
+            }
+            for (int k = 0; !byName && k < arr.length(); k++) {
                 JSONObject o = arr.getJSONObject(k);
                 String b64 = o.optString("base64", "");
                 if (b64.isEmpty()) continue;

@@ -70,7 +70,7 @@ describe('BUG-02/03 Rules of Hooks crashes', () => {
     const bm = addMonths(monthOf(todayISO()), -1);
     const c = { id: 'c1', name: 'Ram', phone: '9999999999' };
     const days = { [`${bm}-05`]: { entries: { c1: { milkL: 1 } } } };
-    localStorage.setItem('dd_wa_progress', JSON.stringify({ month: bm, idx: 0 }));
+    localStorage.setItem(`dd_wa_progress:${bm}`, JSON.stringify({ month: bm, past: true, idx: 0 }));
     const props = { fb: {}, days, payments: [], settings, onClose: () => {} };
     const r = render(wrap(<BillSender {...props} customers={[c]} />));
     // customer becomes inactive -> targets empty -> early return path; must not crash

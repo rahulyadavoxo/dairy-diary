@@ -91,21 +91,22 @@ const S = (fb, settings) => (
 
 describe('N1 rate boxes compare by value', () => {
   it('"60.50" saved, another phone sets 62, then a name-only save does NOT resend 60.50', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true); // no PIN set: rate change asks a confirm
     const fb = mkFb();
     const base = { milkRatePaise: 6000, paneerRatePaise: 40000, farmName: 'X', phone: '1', upiId: '' };
     const { container, rerender } = render(wrap(S(fb, base)));
     const milk = () => container.querySelectorAll('input[type="number"]')[0];
     fireEvent.change(milk(), { target: { value: '60.50' } });
-    // rate change needs the PIN only when a PIN is set (none here) -> saves directly
     fireEvent.click(screen.getByTestId('settings-save'));
-    expect(settingsWrites(fb)).toEqual([{ milkRatePaise: 6050 }]);
-    expect(milk().value).toBe('60.5'); // normalised after save
+    await waitFor(() => expect(settingsWrites(fb)).toEqual([{ milkRatePaise: 6050 }]));
+    await waitFor(() => expect(milk().value).toBe('60.5')); // normalised after save
     rerender(wrap(S(fb, { ...base, milkRatePaise: 6050 })));
     expect(screen.getByTestId('settings-save').className).toContain('saved-btn');
     rerender(wrap(S(fb, { ...base, milkRatePaise: 6200 }))); // other phone
     expect(milk().value).toBe('62');
     fireEvent.change(screen.getAllByRole('textbox').at(-1), { target: { value: 'Bhai2' } });
     fireEvent.click(screen.getByTestId('settings-save'));
+    await new Promise((r) => setTimeout(r, 50));
     expect(settingsWrites(fb)).toEqual([{ milkRatePaise: 6050 }]); // nothing new
   });
   it('an untouched box with the same value written differently still follows the server', () => {

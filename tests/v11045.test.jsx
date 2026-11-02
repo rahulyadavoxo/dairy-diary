@@ -97,12 +97,12 @@ describe('1.10.45 bills one by one: next chat opens after coming back', () => {
     expect(sent).toHaveLength(2);
     expect(sent[1]).toBe(sent[0]);
     expect(blobs[1]).toBe(blobs[0]);
-    expect(JSON.parse(localStorage.getItem('dd_wa_progress')).idx).toBe(0);
+    expect(JSON.parse(localStorage.getItem(`dd_wa_progress:${bm}`)).idx).toBe(0);
   });
 
   it('top-right Previous steps the count back; no left Back on the sending screen', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
-    localStorage.setItem('dd_wa_progress', JSON.stringify({ month: bm, idx: 1 }));
+    localStorage.setItem(`dd_wa_progress:${bm}`, JSON.stringify({ month: bm, past: true, idx: 1 }));
     render(wrap(<BillSender {...props} />));
     await flush();
     expect(screen.getByText(/\(2\/2\)/)).toBeTruthy();

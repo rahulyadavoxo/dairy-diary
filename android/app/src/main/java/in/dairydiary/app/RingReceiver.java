@@ -106,7 +106,7 @@ public class RingReceiver extends BroadcastReceiver {
      * idle alarm the network often needs a few seconds to wake up. goAsync allows far more than 20 s.
      */
     static int checkServer(final SharedPreferences p, final String day) {
-        ExecutorService ex = Executors.newSingleThreadExecutor();
+        ExecutorService ex = Executors.newCachedThreadPool();
         try {
             long end = System.currentTimeMillis() + 20000L;
             for (int attempt = 0; attempt < 2; attempt++) {
@@ -275,7 +275,21 @@ public class RingReceiver extends BroadcastReceiver {
             if (al != null) {
                 // exact: an inexact restore could leave the alarm volume at full for a long time in Doze
                 boolean exact = Build.VERSION.SDK_INT < 31 || al.canScheduleExactAlarms();
-                try {
+                boolean done = false;
+                if (Build.VERSION.SDK_INT >= 23 && Build.VERSION.SDK_INT <= 30) {
+                    // Android 6-11 deep sleep: an alarm clock fires on time even in Doze
+                    try {
+                        Intent launch = ctx.getPackageManager().getLaunchIntentForPackage(ctx.getPackageName());
+                        if (launch != null) {
+                            PendingIntent showPi = PendingIntent.getActivity(ctx, RESTORE_ID, launch, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+                            al.setAlarmClock(new AlarmManager.AlarmClockInfo(at, showPi), pi);
+                            done = true;
+                        }
+                    } catch (Exception ignoredClock) {
+                        done = false;
+                    }
+                }
+                if (!done) try {
                     if (exact && Build.VERSION.SDK_INT >= 23) al.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi);
                     else if (Build.VERSION.SDK_INT >= 23) al.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi);
                     else al.setExact(AlarmManager.RTC_WAKEUP, at, pi);
