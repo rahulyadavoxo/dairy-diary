@@ -1,14 +1,18 @@
 name: WhatsApp auto-bill (cron)
 # Free server for auto-bills: every 15 min, sends last month's bills for each dairy whose
 # Settings day+time has come (functions/runner.js). GitHub may start a run 5-30 min late.
-# Needs repo secret FIREBASE_SERVICE_ACCOUNT (Firebase Console → Project settings →
-# Service accounts → Generate new private key → paste the whole JSON). No Blaze needed.
+# Login (no Blaze needed), either:
+#  A) keyless (preferred): repo variable GCP_WIF_PROVIDER = Workload Identity provider
+#     "projects/<num>/locations/global/workloadIdentityPools/github/providers/dairy-diary"
+#     (see notes: Cloud Shell setup). Used when the org blocks service-account keys.
+#  B) repo secret FIREBASE_SERVICE_ACCOUNT = whole service-account JSON.
 on:
   schedule:
     - cron: '*/15 * * * *'
   workflow_dispatch:
 permissions:
   contents: read
+  id-token: write
 concurrency:
   group: autobill
   cancel-in-progress: false
@@ -16,14 +20,23 @@ jobs:
   send:
     runs-on: ubuntu-24.04
     timeout-minutes: 12
+    env:
+      WIF: ${{ vars.GCP_WIF_PROVIDER }}
+      SA_EMAIL: firebase-adminsdk-fbsvc@project-c9157c64-e3e6-4b08-89f.iam.gserviceaccount.com
     steps:
-      - name: Skip when the secret is not set yet
+      - name: Skip when no login is set up yet
         id: chk
         env:
           SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-        run: if [ -z "$SA" ]; then echo "skip=1" >> "$GITHUB_OUTPUT"; echo "FIREBASE_SERVICE_ACCOUNT not set - nothing sent"; fi
+        run: if [ -z "$SA" ] && [ -z "$WIF" ]; then echo "skip=1" >> "$GITHUB_OUTPUT"; echo "No login set up - nothing sent"; fi
       - uses: actions/checkout@v7
         if: steps.chk.outputs.skip != '1'
+      - name: Keyless Google login
+        if: steps.chk.outputs.skip != '1' && env.WIF != ''
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ env.SA_EMAIL }}
       - uses: actions/setup-node@v7
         if: steps.chk.outputs.skip != '1'
         with:
@@ -37,6 +50,9 @@ jobs:
         run: |
           bash scripts/sync-functions-shared.sh
           cd functions && npm ci --omit=dev --no-audit --no-fund
-          echo "$SA" > "$RUNNER_TEMP/sa.json"
-          GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/sa.json" node cron.mjs
+          if [ -z "$WIF" ]; then
+            echo "$SA" > "$RUNNER_TEMP/sa.json"
+            export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/sa.json"
+          fi
+          node cron.mjs
           rm -f "$RUNNER_TEMP/sa.json"
