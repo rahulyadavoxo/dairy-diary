@@ -17,7 +17,7 @@ export function defaultPhotoMonth(month, today = todayISO()) {
   return month === cur && Number(today.slice(8, 10)) <= 3 ? addMonths(cur, -1) : month;
 }
 
-export default function BillPhotos({ customers, days, payments, settings, month: initialMonth, onClose }) {
+export default function BillPhotos({ customers, days, payments, settings, month: initialMonth, histOk = true, onClose }) {
   const { t } = useLang();
   const [month, setMonthState] = useState(initialMonth);
   const res = useMemo(
@@ -111,6 +111,8 @@ export default function BillPhotos({ customers, days, payments, settings, month:
         <MonthNav month={month} setMonth={setMonth} minMonth={firstDeliveryMonth(days)} />
         <p className="muted small">{t('billPhotosHint')}</p>
       </header>
+      {/* money #7 / NEW-5: the photos' previous due may be incomplete until old history loads */}
+      {!histOk && <p className="card warn small" data-testid="old-history-loading">{t('oldHistoryLoading')}</p>}
       {photos.length === 0 ? (
         <button type="button" className="btn primary big" disabled={working || targets.length === 0} onClick={generate}>
           {working ? t('loading') : `${t('makeBillPhotos')} (${targets.length})`}

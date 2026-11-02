@@ -70,8 +70,9 @@ export function monthCsv({ customers = [], days = {}, payments = [], settings = 
   if (sup.length) block(h.suppliers, sup);
 
   const names = new Map(customers.map((c) => [c.id, c.name]));
-  const pays = payments
-    .filter((p) => p.date && p.date.slice(0, 7) === month)
+  // NEW-4: payments of deleted customers are left out, like Hisaab's "collected" (computeMonth ignores them)
+  const pays = (payments || [])
+    .filter((p) => p.date && p.date.slice(0, 7) === month && names.has(p.customerId))
     .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
   // money #5: money received from customers and money paid to suppliers are separate lists with
   // their own totals (one mixed total did not match Hisaab's "collected").

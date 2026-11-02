@@ -157,7 +157,7 @@ export default function Hisaab({ fb, customers, days, payments, settings, month,
     return <BillSender fb={fb} customers={customers} days={days} payments={payments} settings={settings} month={sending} histOk={histOk} onClose={() => setSending(false)} />;
   }
   if (photos) {
-    return <BillPhotos customers={customers} days={days} payments={payments} settings={settings} month={month} onClose={() => setPhotos(false)} />;
+    return <BillPhotos customers={customers} days={days} payments={payments} settings={settings} month={month} histOk={histOk} onClose={() => setPhotos(false)} />;
   }
 
   return (

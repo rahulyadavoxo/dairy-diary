@@ -2,7 +2,8 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { LangContext, loadLang, saveLang, makeT, useLang } from './i18n.js';
 import { isFirebaseConfigured, getFirebase, offlineSaveBroken, MEMCACHE_EVENT } from './firebase.js';
 import { initPendingSync, pendingCount } from './pendingSync.js';
-import { listenAll, lockNullPaneerRates, saveSettings } from './db.js';
+import { listenAll, saveSettings } from './db.js';
+import { maybeLockPaneer } from './paneerLock.js';
 import { todayISO, monthOf, dmy } from './format.js';
 import NotConfigured from './screens/NotConfigured.jsx';
 import Login from './screens/Login.jsx';
@@ -239,6 +240,7 @@ function Main({ fb, user, farm, farmId }) {
   const [histOk, setHistOk] = useState(true); // false: history older than the live window not on this phone yet
   const [payments, setPayments] = useState([]);
   const [loaded, setLoaded] = useState({ days: false, customers: false });
+  const lockSrc = useRef({ settings: null, customers: null }); // true = last snapshot came from the server
   const [online, setOnline] = useState(typeof navigator === 'undefined' ? true : navigator.onLine);
   // Firestore could not use the phone's storage (full): offline entries would be lost on close.
   const [memOnly, setMemOnly] = useState(offlineSaveBroken);
@@ -268,7 +270,8 @@ function Main({ fb, user, farm, farmId }) {
   useEffect(
     () =>
       listenAll(fb, {
-        settings: (s) => {
+        settings: (s, fromCache) => {
+          lockSrc.current.settings = !fromCache; // NEW-3: paneer lock needs a server copy
           migrateLegacyPin(s); // before render, so Hisaab sees the PIN in the same update
           // The old synced hash (unsalted SHA-256 of a 4-digit PIN) is readable by every paired
           // phone and trivially reversible. Once copied to this phone, delete it from Firestore.
@@ -277,7 +280,8 @@ function Main({ fb, user, farm, farmId }) {
           }
           setSettings(s);
         },
-        customers: (c) => {
+        customers: (c, fromCache) => {
+          lockSrc.current.customers = !fromCache;
           setCustomers(c);
           setLoaded((l) => (l.customers ? l : { ...l, customers: true }));
         },
@@ -295,17 +299,15 @@ function Main({ fb, user, farm, farmId }) {
   );
 
   // Money #1 one-time repair: freeze Oct/Nov paneer days stored without a rate at today's amount.
-  // Runs once per phone, only after a server-confirmed days snapshot, customers and settings.
+  // Runs once per phone, only after server-confirmed days, customers and settings and with old
+  // history on the phone (histOk). No Settings paneer rate -> skipped, not marked done (paneerLock.js).
   useEffect(() => {
-    if (!loaded.days || !loaded.customers || !daysLive || !(settings.paneerRatePaise > 0)) return;
-    try {
-      if (localStorage.getItem('dd_lockPaneer_v1')) return;
-      localStorage.setItem('dd_lockPaneer_v1', String(Date.now()));
-    } catch {
-      return;
-    }
-    lockNullPaneerRates(fb, customers, days, settings, '2026-10-01');
-  }, [loaded, daysLive, settings, customers, days, fb]);
+    const src = lockSrc.current;
+    maybeLockPaneer({
+      fb, loaded: { ...loaded, settings: src.settings !== null }, daysLive, histOk,
+      customersLive: src.customers === true, settingsLive: src.settings === true, settings, customers, days,
+    });
+  }, [loaded, daysLive, histOk, settings, customers, days, fb]);
 
   // 22:00 / 08:00 register rings on this phone (see reminders.js). Only once both lists loaded,
   // so an empty first render never cancels or schedules the wrong rings.

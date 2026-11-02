@@ -104,11 +104,13 @@ export function listenAll(fb, handlers) {
   };
 
   unsubs.push(
-    onSnapshot(fdoc(fb, 'settings', 'main'), opts, (s) => handlers.settings(s.exists() ? s.data() : {}), handlers.error),
+    // 2nd arg fromCache: true while this copy is only the phone's cache (may be stale)
+    onSnapshot(fdoc(fb, 'settings', 'main'), opts, (s) =>
+      handlers.settings(s.exists() ? s.data() : {}, !!(s.metadata && s.metadata.fromCache)), handlers.error),
   );
   unsubs.push(
     onSnapshot(fcol(fb, 'customers'), opts, (qs) => {
-      handlers.customers(qs.docs.map((d) => ({ id: d.id, ...d.data() })));
+      handlers.customers(qs.docs.map((d) => ({ id: d.id, ...d.data() })), !!(qs.metadata && qs.metadata.fromCache));
     }, handlers.error),
   );
 
