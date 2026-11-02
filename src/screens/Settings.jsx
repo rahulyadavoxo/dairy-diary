@@ -45,9 +45,20 @@ export default function Settings({ fb, user, settings, displayName, setDisplayNa
     check();
     const onVis = () => document.visibilityState === 'visible' && check(); // back from Android settings
     document.addEventListener('visibilitychange', onVis);
+    // The battery-exemption request is a small dialog over the app: the WebView stays visible, so
+    // visibilitychange never fires. Capacitor's 'resume' (Android onResume) does, also after a dialog.
+    let sub = null;
+    import('@capacitor/app')
+      .then(({ App }) => App.addListener('resume', () => live && check()))
+      .then((s) => {
+        if (live) sub = s;
+        else if (s && s.remove) s.remove();
+      })
+      .catch(() => {});
     return () => {
       live = false;
       document.removeEventListener('visibilitychange', onVis);
+      if (sub && sub.remove) sub.remove();
     };
   }, []);
   useEffect(() => setRing({ night: nightStr, morning: morningStr }), [nightStr, morningStr]);
@@ -134,6 +145,14 @@ export default function Settings({ fb, user, settings, displayName, setDisplayNa
   // Values last taken from the server. When another phone changes one of them, only the boxes this
   // user has not touched follow it; typing in the other boxes is kept.
   const synced = useRef(null);
+  // Rate boxes are compared by VALUE: "60.50" typed and "60.5" from the server are the same rate
+  // (a string compare kept such a box "touched" forever, so it never followed another phone).
+  const sameField = (k, a, b) => {
+    if (k !== 'milkRate' && k !== 'paneerRate') return a === b;
+    const pa = toPaise(a);
+    const pb = toPaise(b);
+    return pa === null || pb === null ? a === b : pa === pb;
+  };
   useEffect(() => {
     const next = {
       milkRate: paiseToInput(settings.milkRatePaise),
@@ -144,16 +163,17 @@ export default function Settings({ fb, user, settings, displayName, setDisplayNa
     };
     const prev = synced.current;
     synced.current = next;
-    setF((cur) => (prev ? Object.fromEntries(Object.keys(next).map((k) => [k, cur[k] === prev[k] ? next[k] : cur[k]])) : next));
+    setF((cur) => (prev ? Object.fromEntries(Object.keys(next).map((k) => [k, sameField(k, cur[k], prev[k]) ? next[k] : cur[k]])) : next));
   }, [settings.milkRatePaise, settings.paneerRatePaise, settings.farmName, settings.phone, settings.upiId]);
 
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
 
   const gate = usePinGate();
   // Nothing changed -> a white "✓ Saved" button; any change -> the green "Save" (user, 15 Oct 2026).
+  const norm = (v) => paiseToInput(toPaise(v)); // "60.50" -> "60.5"
   const dirty =
-    f.milkRate !== paiseToInput(settings.milkRatePaise) ||
-    f.paneerRate !== paiseToInput(settings.paneerRatePaise) ||
+    norm(f.milkRate) !== paiseToInput(settings.milkRatePaise) ||
+    norm(f.paneerRate) !== paiseToInput(settings.paneerRatePaise) ||
     f.farmName !== (settings.farmName || '') ||
     f.phone !== (settings.phone || '') ||
     f.upiId !== (settings.upiId || '') ||
@@ -200,8 +220,13 @@ export default function Settings({ fb, user, settings, displayName, setDisplayNa
     if (Object.keys(data).length) saveSettings(fb, data);
     setF((cur) => ({
       ...cur,
-      milkRate: mrOk ? cur.milkRate : paiseToInput(settings.milkRatePaise),
-      paneerRate: prOk ? cur.paneerRate : paiseToInput(settings.paneerRatePaise),
+      // show the canonical text of what was saved ("60.50" -> "60.5"), so the box is not
+      // "touched" afterwards and keeps following other phones
+      milkRate: mrOk ? paiseToInput(mr) : paiseToInput(settings.milkRatePaise),
+      paneerRate: prOk ? paiseToInput(pr) : paiseToInput(settings.paneerRatePaise),
+      farmName: cur.farmName.trim(),
+      phone: cur.phone.trim(),
+      upiId: upiRaw,
     }));
     const n = name.trim();
     if (n && n !== displayName) {

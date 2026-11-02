@@ -39,9 +39,14 @@ function writeFails(v) {
 /** Seconds the user must still wait before the next PIN try (0 = may try now). */
 const MAX_WAIT_MS = 15 * 60000;
 export function pinWaitSeconds(now = Date.now()) {
-  const { until } = readFails();
-  // clock moved back (auto time fix): never wait longer than the longest lock
-  const left = Math.min((Number(until) || 0) - now, MAX_WAIT_MS);
+  const f = readFails();
+  let left = (Number(f.until) || 0) - now;
+  // Clock moved back (auto time fix): never wait longer than the longest lock. The lock end is
+  // pulled in AND saved, so the wait counts down from here instead of showing 15 min forever.
+  if (left > MAX_WAIT_MS) {
+    left = MAX_WAIT_MS;
+    writeFails({ n: f.n, until: now + MAX_WAIT_MS });
+  }
   return left > 0 ? Math.ceil(left / 1000) : 0;
 }
 

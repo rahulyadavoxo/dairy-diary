@@ -37,6 +37,7 @@ public class ApkUpdaterPlugin extends Plugin {
     private static final String FILE_NAME = "dd-update.apk";
     static final int CONNECT_TIMEOUT_MS = 4000;
     static final int CONNECT_TRIES = 4;
+    static final long MIN_APK_BYTES = 1024L * 1024L; // smallest believable APK when the size is unknown
     private volatile boolean busy = false;
 
     private File apkFile() {
@@ -172,6 +173,10 @@ public class ApkUpdaterPlugin extends Plugin {
                     }
                 }
                 if (total > 0 && done != total) throw new Exception("incomplete");
+                // No Content-Length from the server: a cut-off download can't be measured, so a tiny
+                // file is treated as incomplete (DOWNLOAD_FAILED -> Retry) instead of "NOT_APK".
+                // The real APK is several MB.
+                if (total <= 0 && done < MIN_APK_BYTES) throw new Exception("incomplete (no length)");
                 if (out.exists()) out.delete();
                 if (!part.renameTo(out)) throw new Exception("rename failed");
                 String bad = checkApk(out);

@@ -15,8 +15,11 @@ describe('1.10.19 update is caught while the app is open (no restart needed)', (
     await waitFor(() => expect(api.check).toHaveBeenCalled());
     expect(screen.getByText('APP')).toBeTruthy();
     latest = { version: '1.10.20', url: 'u' };
+    await waitFor(() => expect(api.check.mock.calls.length).toBeGreaterThan(1));
+    // held while the app is in use (1.10.60); the next resume brings the Update screen
+    expect(screen.queryByTestId('update-gate')).toBeNull();
+    await act(async () => document.dispatchEvent(new Event('visibilitychange')));
     await waitFor(() => expect(screen.getByTestId('update-gate')).toBeTruthy());
-    expect(api.check.mock.calls.length).toBeGreaterThan(1);
   });
   it('internet coming back triggers a check at once', async () => {
     const api = { current: vi.fn(async () => '1.10.19'), check: vi.fn(async () => null), sync: vi.fn(), download: vi.fn(), install: vi.fn() };

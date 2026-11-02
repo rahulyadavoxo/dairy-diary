@@ -75,10 +75,15 @@ describe('#1 update the phone can never install', () => {
       render(wrap(<UpdateGate api={api} native>{<p>APP</p>}</UpdateGate>));
       await waitFor(() => screen.getByTestId('update-gate'));
       fireEvent.click(screen.getByTestId('update-btn'));
+      if (code === 'NOT_APK') {
+        // 1.10.60: NOT_APK may be a broken download -> gives up only on the 2nd one
+        await waitFor(() => screen.getByText(en.updFailed));
+        fireEvent.click(screen.getByTestId('update-btn'));
+      }
       await waitFor(() => expect(screen.queryByTestId('update-gate')).toBeNull());
       expect(screen.getByText('APP')).toBeTruthy();
       expect(screen.getByTestId('update-rejected').textContent).toBe(en.updRejected);
-      expect(localStorage.getItem(SKIP_KEY)).toBe('1.10.57');
+      expect(JSON.parse(localStorage.getItem(SKIP_KEY)).v).toBe('1.10.57');
     });
   }
   it('install rejected (file re-checked before the installer): same way out', async () => {
@@ -91,10 +96,10 @@ describe('#1 update the phone can never install', () => {
     await waitFor(() => screen.getByTestId('update-gate'));
     fireEvent.click(screen.getByTestId('update-btn'));
     await waitFor(() => expect(screen.queryByTestId('update-gate')).toBeNull());
-    expect(localStorage.getItem(SKIP_KEY)).toBe('1.10.57');
+    expect(JSON.parse(localStorage.getItem(SKIP_KEY)).v).toBe('1.10.57');
   });
   it('a skipped version is not shown again; a newer one is forced normally', async () => {
-    localStorage.setItem(SKIP_KEY, '1.10.57');
+    localStorage.setItem(SKIP_KEY, JSON.stringify({ v: '1.10.57', at: Date.now() }));
     const api = apiWith();
     const view = render(wrap(<UpdateGate api={api} native>{<p>APP</p>}</UpdateGate>));
     await waitFor(() => expect(api.check).toHaveBeenCalled());
@@ -136,6 +141,8 @@ describe('#4 wall keeps the app mounted; offline way out', () => {
     }
     const view = render(wrap(<UpdateGate api={api} native pollMs={100}><Editor /></UpdateGate>));
     fireEvent.change(screen.getByTestId('ed'), { target: { value: '7' } });
+    await waitFor(() => expect(api.check.mock.calls.length).toBeGreaterThan(1), { timeout: 2000 });
+    await act(async () => document.dispatchEvent(new Event('visibilitychange'))); // held until resume (1.10.60)
     await waitFor(() => screen.getByTestId('update-gate'), { timeout: 2000 });
     expect(unmounted).toBe(false);
     expect(screen.getByTestId('ed').value).toBe('7');

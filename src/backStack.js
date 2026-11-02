@@ -11,8 +11,22 @@ export function pushBackHandler(fn) {
   };
 }
 
+// A full-screen owner (the forced Update screen) takes the Back button for as long as it is up,
+// so screens hidden underneath it (forms, editors, popups) never react to Back.
+let owner = null;
+export function setBackOwner(fn) {
+  owner = fn;
+  return () => {
+    if (owner === fn) owner = null;
+  };
+}
+
 /** Run the topmost handler. Returns true if one ran. */
 export function handleBack() {
+  if (owner) {
+    owner();
+    return true;
+  }
   const fn = stack.pop();
   if (fn) {
     fn();
