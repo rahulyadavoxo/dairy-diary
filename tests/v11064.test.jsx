@@ -29,9 +29,18 @@ describe('Hisaab header = this month only', () => {
     expect(a.textContent).not.toMatch(/1,120/);
     expect(a.className).toBe('due');
     expect(a.closest('li').textContent).toMatch(/1,120/); // Balance due keeps old due
+    // b: old ₹500 + bill ₹60 − paid ₹100 = ₹460 due. Payment clears old dues first, so the bill ₹60 is still unpaid.
     const b = byName('Mini singh');
-    expect(b.textContent).toMatch(/₹0/);
-    expect(b.className).toBe('clear');
+    expect(b.textContent).toMatch(/₹60/);
+    expect(b.className).toBe('due');
     expect(b.closest('li').textContent).toMatch(/460/);
+  });
+  it('header = remaining total when it is less than the month bill; green ₹0 when all clear', () => {
+    const pays = [{ id: 'p2', customerId: 'a', amountPaise: 105000, date: '2026-10-05', mode: 'cash' }, { id: 'p3', customerId: 'b', amountPaise: 56000, date: '2026-10-05', mode: 'cash' }];
+    render(wrap(<Hisaab fb={{}} customers={customers} days={days} payments={pays} settings={{ milkRatePaise: 6000 }} month="2026-10" setMonth={() => {}} openCustomer={() => {}} />));
+    const heads = screen.getAllByTestId('row-balance');
+    const byName = (n) => heads.find((h) => h.closest('li').textContent.includes(n));
+    expect(byName('Aadil G').textContent).toMatch(/₹70/); // 1000 + 120 − 1050 = 70
+    expect(byName('Mini singh').className).toBe('clear');
   });
 });

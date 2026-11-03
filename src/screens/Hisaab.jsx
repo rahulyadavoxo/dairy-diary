@@ -276,8 +276,9 @@ export default function Hisaab({ fb, customers, days, payments, settings, month,
               <div className="row-top">
                 <b>{r.customer.name}</b>
                 {(() => {
-                  // Header shows only this month's amount (bill − paid this month); old dues stay in "Balance due".
-                  const monthDue = Math.max(0, (r.billedPaise || 0) - (r.paidPaise || 0));
+                  // Header shows only this month's unpaid amount. Payments clear old dues first, so
+                  // this month's part = min(month bill, total balance). Old dues stay in "Balance due".
+                  const monthDue = Math.max(0, Math.min(r.billedPaise || 0, r.balancePaise || 0));
                   return (
                     <b className={masked ? 'muted' : r.balancePaise < 0 || monthDue === 0 ? 'clear' : 'due'} data-testid="row-balance">
                       {r.balancePaise < 0 ? `${t('advance')} ${money(-r.balancePaise)}` : money(monthDue)}
