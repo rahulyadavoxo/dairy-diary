@@ -38,7 +38,7 @@ export function pickRelease(json) {
   if (!p) return null;
   const version = p.join('.');
   const name = `dairy-diary-v${version}.apk`;
-  const asset = (json.assets || []).find((a) => a && a.name === name && a.state !== 'starter');
+  const asset = (json.assets || []).find((a) => a && a.name === name && a.state === 'uploaded');
   if (!asset) return null;
   const url = `https://github.com/${REPO}/releases/download/v${version}/${name}`;
   return { version, url };

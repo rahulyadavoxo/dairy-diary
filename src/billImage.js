@@ -61,6 +61,7 @@ export function billHeight(row, month) {
   if (row.paneerG > 0 || row.paneerPaise > 0) sumRows++;
   if (row.previousDuePaise !== 0) sumRows++;
   if (row.paidPaise !== 0) sumRows++;
+  if ((row.paidAfterPaise || 0) > 0) sumRows++;
   // header 200 + calendar title/weekdays 115 + weeks + gap 35 + summary title 60 + rows + balance + footer
   return 200 + 115 + weeks * CELL_H + 35 + 60 + sumRows * 68 + 16 + 60 + 170;
 }
@@ -193,14 +194,17 @@ export function renderBillImage(row, month, settings = {}) {
     if (row.previousDuePaise > 0) srow('पिछला बाकी / Previous', rupees(row.previousDuePaise), { dim: true });
     if (row.previousDuePaise < 0) srow('पिछला एडवांस / Advance', rupees(-row.previousDuePaise), { dim: true });
     if (row.paidPaise !== 0) srow('जमा / Paid', rupees(row.paidPaise), { dim: true });
+    // past month: payments made after it (old dues clear first), so the balance is what is left today
+    if ((row.paidAfterPaise || 0) > 0) srow('बाद में जमा / Paid later', rupees(row.paidAfterPaise), { dim: true });
+    const balNow = row.leftPaise !== undefined ? row.leftPaise : row.balancePaise;
     line(g, 60, y - 46, W - 60, y - 46, GREEN, 4);
     y += 16;
-    if (row.balancePaise >= 0) {
+    if (balNow >= 0) {
       text(g, 'कुल बाकी / Balance', 60, y, { size: 44, bold: true, color: GREEN });
-      text(g, rupees(row.balancePaise), W - 60, y, { size: 44, bold: true, align: 'right', color: GREEN });
+      text(g, rupees(balNow), W - 60, y, { size: 44, bold: true, align: 'right', color: GREEN });
     } else {
       text(g, 'एडवांस / Advance', 60, y, { size: 44, bold: true, color: GREEN });
-      text(g, rupees(-row.balancePaise), W - 60, y, { size: 44, bold: true, align: 'right', color: GREEN });
+      text(g, rupees(-balNow), W - 60, y, { size: 44, bold: true, align: 'right', color: GREEN });
     }
 
     // ===== footer =====
@@ -241,7 +245,7 @@ export function billFingerprint(row, settings = {}) {
   return JSON.stringify([
     row.customer && row.customer.name,
     row.milkMl, row.milkPaise, row.paneerG, row.paneerPaise,
-    row.billedPaise, row.previousDuePaise, row.paidPaise, row.balancePaise,
+    row.billedPaise, row.previousDuePaise, row.paidPaise, row.balancePaise, row.paidAfterPaise || 0, row.leftPaise === undefined ? null : row.leftPaise,
     [...(row.milkRates || [])].sort(),
     row.daily || {},
     settings.farmName || '', settings.phone || '',

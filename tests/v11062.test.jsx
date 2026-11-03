@@ -14,7 +14,7 @@ const at = (iso) => new Date(iso); // UTC; IST = +5:30
 
 describe('auto-bill timing', () => {
   it('istParts converts UTC to India time', () => {
-    expect(istParts(at('2026-11-30T19:00:00Z'))).toEqual({ month: '2026-12', day: 1, hm: '00:30' });
+    expect(istParts(at('2026-11-30T19:00:00Z'))).toEqual({ month: '2026-12', day: 1, hm: '00:30', date: '2026-12-01' });
   });
   it('sends last month once the day and time have come, never twice', () => {
     const ab = { enabled: true, day: 2, time: '09:00' };

@@ -3,7 +3,7 @@ import { firstDeliveryMonth } from '../firstMonth.js';
 import { WhatsAppIcon, BillIcon } from '../components/Icons.jsx';
 import { pushBackHandler } from '../backStack.js';
 import { useLang } from '../i18n.js';
-import { computeMonth, sortByDue, isPaidRow } from '../billing.js';
+import { computeMonth, sortByDue, isPaidRow, withLaterPayments, leftOf } from '../billing.js';
 import { getPinHash, verifyPin, pinWaitSeconds } from '../pinLock.js';
 import { preGenerateBillPhotos } from '../billPreGen.js';
 import { fmtQty, monthDates, rupees, todayISO, monthOf, addMonths } from '../format.js';
@@ -129,7 +129,11 @@ export default function Hisaab({ fb, customers, days, payments, settings, month,
     }
   };
   const res = useMemo(() => computeMonth({ customers, days, payments, settings, month }), [customers, days, payments, settings, month]);
-  const allRows = res.rows.filter((r) => r.customer.active !== false || r.hasActivity || r.balancePaise !== 0);
+  // Past month: payments made after it count toward Paid / the header (user, 3 Nov 2026).
+  const isPastMonth = month < monthOf(todayISO());
+  const allRows = res.rows
+    .filter((r) => r.customer.active !== false || r.hasActivity || r.balancePaise !== 0)
+    .map((r) => (isPastMonth ? withLaterPayments(r, payments, month, todayISO()) : r));
 
   // Pre-generate bill photos in the background so sharing is instant later.
   // Re-run when the data arrives / changes (it was [month] only, so on app start it ran with an
@@ -141,6 +145,8 @@ export default function Hisaab({ fb, customers, days, payments, settings, month,
   // Customers (they owe us) and suppliers (we owe them) are listed separately.
   const customerRows = sortByDue(allRows.filter((r) => !r.customer.isSupplier));
   const unpaidCount = customerRows.filter((r) => !isPaidRow(r)).length;
+  // Past month: Pending = what is still unpaid today (later payments counted), like the rows.
+  const pendingNow = isPastMonth ? customerRows.reduce((s, r) => s + Math.max(0, leftOf(r)), 0) : res.totals.pendingPaise;
   const paidCount = customerRows.length - unpaidCount;
   const rows = customerRows.filter(
     (r) =>
@@ -239,7 +245,7 @@ export default function Hisaab({ fb, customers, days, payments, settings, month,
             </div>
             <div className="total bad">
               <span>{t('pending')}</span>
-              <b>{rupees(res.totals.pendingPaise)}</b>
+              <b>{rupees(pendingNow)}</b>
             </div>
           </div>
         )}
@@ -283,18 +289,19 @@ export default function Hisaab({ fb, customers, days, payments, settings, month,
                 {(() => {
                   // Header shows only this month's unpaid amount. Payments clear old dues first, so
                   // this month's part = min(month bill, total balance). Old dues stay in "Balance due".
-                  const monthDue = Math.max(0, Math.min(r.billedPaise || 0, r.balancePaise || 0));
+                  const left = leftOf(r) || 0;
+                  const monthDue = Math.max(0, Math.min(r.billedPaise || 0, left));
                   // Paid customers: header shows the amount paid this month (green), not ₹0.
                   if (isPaidRow(r)) {
                     return (
                       <b className={masked ? 'muted' : 'clear'} data-testid="row-balance">
-                        {money(r.paidPaise)}
+                        {money(r.paidPaise + Math.min(r.paidAfterPaise || 0, Math.max(0, r.balancePaise)) || r.billedPaise)}
                       </b>
                     );
                   }
                   return (
-                    <b className={masked ? 'muted' : r.balancePaise < 0 || monthDue === 0 ? 'clear' : 'due'} data-testid="row-balance">
-                      {r.balancePaise < 0 ? `${t('advance')} ${money(-r.balancePaise)}` : money(monthDue)}
+                    <b className={masked ? 'muted' : left < 0 || monthDue === 0 ? 'clear' : 'due'} data-testid="row-balance">
+                      {left < 0 ? `${t('advance')} ${money(-left)}` : money(monthDue)}
                     </b>
                   );
                 })()}

@@ -146,17 +146,42 @@ export function computeMonth({ customers = [], days = {}, payments = [], setting
   };
 }
 
-/** Hisaab "Paid" (user, 16 Oct 2026): only once a payment is marked this month and nothing is
- *  left due, or the customer has an advance. A ₹0 bill with no payment is NOT paid. */
+/** Past month (user, 3 Nov 2026): payments dated after the month (up to today). Old dues are
+ *  cleared first, so they count against that month's closing balance. */
+export function paidAfterMonth(payments, customerId, month, today) {
+  let s = 0;
+  for (const p of payments || []) {
+    if (p.customerId === customerId && p.date && p.date.slice(0, 7) > month && p.date <= today) s += Math.round(p.amountPaise || 0);
+  }
+  return s;
+}
+
+/** Row of a past month with what is still unpaid today: leftPaise = closing balance minus
+ *  later payments (never below 0; an advance stays as it was). */
+export function withLaterPayments(row, payments, month, today) {
+  // Only a positive closing balance can be cleared by later payments (a ₹0 month stays as it was).
+  const after = row.balancePaise > 0 ? paidAfterMonth(payments, row.customerId, month, today) : 0;
+  const leftPaise = row.balancePaise > 0 ? Math.max(0, row.balancePaise - after) : row.balancePaise;
+  return { ...row, paidAfterPaise: after, leftPaise };
+}
+
+/** Balance still owed for a row: leftPaise on a past month, else the balance. */
+export const leftOf = (row) => (row && row.leftPaise !== undefined ? row.leftPaise : row ? row.balancePaise : 0);
+
+/** Hisaab "Paid" (user, 16 Oct 2026): only once a payment is marked and nothing is left due, or
+ *  the customer has an advance. A ₹0 bill with no payment is NOT paid. 3 Nov 2026: a past month
+ *  also counts payments made after it, and a bill fully covered by an earlier advance is paid. */
 export function isPaidRow(row) {
   if (!row) return false;
-  if (row.balancePaise < 0) return true;
-  return row.balancePaise === 0 && row.paidPaise > 0;
+  const bal = leftOf(row);
+  if (bal < 0) return true;
+  if (bal !== 0) return false;
+  return row.paidPaise > 0 || (row.paidAfterPaise || 0) > 0 || ((row.billedPaise || 0) > 0 && (row.previousDuePaise || 0) < 0);
 }
 
 /** Sort rows by highest balance due first, then by name. */
 export function sortByDue(rows) {
-  return [...rows].sort((a, b) => b.balancePaise - a.balancePaise || String(a.customer.name || '').localeCompare(String(b.customer.name || '')));
+  return [...rows].sort((a, b) => leftOf(b) - leftOf(a) || String(a.customer.name || '').localeCompare(String(b.customer.name || '')));
 }
 
 /** Payment helper: "full" pays the whole positive balance. */

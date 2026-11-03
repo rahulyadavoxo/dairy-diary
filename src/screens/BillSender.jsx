@@ -5,7 +5,7 @@
 // next customer. Progress survives app restarts (localStorage).
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLang } from '../i18n.js';
-import { computeMonth } from '../billing.js';
+import { computeMonth, withLaterPayments, leftOf } from '../billing.js';
 import { renderBillImage, billFileName, billFingerprint } from '../billImage.js';
 import { validWaNumber, sendBillToWhatsApp, isShareCancel } from '../waShare.js';
 import WaDirectHelp from '../components/WaDirectHelp.jsx';
@@ -110,12 +110,18 @@ export default function BillSender({ fb, customers, days, payments, settings, mo
   // the 1st stays a partial run (it must never be saved/finished as the final bill).
   const session = useRef(null);
   if (!session.current || session.current.month !== billMonth) {
-    session.current = { month: billMonth, past: isPastMonth, saved: readProgress(billMonth, isPastMonth) };
+    const sv = readProgress(billMonth, isPastMonth);
+    // the run's start day stays fixed (rewriting it after midnight resumed a stale mid-month run)
+    session.current = { month: billMonth, past: isPastMonth, saved: sv, day: (sv && sv.day) || todayISO() };
   }
   const sessionPast = session.current.past;
   const saved = session.current.saved;
   const res = useMemo(
-    () => computeMonth({ customers, days, payments, settings, month: billMonth }),
+    () => {
+      // later payments count on the bill (a customer who already paid is not asked for it again)
+      const r0 = computeMonth({ customers, days, payments, settings, month: billMonth });
+      return { ...r0, rows: r0.rows.map((r) => withLaterPayments(r, payments, billMonth, todayISO())) };
+    },
     [customers, days, payments, settings, billMonth],
   );
   const order = useRef(null); // frozen customer-id order for this bill month
@@ -302,7 +308,7 @@ export default function BillSender({ fb, customers, days, payments, settings, mo
     writeProgress(billMonth, {
       month: billMonth,
       past: sessionPast,
-      day: todayISO(),
+      day: session.current.day,
       idx,
       curId: id,
       ids: order.current,
@@ -459,7 +465,7 @@ export default function BillSender({ fb, customers, days, payments, settings, mo
           <span className="muted small"> · {row.customer.phone}</span>
         </h2>
         <p>
-          <b className={row.balancePaise > 0 ? 'due' : 'clear'}>{rupees(row.balancePaise)}</b>
+          <b className={leftOf(row) > 0 ? 'due' : 'clear'}>{rupees(leftOf(row))}</b>
         </p>
         {imgUrl ? (
           <img src={imgUrl} alt={row.customer.name} className="bill-preview-img" />

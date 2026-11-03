@@ -18,9 +18,11 @@ export function billText(row, month, settings = {}) {
   if (row.previousDuePaise > 0) L.push(`पिछला बाकी / Previous due: ${rupees(row.previousDuePaise)}`);
   if (row.previousDuePaise < 0) L.push(`पिछला एडवांस / Previous advance: ${rupees(-row.previousDuePaise)}`);
   if (row.paidPaise !== 0) L.push(`जमा / Paid: ${rupees(row.paidPaise)}`);
+  if ((row.paidAfterPaise || 0) > 0) L.push(`बाद में जमा / Paid later: ${rupees(row.paidAfterPaise)}`);
   L.push('');
-  if (row.balancePaise >= 0) L.push(`*कुल बाकी / Balance due: ${rupees(row.balancePaise)}*`);
-  else L.push(`*एडवांस / Advance: ${rupees(-row.balancePaise)}*`);
+  const bal = row.leftPaise !== undefined ? row.leftPaise : row.balancePaise;
+  if (bal >= 0) L.push(`*कुल बाकी / Balance due: ${rupees(bal)}*`);
+  else L.push(`*एडवांस / Advance: ${rupees(-bal)}*`);
   L.push('');
   L.push(`धन्यवाद / Thank you 🙏${settings.phone ? `\n${farm}: ${settings.phone}` : ''}`);
   return L.join('\n');

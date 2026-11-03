@@ -22,6 +22,7 @@ export function istParts(date = new Date()) {
     month: `${ist.getUTCFullYear()}-${p(ist.getUTCMonth() + 1)}`,
     day: ist.getUTCDate(),
     hm: `${p(ist.getUTCHours())}:${p(ist.getUTCMinutes())}`,
+    date: `${ist.getUTCFullYear()}-${p(ist.getUTCMonth() + 1)}-${p(ist.getUTCDate())}`,
   };
 }
 
@@ -51,7 +52,7 @@ export function templateParams(row, month, settings = {}) {
     clip(row.customer.name, 60),
     monthName(month, 'hi'),
     rupees(row.billedPaise),
-    balanceText(row.balancePaise),
+    balanceText(row.leftPaise !== undefined ? row.leftPaise : row.balancePaise),
     clip(settings.farmName || 'Dairy Diary', 60),
   ];
 }

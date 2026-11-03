@@ -116,6 +116,6 @@ describe('auto-bill settings', () => {
     expect(screen.getByText(en.autoBillPending)).toBeTruthy();
     fireEvent.click(screen.getByTestId('autobill-save'));
     const w = fb.writes.at(-1);
-    expect(w.data).toEqual({ autoBill: { enabled: true, day: 2, time: '08:30' } });
+    expect(w.data).toMatchObject({ autoBill: { enabled: true, day: 2, time: '08:30' } });
   });
 });

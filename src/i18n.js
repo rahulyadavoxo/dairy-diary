@@ -177,6 +177,8 @@ export const STRINGS = {
     oldHistoryLoading: 'पुराना हिसाब (3 महीने से पहले का) अभी इस फोन पर नहीं आया — पिछला बाकी अधूरा हो सकता है। इंटरनेट चालू करें।',
     dueToday: 'आज तक कुल बाकी',
     monthDueNow: '{m} तक कुल बाकी',
+    paidLater: 'बाद में मिला',
+    payDatedToday: '{d} की तारीख में जुड़ा, पुराना बाकी पहले कटा',
     version: 'संस्करण',
     rateMissing: 'दूध का रेट अभी सेट नहीं है — सेटिंग में डालें।',
 
@@ -288,6 +290,7 @@ export const STRINGS = {
     pinGateNoPin: '(PIN सेट नहीं है — Settings में "हिसाब की रकम पर ताला" से PIN सेट कर सकते हो)',
     pinForSettings: 'रेट या UPI ID बदलने के लिए PIN डालो',
     pinForAddPhone: 'नया फ़ोन जोड़ने के लिए PIN डालो',
+    pinForDeletePayment: 'पेमेंट हटाने के लिए PIN डालो',
     paymentReceived: 'पेमेंट मिल गया',
     totalOnlyHint: 'सिर्फ़ कुल: {q}',
     delivery: 'डिलीवरी',
@@ -592,6 +595,8 @@ export const STRINGS = {
     oldHistoryLoading: 'Older history (before 3 months) has not loaded on this phone yet — previous due may be incomplete. Turn on the internet.',
     dueToday: 'Total due as of today',
     monthDueNow: 'Total due till {m}',
+    paidLater: 'Received later',
+    payDatedToday: 'Added on {d}; older dues cleared first',
     version: 'Version',
     rateMissing: 'Milk rate is not set yet — add it in Settings.',
 
@@ -703,6 +708,7 @@ export const STRINGS = {
     pinGateNoPin: '(No PIN set — set one in Settings under "Lock hisaab amounts")',
     pinForSettings: 'Enter PIN to change the rates or UPI ID',
     pinForAddPhone: 'Enter PIN to add a new phone',
+    pinForDeletePayment: 'Enter PIN to delete payment',
     paymentReceived: 'Payment received',
     totalOnlyHint: 'Total only: {q}',
     delivery: 'Delivery',

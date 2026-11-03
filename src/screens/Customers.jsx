@@ -99,7 +99,7 @@ export default function Customers({ fb, customers, settings, days, openCustomer 
       <CustomerForm
         fb={fb}
         initial={editing === 'new' ? null : editing}
-        nextOrder={(active.length + inactive.length + 1) * 10}
+        nextOrder={Math.max(0, ...[...active, ...inactive].map((x) => Number(x.order) || 0)) + 10}
         settings={settings}
         days={days}
         onDone={(savedId) => {
@@ -210,7 +210,7 @@ export default function Customers({ fb, customers, settings, days, openCustomer 
                 <b>{c.name}</b>
                 <span className="muted small">{t('inactive')}</span>
               </button>
-              <button className="btn small" onClick={() => saveCustomer(fb, c.id, { active: true, order: (active.length + 1) * 10 })}>
+              <button className="btn small" onClick={() => saveCustomer(fb, c.id, { active: true, order: Math.max(0, ...active.map((x) => Number(x.order) || 0)) + 10 })}>
                 {t('activate')}
               </button>
             </li>

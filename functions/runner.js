@@ -5,8 +5,9 @@
 //                                 (only the owner's own account can read/write it — firestore.rules)
 // farms/{farmId}/waRuns/{month}   { status, sent:{cid:msgId}, failed:{cid:msg} }  (server only)
 // farms/{farmId}/settings/main.autoBill.{lastRun, doneMonth}  status the app shows
-import { computeMonth } from './shared/billing.js';
-import { autoBillTarget, dueBillMonth, templateParams, templateMessage, GRAPH_VERSION } from './shared/autoBill.js';
+import { computeMonth, withLaterPayments } from './shared/billing.js';
+import { addMonths } from './shared/format.js';
+import { autoBillTarget, dueBillMonth, istParts, templateParams, templateMessage, GRAPH_VERSION } from './shared/autoBill.js';
 
 export async function graph(path, token, body) {
   const res = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${path}`, {
@@ -47,16 +48,22 @@ export async function runFarm(db, farmId, priv, { now = new Date(), deadline = D
   const settingsRef = db.doc(`farms/${farmId}/settings/main`);
   const settings = (await settingsRef.get()).data() || {};
   const ab = settings.autoBill || {};
-  const month = dueBillMonth(ab, now, ab.doneMonth || null);
+  // Bills sent by hand from the phone also count as done (billsSentForMonth = the month AFTER the bill month).
+  const manualDone = settings.billsSentForMonth ? addMonths(settings.billsSentForMonth, -1) : null;
+  const doneMonth = [ab.doneMonth, manualDone].filter(Boolean).sort().pop() || null;
+  const month = dueBillMonth(ab, now, doneMonth);
   if (!month || !priv || !priv.phoneNumberId || !priv.accessToken) return null;
   const runRef = db.doc(`farms/${farmId}/waRuns/${month}`);
-  const run = { sent: {}, failed: {}, ...((await runRef.get()).data() || {}) };
+  const run = { sent: {}, failed: {}, tries: {}, ...((await runRef.get()).data() || {}) };
   if (run.status === 'done') return null;
   const data = await loadAll(db, farmId);
-  const targets = computeMonth({ ...data, month }).rows.filter(autoBillTarget);
+  // payments made after the bill month (up to today, IST) count: a customer who already paid is not asked again
+  const today = istParts(now).date;
+  const targets = computeMonth({ ...data, month }).rows.map((r) => withLaterPayments(r, data.payments, month, today)).filter(autoBillTarget);
   let fatal = '';
   for (const r of targets) {
     if (run.sent[r.customerId]) continue;
+    if (((run.tries || {})[r.customerId] || 0) >= 3) continue;
     if (Date.now() > deadline) break; // resumes on the next run
     try {
       const res = await graph(`${priv.phoneNumberId}/messages`, priv.accessToken, templateMessage(r.customer.phone, templateParams(r, month, data.settings), priv.template));
@@ -64,18 +71,22 @@ export async function runFarm(db, farmId, priv, { now = new Date(), deadline = D
       delete run.failed[r.customerId];
     } catch (e) {
       run.failed[r.customerId] = e.message;
+      run.tries = run.tries || {};
+      run.tries[r.customerId] = (run.tries[r.customerId] || 0) + 1;
       if (FATAL.test(e.message)) {
         fatal = e.message;
         break;
       }
     }
-    await runRef.set({ sent: run.sent, failed: run.failed }, { merge: true });
+    await runRef.set({ sent: run.sent, failed: run.failed, tries: run.tries || {} }, { merge: true });
   }
-  const left = targets.filter((r) => !run.sent[r.customerId] && !run.failed[r.customerId]).length;
+  // A temporary failure is retried on the next run (up to 3 tries per customer), not dropped.
+  run.tries = run.tries || {};
+  const left = targets.filter((r) => !run.sent[r.customerId] && (run.tries[r.customerId] || 0) < 3).length;
   const done = !fatal && left === 0;
   await runRef.set({ status: done ? 'done' : 'running', sent: run.sent, failed: run.failed, at: Date.now() }, { merge: true });
   const lastRun = { month, sent: Object.keys(run.sent).length, failed: Object.keys(run.failed).length, done, error: fatal, at: Date.now() };
-  await settingsRef.set({ autoBill: done ? { lastRun, doneMonth: month } : { lastRun } }, { merge: true });
+  await settingsRef.set(done ? { autoBill: { lastRun, doneMonth: month }, billsSentForMonth: addMonths(month, 1) } : { autoBill: { lastRun } }, { merge: true });
   log(`auto-bill ${farmId} ${JSON.stringify({ ...lastRun, error: fatal ? fatal.slice(0, 80) : '' })}`);
   return lastRun;
 }

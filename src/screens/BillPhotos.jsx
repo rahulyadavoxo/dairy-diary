@@ -3,7 +3,7 @@
 import { firstDeliveryMonth } from '../firstMonth.js';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLang } from '../i18n.js';
-import { computeMonth } from '../billing.js';
+import { computeMonth, withLaterPayments } from '../billing.js';
 import { renderBillImage, billFileName, billFingerprint } from '../billImage.js';
 import { validWaNumber, sendBillToWhatsApp, shareManyImages, isShareCancel, chunkList, SHARE_CHUNK } from '../waShare.js';
 import { putCachedPhoto } from '../billCache.js';
@@ -21,7 +21,10 @@ export default function BillPhotos({ customers, days, payments, settings, month:
   const { t } = useLang();
   const [month, setMonthState] = useState(initialMonth);
   const res = useMemo(
-    () => computeMonth({ customers, days, payments, settings, month }),
+    () => {
+      const r0 = computeMonth({ customers, days, payments, settings, month });
+      return { ...r0, rows: r0.rows.map((r) => withLaterPayments(r, payments, month, todayISO())) };
+    },
     [customers, days, payments, settings, month],
   );
   const targets = useMemo(

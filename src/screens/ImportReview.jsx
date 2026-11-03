@@ -257,7 +257,17 @@ export default function ImportReview({ fb, customers, days, settings, displayNam
         customer: c,
         num: i + 1,
         regName: findRegName(regNames, c),
-      })),
+      }))
+      // A fuzzy match is dropped when another customer also got that register row (e.g. "Ravi"
+      // and "Ravi K Maa" both -> "Ravi K Maa" billed the milk twice).
+      .map((x, _i, all) =>
+        x.regName &&
+        all.filter((y) => y.regName === x.regName).length > 1 &&
+        x.regName.toLowerCase() !== String(x.customer.name || '').toLowerCase() &&
+        ALIASES[x.regName] !== x.customer.name
+          ? { ...x, regName: null }
+          : x,
+      ),
     [sorted, regNames],
   );
 

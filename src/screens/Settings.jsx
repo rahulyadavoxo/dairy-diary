@@ -3,7 +3,7 @@ import { saveFeedback } from '../feedback.js';
 import { useLang } from '../i18n.js';
 import { saveSettings } from '../db.js';
 import { WA_API } from '../waCloud.js';
-import { TEMPLATE_DEFAULT } from '../autoBill.js';
+import { TEMPLATE_DEFAULT, dueBillMonth, istParts } from '../autoBill.js';
 import { paiseToInput, toPaise } from '../format.js';
 import { validUpiId } from '../upi.js';
 import { getPinHash, hashPin, savePinHash, verifyPin, pinWaitSeconds } from '../pinLock.js';
@@ -469,7 +469,13 @@ export function AutoBillCard({ fb, settings, isOwner = true, waApi = WA_API }) {
     const day = Math.min(28, Math.max(1, Math.round(Number(f.day) || 1)));
     const time = /^\d{2}:\d{2}$/.test(f.time) ? f.time : '09:00';
     // Only these three: connected/display/lastRun belong to the server (merge keeps them).
-    saveSettings(fb, { autoBill: { enabled: f.enabled, day, time } });
+    // Turned on after this month's send day has passed: last month is NOT sent late all at once.
+    const ab = { enabled: f.enabled, day, time };
+    if (f.enabled && !cur.enabled) {
+      const due = dueBillMonth(ab, new Date(), cur.doneMonth || null);
+      if (due && istParts(new Date()).day > day) ab.doneMonth = due;
+    }
+    saveSettings(fb, { autoBill: ab });
     setF({ enabled: f.enabled, day, time });
     say(t('saved'));
     setTimeout(() => setMsg({ text: '', err: false }), 2500);

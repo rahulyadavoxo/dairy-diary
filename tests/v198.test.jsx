@@ -1066,7 +1066,7 @@ describe('1.10.34 Delivery pre-fill: usual or same as last day', () => {
     expect([x.usualMorningL, x.usualEveningL]).toEqual([2, 1]);
     expect(withLastDay(c, {}, T)).toBe(c);
     const tot = withLastDay(c, { [addDays(T, -1)]: { entries: { c1: { milkL: 2.5, milkMorningL: 0, milkEveningL: 0 } } } }, T);
-    expect([tot.usualMorningL, tot.usualEveningL]).toEqual([2.5, 0]);
+    expect([tot.usualMorningL, tot.usualEveningL]).toEqual([1.25, 1.25]); // total-only day shared in the profile ratio (3 Nov 2026)
   });
   it('Customer profile: two switches, turning one on turns the other off, saved on the customer', () => {
     const fb = mkFb();

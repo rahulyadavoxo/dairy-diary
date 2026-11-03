@@ -2,8 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { firstDeliveryMonth } from '../firstMonth.js';
 import { saveFeedback, playSound } from '../feedback.js';
 import { useLang } from '../i18n.js';
-import { computeMonth, fullPaymentPaise } from '../billing.js';
+import { computeMonth, fullPaymentPaise, withLaterPayments } from '../billing.js';
 import { addPayment, deletePayment } from '../db.js';
+import { usePinGate } from '../components/PinGate.jsx';
 import { renderBillImage, billFileName, billFingerprint } from '../billImage.js';
 import { validWaNumber, sendBillToWhatsApp } from '../waShare.js';
 import WaDirectHelp from '../components/WaDirectHelp.jsx';
@@ -34,9 +35,11 @@ export default function CustomerDetail({ fb, customers, days, payments, settings
   const [amount, setAmount] = useState('');
   const [mode, setMode] = useState('cash');
   const [pick, setPick] = useState(null); // 'full' | 'part' chosen before an amount is typed
-  const [payDate, setPayDate] = useState(todayISO());
+  const [payDate, setPayDate] = useState(''); // '' = today at the moment of saving (page may stay open past midnight)
   const [err, setErr] = useState('');
+  const [payNote, setPayNote] = useState('');
   // All hooks must run on every render, BEFORE any early return (Rules of Hooks).
+  const gate = usePinGate(); // Delete payment asks the Hisaab PIN (user, 3 Nov 2026)
   const [sharing, setSharing] = useState(false);
   const [shareErr, setShareErr] = useState('');
   const [noNumber, setNoNumber] = useState(false);
@@ -96,11 +99,13 @@ export default function CustomerDetail({ fb, customers, days, payments, settings
     e.preventDefault();
     const p = toPaise(amount);
     if (!p || p <= 0) return saveFeedback(false), setErr(t('amountInvalid'));
-    if (!payDate || payDate > todayISO()) return saveFeedback(false), setErr(t('dateFuture'));
+    const pd = payDate || todayISO();
+    if (pd > todayISO()) return saveFeedback(false), setErr(t('dateFuture'));
     setErr('');
-    addPayment(fb, { customerId, date: payDate, amountPaise: p, mode, createdBy: displayName });
+    addPayment(fb, { customerId, date: pd, amountPaise: p, mode, createdBy: displayName });
     playSound('payment');
     setPaidAnim({ paise: p, key: Date.now() });
+    setPayNote(pastMonth ? t('payDatedToday').replace('{d}', dmy(pd, lang)) : '');
     setAmount('');
     setPick(null);
   };
@@ -113,10 +118,11 @@ export default function CustomerDetail({ fb, customers, days, payments, settings
     setSharing(true);
     setShareErr('');
     try {
-      const fp = billFingerprint(row, settings);
+      const billRow = withLaterPayments(row, payments, month, todayISO());
+      const fp = billFingerprint(billRow, settings);
       let blob = await getCachedPhoto(customerId, month, fp);
       if (!blob) {
-        blob = await renderBillImage(row, month, settings);
+        blob = await renderBillImage(billRow, month, settings);
         putCachedPhoto(customerId, month, blob, fp);
       }
       await sendBillToWhatsApp({
@@ -152,6 +158,7 @@ export default function CustomerDetail({ fb, customers, days, payments, settings
 
   return (
     <div className="screen detail">
+      {gate.element}
       {paidAnim && (
         <div key={paidAnim.key} className="paid-overlay" role="status" data-testid="payment-received" onClick={() => setPaidAnim(null)}>
           <div className="paid-card">
@@ -204,6 +211,18 @@ export default function CustomerDetail({ fb, customers, days, payments, settings
           <span>{row.balancePaise >= 0 ? (customer.isSupplier ? t('weOwe') : t('balanceDue')) : t('advance')}</span>
           <b className={customer.isSupplier ? '' : row.balancePaise > 0 ? 'due' : 'clear'}>{rupees(Math.abs(row.balancePaise))}</b>
         </div>
+        {pastMonth && paidAfterPaise > 0 && row.balancePaise > 0 && (
+          <div className="kv" data-testid="paid-later">
+            <span>{t('paidLater')}</span>
+            <b className="clear">{rupees(paidAfterPaise)}</b>
+          </div>
+        )}
+        {pastMonth && paidAfterPaise > 0 && row.balancePaise > 0 && (
+          <div className="kv">
+            <span>{t('monthDueNow').replace('{m}', monthName(month, lang))}</span>
+            <b className={monthLeftPaise > 0 ? 'due' : 'clear'}>{rupees(monthLeftPaise)}</b>
+          </div>
+        )}
         <button className="btn whatsapp big" onClick={() => share(false)} disabled={sharing}>
           {sharing ? t('loading') : t('shareWhatsApp')}
         </button>
@@ -293,10 +312,11 @@ export default function CustomerDetail({ fb, customers, days, payments, settings
         </div>
         <p className="field-label">{t('date')}</p>
         <label className="date-pick">
-          <span>{dmy(payDate, lang)}</span>
-          <input type="date" value={payDate} max={todayISO()} onChange={(e) => e.target.value && setPayDate(e.target.value)} />
+          <span>{dmy(payDate || todayISO(), lang)}</span>
+          <input type="date" value={payDate || todayISO()} max={todayISO()} onChange={(e) => e.target.value && setPayDate(e.target.value)} />
         </label>
         {err && <p className="error">{err}</p>}
+        {payNote && <p className="muted small" data-testid="pay-note">{payNote}</p>}
         <button className="btn primary big" type="submit" data-testid="pay-submit">
           {payLabel}
         </button>
@@ -319,9 +339,7 @@ export default function CustomerDetail({ fb, customers, days, payments, settings
             <button
               className="btn small ghost"
               onClick={() => {
-                if (window.confirm(t('confirmDelete'))) {
-                  deletePayment(fb, p.id, p);
-                }
+                gate.ask(`${t('pinForDeletePayment')} — ${rupees(p.amountPaise)}`, () => deletePayment(fb, p.id, p));
               }}
             >
               {t('deletePayment')}

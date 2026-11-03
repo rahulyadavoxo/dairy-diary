@@ -102,7 +102,13 @@ export function withLastDay(c, days, date) {
       const eve = en.half === 'morning' && e === 0 ? undefined : e;
       return { ...c, usualMorningL: m, usualEveningL: eve === undefined ? c.usualEveningL : eve, usualL: undefined };
     }
-    if (tot > 0) return { ...c, usualMorningL: tot, usualEveningL: 0, usualL: undefined };
+    // A total-only last day: keep the profile's morning/evening split if it adds up to the same.
+    if (tot > 0) {
+      const pm = Number(c.usualMorningL) || 0, pe = Number(c.usualEveningL) || 0;
+      if (pm + pe > 0 && Math.abs(pm + pe - tot) < 0.001) return c;
+      if (pm + pe > 0) { const mm = Math.round((tot * pm) / (pm + pe) * 1000) / 1000; return { ...c, usualMorningL: mm, usualEveningL: Math.round((tot - mm) * 1000) / 1000, usualL: undefined }; }
+      return { ...c, usualMorningL: tot, usualEveningL: 0, usualL: undefined };
+    }
   }
   return c;
 }

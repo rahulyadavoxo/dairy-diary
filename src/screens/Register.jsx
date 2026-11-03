@@ -100,7 +100,9 @@ export default function DayEditor({ fb, customers, days, pendingDays = {}, setti
     drafts[c.id] || (saved[c.id] ? fromSaved(saved[c.id]) : customerId ? { ...ZERO, skip: isPaused(c, date) } : defaultRow(c, date));
 
   // Saving here records the whole day, so a morning-only Delivery save becomes complete.
-  const normalise = (c, r, st) => normaliseEntry(c, { ...r, half: null }, st);
+  // ...except today's 'evening left' day stays open when the evening is still empty.
+  const normalise = (c, r, st) =>
+    normaliseEntry(c, { ...r, half: r.half === 'morning' && date === todayISO() && !(Number(r.milkEveningL) > 0) ? 'morning' : null }, st);
 
   ctx.current = { date, displayName, byId, settings, saved };
 
@@ -176,11 +178,16 @@ export default function DayEditor({ fb, customers, days, pendingDays = {}, setti
   const updateQty = (c, v) => {
     const r = rowFor(c);
     const val = Math.max(0, toMilli(v) / 1000);
+    // A total-only row: the other session keeps the rest of the old total (it was lost before).
+    const tot = toMilli(r.milkL) / 1000;
+    const totalOnly = tot > 0 && !(toMilli(r.milkMorningL) > 0) && !(toMilli(r.milkEveningL) > 0);
     if (session === 'morning') {
-      const e = toMilli(r.milkEveningL) / 1000;
+      const e = totalOnly ? Math.max(0, tot - val) : toMilli(r.milkEveningL) / 1000;
+      if (totalOnly) return update(c, { milkMorningL: val, milkEveningL: e, milkL: Math.round((val + e) * 1000) / 1000 });
       update(c, { milkMorningL: val, milkL: Math.round((val + e) * 1000) / 1000 });
     } else if (session === 'evening') {
-      const m = toMilli(r.milkMorningL) / 1000;
+      const m = totalOnly ? Math.max(0, tot - val) : toMilli(r.milkMorningL) / 1000;
+      if (totalOnly) return update(c, { milkEveningL: val, milkMorningL: m, milkL: Math.round((m + val) * 1000) / 1000 });
       update(c, { milkEveningL: val, milkL: Math.round((m + val) * 1000) / 1000 });
     } else {
       // Total mode: either Total OR Morning + Evening, never both (same as the Delivery card).

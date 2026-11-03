@@ -15,7 +15,8 @@ export default function ImportCustomers({ fb, customers, onDone }) {
   const bad = parsed.filter((p) => p.bad);
 
   const doImport = () => {
-    const base = customers.length;
+    // after the highest existing route position (a count clashed after deletes / gaps)
+    const base = Math.max(0, ...customers.map((c) => Number(c.order) || 0)) / 10;
     fresh.forEach((p, i) => {
       saveCustomer(fb, null, {
         name: p.name,

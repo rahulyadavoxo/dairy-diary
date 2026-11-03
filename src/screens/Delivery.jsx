@@ -532,7 +532,7 @@ function DeliveryRound({ fb, customers, days, settings, displayName, onBack, dat
       if (session === 'evening') merged.milkMorningL = Number(prev.milkL);
     }
     // money #6: keep the milk rate this day was saved at (a mid-day rate change must not reprice the morning)
-    const entry = normaliseEntry(c, { ...merged, milkRatePaise: prev.milkRatePaise, skip: false, note: prev.note || '' }, settings);
+    const entry = normaliseEntry(c, { ...merged, milkRatePaise: prev.milkRatePaise, paneerRatePaise: prev.paneerRatePaise, skip: false, note: prev.note || '' }, settings);
     saveEntries(fb, date, { [c.id]: entry }, displayName, { [c.id]: saved[c.id] });
     const item = { id: c.id, m: entry.milkMorningL, e: entry.half === 'morning' ? null : entry.milkEveningL, p: entry.paneerKg || 0, total: entry.milkL };
     if (!deliveredFor(entry, session) && !((entry.paneerKg || 0) > 0)) {
@@ -560,7 +560,8 @@ function DeliveryRound({ fb, customers, days, settings, displayName, onBack, dat
     }
     // A once-a-day customer has no other round: Absent in the morning round = Absent for the day
     // (a 0 L non-skip entry made the card come back, prefilled, after the morning time).
-    if (split && morningDone(saved[c.id]) && !review) {
+    // A saved morning stays on Absent in every format (it erased delivered milk in 'both'/'total').
+    if ((split || (saved[c.id] && saved[c.id].half === 'morning')) && morningDone(saved[c.id]) && !review) {
       // after the morning time: the morning already delivered stays, evening = 0
       deliver(c, { milkMorningL: Number(saved[c.id].milkMorningL) || 0, milkEveningL: 0, paneerKg: Number(saved[c.id].paneerKg) || 0, half: null });
       return;
@@ -605,7 +606,7 @@ function DeliveryRound({ fb, customers, days, settings, displayName, onBack, dat
         raw = { milkMorningL: usualMorning(c), milkEveningL: hasE ? pe : 0, half: !hasE && twice(c) ? 'morning' : null };
       }
       if (split && session === 'total') raw = { milkMorningL: morningDone(prev) ? pm : usualMorning(c), milkEveningL: pe > 0 && prev.half !== 'morning' ? pe : usualEvening(c), half: null };
-      rows[c.id] = normaliseEntry(c, { ...raw, milkRatePaise: prev.milkRatePaise, paneerKg: prev.paneerKg || 0, skip: false, note: prev.note || '' }, settings);
+      rows[c.id] = normaliseEntry(c, { ...raw, milkRatePaise: prev.milkRatePaise, paneerRatePaise: prev.paneerRatePaise, paneerKg: prev.paneerKg || 0, skip: false, note: prev.note || '' }, settings);
       snap[c.id] = { prev: saved[c.id] || null, wrote: rows[c.id] };
       now[c.id] = true;
     });
