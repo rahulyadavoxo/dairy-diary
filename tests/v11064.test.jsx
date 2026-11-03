@@ -42,5 +42,11 @@ describe('Hisaab header = this month only', () => {
     const byName = (n) => heads.find((h) => h.closest('li').textContent.includes(n));
     expect(byName('Aadil G').textContent).toMatch(/₹70/); // 1000 + 120 − 1050 = 70
     expect(byName('Mini singh').className).toBe('clear');
+    // 1.10.66: paid customer shows the amount paid (₹560) and a PAID stamp; unpaid has no stamp
+    expect(byName('Mini singh').textContent).toMatch(/560/);
+    const stamps = screen.getAllByTestId('paid-stamp');
+    expect(stamps).toHaveLength(1);
+    expect(stamps[0].closest('li').textContent).toContain('Mini singh');
+    expect(stamps[0].textContent).toContain('PAID');
   });
 });

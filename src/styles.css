@@ -155,6 +155,13 @@ label.check input { width: 24px; min-height: 24px; }
 .total.good b { color: var(--green); }
 .total.bad b { color: var(--red); }
 .hisaab-row { font: inherit; width: 100%; text-align: left; color: var(--text); }
+.hisaab-row.is-paid { position: relative; overflow: hidden; }
+.paid-stamp {
+  position: absolute; right: 0.9rem; bottom: 0.9rem; transform: rotate(-14deg);
+  border: 3px solid var(--green); color: var(--green); border-radius: 8px;
+  padding: 0.15rem 0.6rem; font-weight: 800; font-size: 1.15rem; letter-spacing: 0.08em;
+  opacity: 0.35; pointer-events: none; white-space: nowrap;
+}
 .grid-4 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.4rem; margin-top: 0.5rem; color: var(--muted); }
 .grid-4 b { color: var(--text); }
 .due { color: var(--red); }

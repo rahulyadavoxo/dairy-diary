@@ -272,13 +272,26 @@ export default function Hisaab({ fb, customers, days, payments, settings, month,
       <ul className="rows">
         {rows.map((r) => (
           <li key={r.customerId}>
-            <button className="row hisaab-row" onClick={() => openCustomer(r.customerId)}>
+            <button className={`row hisaab-row${isPaidRow(r) ? ' is-paid' : ''}`} onClick={() => openCustomer(r.customerId)}>
+              {isPaidRow(r) && (
+                <span className="paid-stamp" aria-hidden="true" data-testid="paid-stamp">
+                  ✓ {t('paidStamp')}
+                </span>
+              )}
               <div className="row-top">
                 <b>{r.customer.name}</b>
                 {(() => {
                   // Header shows only this month's unpaid amount. Payments clear old dues first, so
                   // this month's part = min(month bill, total balance). Old dues stay in "Balance due".
                   const monthDue = Math.max(0, Math.min(r.billedPaise || 0, r.balancePaise || 0));
+                  // Paid customers: header shows the amount paid this month (green), not ₹0.
+                  if (isPaidRow(r)) {
+                    return (
+                      <b className={masked ? 'muted' : 'clear'} data-testid="row-balance">
+                        {money(r.paidPaise)}
+                      </b>
+                    );
+                  }
                   return (
                     <b className={masked ? 'muted' : r.balancePaise < 0 || monthDue === 0 ? 'clear' : 'due'} data-testid="row-balance">
                       {r.balancePaise < 0 ? `${t('advance')} ${money(-r.balancePaise)}` : money(monthDue)}
