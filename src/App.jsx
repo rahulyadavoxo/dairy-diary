@@ -12,6 +12,7 @@ import ImportReview from './screens/ImportReview.jsx';
 import Customers from './screens/Customers.jsx';
 import Hisaab from './screens/Hisaab.jsx';
 import CustomerDetail from './screens/CustomerDetail.jsx';
+import { defaultCustomerMonth } from './firstMonth.js';
 import { swipeTarget, blockedTarget } from './swipeTabs.js';
 import Delivery from './screens/Delivery.jsx';
 import Settings from './screens/Settings.jsx';
@@ -382,8 +383,8 @@ function Main({ fb, user, farm, farmId }) {
     );
   } else if (tab === 'register') screen = <Register {...data} onDelivery={() => setDelivery(true)} onImportReview={IMPORT_DATES.length ? () => setImportReview(true) : undefined} />;
   else if (tab === 'hisaab')
-    screen = <Hisaab {...data} month={month} setMonth={setMonth} openCustomer={(id) => setDetail({ customerId: id, month })} />;
-  else if (tab === 'customers') screen = <Customers {...data} openCustomer={(id) => setDetail({ customerId: id, month })} />;
+    screen = <Hisaab {...data} month={month} setMonth={setMonth} openCustomer={(id) => setDetail({ customerId: id, month: defaultCustomerMonth(days) })} />;
+  else if (tab === 'customers') screen = <Customers {...data} openCustomer={(id) => setDetail({ customerId: id, month: defaultCustomerMonth(days) })} />;
   else screen = <Settings {...data} />;
 
   const tabs = [

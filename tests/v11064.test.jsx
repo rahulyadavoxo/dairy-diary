@@ -50,3 +50,17 @@ describe('Hisaab header = this month only', () => {
     expect(stamps[0].textContent).toContain('PAID');
   });
 });
+
+import { defaultCustomerMonth } from '../src/firstMonth.js';
+describe('customer page opens on the month before the running month (1.10.67)', () => {
+  it('previous month when the farm has older deliveries, else the running month', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 10, 3, 10, 0));
+    expect(defaultCustomerMonth({ '2026-09-02': { entries: { a: { milkL: 1 } } } })).toBe('2026-10');
+    expect(defaultCustomerMonth({ '2026-11-02': { entries: { a: { milkL: 1 } } } })).toBe('2026-11');
+    expect(defaultCustomerMonth({})).toBe('2026-11');
+    vi.setSystemTime(new Date(2027, 0, 5, 10, 0));
+    expect(defaultCustomerMonth({ '2026-09-02': { entries: { a: { milkL: 1 } } } })).toBe('2026-12');
+    vi.useRealTimers();
+  });
+});

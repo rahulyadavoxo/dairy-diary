@@ -8,7 +8,7 @@ import { renderBillImage, billFileName, billFingerprint } from '../billImage.js'
 import { validWaNumber, sendBillToWhatsApp } from '../waShare.js';
 import WaDirectHelp from '../components/WaDirectHelp.jsx';
 import { getCachedPhoto, putCachedPhoto } from '../billCache.js';
-import { dmy, fmtQty, monthOf, mondayOffset, monthDates, paiseToInput, rupees, toPaise, todayISO, weekdaysMonFirst } from '../format.js';
+import { dmy, fmtQty, monthName, monthOf, mondayOffset, monthDates, paiseToInput, rupees, toPaise, todayISO, weekdaysMonFirst } from '../format.js';
 import { MonthNav } from './Hisaab.jsx';
 import { validUpiId, upiLink, qrDataUrl } from '../upi.js';
 
@@ -62,7 +62,16 @@ export default function CustomerDetail({ fb, customers, days, payments, settings
   // exactly due = Full -> "Paid", more than due = Full + the extra goes to advance. The balance
   // already carries an overpayment forward as advance (computeMonth), so nothing else is stored.
   const payRow = (curRes && curRes.rows[0]) || row; // balance as of today
-  const duePaise = fullPaymentPaise(payRow.balancePaise);
+  // Past month open (user, 3 Nov 2026): Record payment offers only THAT month's unpaid part.
+  // Payments clear old dues first, so what is left of this month's bill today is
+  // its closing balance minus payments dated after it, kept between 0 and the month's bill.
+  const pastMonth = month !== curMonth;
+  const paidAfterPaise = pastMonth
+    ? payments.reduce((sum, p) => (p.customerId === customer.id && p.date && p.date.slice(0, 7) > month && p.date <= todayISO() ? sum + Math.round(p.amountPaise || 0) : sum), 0)
+    : 0;
+  const monthLeftPaise = Math.max(0, Math.min(row.billedPaise || 0, (row.balancePaise || 0) - paidAfterPaise));
+  const duePaise = pastMonth ? monthLeftPaise : fullPaymentPaise(payRow.balancePaise);
+  const advBasePaise = fullPaymentPaise(payRow.balancePaise); // advance only beyond the total due today
   const typedNow = toPaise(amount) || 0;
   const payKind =
     typedNow > 0
@@ -76,7 +85,9 @@ export default function CustomerDetail({ fb, customers, days, payments, settings
     typedNow > 0 && payKind === 'full'
       ? t('payMarkPaid')
       : typedNow > 0 && payKind === 'over'
-        ? (duePaise > 0 ? t('payPaidAdvance') : t('payAddAdvance')).replace('{x}', rupees(typedNow - duePaise))
+        ? typedNow > advBasePaise
+          ? (advBasePaise > 0 ? t('payPaidAdvance') : t('payAddAdvance')).replace('{x}', rupees(typedNow - advBasePaise))
+          : t('payMarkPaid') // past month: more than its own part only clears other dues, no advance yet
         : t('addPayment');
 
   const record = (e) => {
@@ -233,7 +244,7 @@ export default function CustomerDetail({ fb, customers, days, payments, settings
       <form className="card pay" onSubmit={record} noValidate>
         {month !== curMonth && (
           <p className="small muted" data-testid="due-today">
-            {t('dueToday')}: <b>{payRow.balancePaise < 0 ? `${t('advance')} ` : ''}{rupees(Math.abs(payRow.balancePaise))}</b>
+            {t('monthDueNow').replace('{m}', monthName(month, lang))}: <b>{rupees(monthLeftPaise)}</b>
           </p>
         )}
         <div className="chips">
@@ -267,8 +278,8 @@ export default function CustomerDetail({ fb, customers, days, payments, settings
         {payKind === 'part' && typedPaise > 0 && (
           <p className="small muted" data-testid="pay-hint">{t('payLeftAfter').replace('{x}', rupees(duePaise - typedPaise))}</p>
         )}
-        {payKind === 'over' && (
-          <p className="small ok-text" data-testid="pay-hint">{t('payToAdvance').replace('{x}', rupees(typedPaise - duePaise))}</p>
+        {payKind === 'over' && typedPaise > advBasePaise && (
+          <p className="small ok-text" data-testid="pay-hint">{t('payToAdvance').replace('{x}', rupees(typedPaise - advBasePaise))}</p>
         )}
         <div className="chips">
           <button type="button" className={'btn chip' + (mode === 'cash' ? ' on' : '')} onClick={() => setMode('cash')}>

@@ -176,6 +176,7 @@ export const STRINGS = {
     offline: 'ऑफ़लाइन — एंट्री फोन में सेव होंगी',
     oldHistoryLoading: 'पुराना हिसाब (3 महीने से पहले का) अभी इस फोन पर नहीं आया — पिछला बाकी अधूरा हो सकता है। इंटरनेट चालू करें।',
     dueToday: 'आज तक कुल बाकी',
+    monthDueNow: '{m} का बाकी',
     version: 'संस्करण',
     rateMissing: 'दूध का रेट अभी सेट नहीं है — सेटिंग में डालें।',
 
@@ -590,6 +591,7 @@ export const STRINGS = {
     offline: 'Offline — entries are saved on the phone',
     oldHistoryLoading: 'Older history (before 3 months) has not loaded on this phone yet — previous due may be incomplete. Turn on the internet.',
     dueToday: 'Total due as of today',
+    monthDueNow: '{m} due',
     version: 'Version',
     rateMissing: 'Milk rate is not set yet — add it in Settings.',
 

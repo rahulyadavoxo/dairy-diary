@@ -132,15 +132,34 @@ describe('money #2: payment box uses the balance as of today', () => {
       ),
     );
 
-  it('October open after paying ₹1,860 on Nov 1: Full = ₹60 (today), QR ₹60, due-today line shown', () => {
+  it('October open after paying ₹1,860 on Nov 1: October is cleared, Full = ₹0, no QR (1.10.67: past month = only its own amount)', () => {
     view('2026-10', [{ id: 'p', customerId: 'a', date: '2026-11-01', amountPaise: 186000 }]);
-    expect(screen.getByTestId('pay-full').textContent).toContain('60');
-    expect(screen.getByTestId('pay-full').textContent).not.toContain('1,860');
-    expect(screen.getByTestId('upi-qr-amount').textContent).toContain('60');
-    expect(screen.getByTestId('upi-qr-amount').textContent).not.toContain('1,860');
-    expect(screen.getByTestId('due-today').textContent).toContain(en.dueToday);
+    expect(screen.getByTestId('pay-full').textContent).toContain('₹0');
+    expect(screen.queryByTestId('upi-qr-amount')).toBeNull();
+    expect(screen.getByTestId('due-today').textContent).toContain('October 2026 due');
     // the bill of the viewed month itself is unchanged
     expect(document.querySelector('.kv.big b').textContent).toContain('1,860');
+  });
+
+  it('October open, part paid in Nov: Full = what is left of October only (old dues first)', () => {
+    // Oct bill ₹1,860, opening due ₹500 (customer), ₹600 paid on Nov 1 -> old ₹500 cleared, ₹100 of Oct paid.
+    render(
+      wrap(
+        <CustomerDetail
+          fb={{ farmId: 'F', fsMod: { doc: () => ({ id: 'x' }), collection: () => ({}), setDoc: () => Promise.resolve() } }}
+          customers={[{ id: 'a', name: 'Asha', openingDuePaise: 50000 }]}
+          days={days}
+          payments={[{ id: 'p', customerId: 'a', date: '2026-11-01', amountPaise: 60000 }]}
+          settings={{ milkRatePaise: 6000 }}
+          month="2026-10"
+          customerId="a"
+          onBack={() => {}}
+          displayName="me"
+        />,
+      ),
+    );
+    expect(screen.getByTestId('pay-full').textContent).toContain('1,760');
+    expect(screen.getByTestId('due-today').textContent).toContain('1,760');
   });
 
   it('current month open: no extra line, Full = balance', () => {
