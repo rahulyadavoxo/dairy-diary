@@ -275,9 +275,15 @@ export default function Hisaab({ fb, customers, days, payments, settings, month,
             <button className="row hisaab-row" onClick={() => openCustomer(r.customerId)}>
               <div className="row-top">
                 <b>{r.customer.name}</b>
-                <b className={masked ? 'muted' : r.balancePaise > 0 ? 'due' : 'clear'} data-testid="row-balance">
-                  {r.balancePaise < 0 ? `${t('advance')} ${money(-r.balancePaise)}` : money(r.balancePaise)}
-                </b>
+                {(() => {
+                  // Header shows only this month's amount (bill − paid this month); old dues stay in "Balance due".
+                  const monthDue = Math.max(0, (r.billedPaise || 0) - (r.paidPaise || 0));
+                  return (
+                    <b className={masked ? 'muted' : r.balancePaise < 0 || monthDue === 0 ? 'clear' : 'due'} data-testid="row-balance">
+                      {r.balancePaise < 0 ? `${t('advance')} ${money(-r.balancePaise)}` : money(monthDue)}
+                    </b>
+                  );
+                })()}
               </div>
               <div className="grid-4 small">
                 <span>
