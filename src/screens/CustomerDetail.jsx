@@ -69,7 +69,9 @@ export default function CustomerDetail({ fb, customers, days, payments, settings
   const paidAfterPaise = pastMonth
     ? payments.reduce((sum, p) => (p.customerId === customer.id && p.date && p.date.slice(0, 7) > month && p.date <= todayISO() ? sum + Math.round(p.amountPaise || 0) : sum), 0)
     : 0;
-  const monthLeftPaise = Math.max(0, Math.min(row.billedPaise || 0, (row.balancePaise || 0) - paidAfterPaise));
+  // User, 3 Nov 2026 (2nd pass): Full = everything due up to the end of that month (older dues too),
+  // minus payments made after it. Bills of later months are not included.
+  const monthLeftPaise = Math.max(0, (row.balancePaise || 0) - paidAfterPaise);
   const duePaise = pastMonth ? monthLeftPaise : fullPaymentPaise(payRow.balancePaise);
   const advBasePaise = fullPaymentPaise(payRow.balancePaise); // advance only beyond the total due today
   const typedNow = toPaise(amount) || 0;

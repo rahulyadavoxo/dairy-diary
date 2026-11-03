@@ -4,7 +4,7 @@ import { isFirebaseConfigured, getFirebase, offlineSaveBroken, MEMCACHE_EVENT } 
 import { initPendingSync, pendingCount } from './pendingSync.js';
 import { listenAll, saveSettings } from './db.js';
 import { maybeLockPaneer } from './paneerLock.js';
-import { todayISO, monthOf, dmy } from './format.js';
+import { todayISO, monthOf, dmy, addMonths } from './format.js';
 import NotConfigured from './screens/NotConfigured.jsx';
 import Login from './screens/Login.jsx';
 import Register from './screens/RegisterView.jsx';
@@ -258,7 +258,7 @@ function Main({ fb, user, farm, farmId }) {
     const id = setInterval(() => {
       const m = monthOf(todayISO());
       if (m === curMonth.current) return;
-      setMonth((x) => (x === curMonth.current ? m : x));
+      setMonth((x) => (x === curMonth.current ? m : x === addMonths(curMonth.current, -1) ? addMonths(m, -1) : x));
       curMonth.current = m;
     }, 60 * 1000);
     return () => clearInterval(id);
@@ -431,6 +431,8 @@ function Main({ fb, user, farm, farmId }) {
               setDetail(null);
               setDelivery(false);
               setImportReview(false);
+              // Hisaab opens on the month before the running month (user, 3 Nov 2026).
+              if (id === 'hisaab') setMonth(defaultCustomerMonth(days));
               setTab(id);
             }}
           >

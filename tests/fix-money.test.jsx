@@ -136,7 +136,7 @@ describe('money #2: payment box uses the balance as of today', () => {
     view('2026-10', [{ id: 'p', customerId: 'a', date: '2026-11-01', amountPaise: 186000 }]);
     expect(screen.getByTestId('pay-full').textContent).toContain('₹0');
     expect(screen.queryByTestId('upi-qr-amount')).toBeNull();
-    expect(screen.getByTestId('due-today').textContent).toContain('October 2026 due');
+    expect(screen.getByTestId('due-today').textContent).toContain('Total due till October 2026');
     // the bill of the viewed month itself is unchanged
     expect(document.querySelector('.kv.big b').textContent).toContain('1,860');
   });
@@ -160,6 +160,25 @@ describe('money #2: payment box uses the balance as of today', () => {
     );
     expect(screen.getByTestId('pay-full').textContent).toContain('1,760');
     expect(screen.getByTestId('due-today').textContent).toContain('1,760');
+  });
+
+  it('October open, unpaid: Full = October closing balance incl. older due, not November bill', () => {
+    render(
+      wrap(
+        <CustomerDetail
+          fb={{ farmId: 'F', fsMod: { doc: () => ({ id: 'x' }), collection: () => ({}), setDoc: () => Promise.resolve() } }}
+          customers={[{ id: 'a', name: 'Asha', openingDuePaise: 50000 }]}
+          days={days}
+          payments={[]}
+          settings={{ milkRatePaise: 6000 }}
+          month="2026-10"
+          customerId="a"
+          onBack={() => {}}
+          displayName="me"
+        />,
+      ),
+    );
+    expect(screen.getByTestId('pay-full').textContent).toContain('2,360'); // 500 old + 1,860 Oct (Nov ₹60 excluded)
   });
 
   it('current month open: no extra line, Full = balance', () => {
