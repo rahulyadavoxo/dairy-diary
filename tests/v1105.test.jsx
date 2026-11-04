@@ -219,12 +219,13 @@ describe('Customers: last edited + save feedback', () => {
     render(wrap(<Customers fb={fb} customers={[c1, c2]} settings={settings} openCustomer={() => {}} />));
     expect(screen.getByTestId('last-edited').textContent).toContain('Bablu');
   });
-  it('Cancel does not move the highlight', () => {
+  it('1.10.72: tapping a customer and going back without changes also turns it green', () => {
     const fb = mkFb();
     render(wrap(<Customers fb={fb} customers={[c1, c2]} settings={settings} openCustomer={() => {}} />));
     fireEvent.click(screen.getByText(/Asha/));
     fireEvent.click(screen.getByText(en.cancel));
-    expect(screen.queryByTestId('last-edited')).toBeNull();
+    expect(screen.getByTestId('last-edited').textContent).toContain('Asha');
+    expect(localStorage.getItem('dd_last_edited_customer')).toBeNull();
   });
   it('a save that fails validation vibrates once and plays no sound', () => {
     const fb = mkFb();

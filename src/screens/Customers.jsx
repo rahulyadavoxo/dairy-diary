@@ -11,21 +11,22 @@ import { saveFeedback } from '../feedback.js';
 import { getPinHash, verifyPin, pinWaitSeconds } from '../pinLock.js';
 import StickySearch from '../components/StickySearch.jsx';
 
-// The customer saved last stays lightly green in the list (on this phone) until another is saved.
-const LAST_EDITED_KEY = 'dd_last_edited_customer';
+// User, 4 Nov 2026: the customer last TAPPED (opened, saved or just viewed and Back) stays lightly
+// green until the app restarts. Kept in memory only; the old localStorage copy is removed.
+let sessionLastEdited = '';
+try {
+  localStorage.removeItem('dd_last_edited_customer');
+} catch {
+  /* ignore */
+}
 export function loadLastEdited() {
-  try {
-    return localStorage.getItem(LAST_EDITED_KEY) || '';
-  } catch {
-    return '';
-  }
+  return sessionLastEdited;
 }
 function storeLastEdited(id) {
-  try {
-    if (id) localStorage.setItem(LAST_EDITED_KEY, id);
-  } catch {
-    /* ignore */
-  }
+  if (id) sessionLastEdited = id;
+}
+export function resetLastEditedForTests() {
+  sessionLastEdited = '';
 }
 
 const EMPTY = { name: '', phone: '', area: '', usualMorningL: 0.5, usualEveningL: 0.5, customRate: false, rateOverride: '', customPaneerRate: false, paneerRateOverride: '', openingDue: '', openingAdv: false, pauseFrom: '', pauseTo: '', active: true, isSupplier: false, waAutoBill: true, prefillMode: 'usual' };
@@ -56,6 +57,10 @@ export default function Customers({ fb, customers, settings, days, openCustomer 
   const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState({});
   const [lastEdited, setLastEdited] = useState(loadLastEdited);
+  const markTapped = (id) => {
+    storeLastEdited(id);
+    setLastEdited(id);
+  };
   const [query, setQueryState] = useState(() => view.query);
   const setQuery = (v) => {
     view.query = v;
@@ -176,7 +181,7 @@ export default function Customers({ fb, customers, settings, days, openCustomer 
                 </button>
               </div>
             )}
-            <button className="cust-main" onClick={() => (selecting ? toggleSelect(c.id) : setEditing(c))}>
+            <button className="cust-main" onClick={() => (selecting ? toggleSelect(c.id) : (markTapped(c.id), setEditing(c)))}>
               <b>
                 {i + 1}. {c.name}
                 {c.isSupplier && <span className="tag supplier-tag"> 🏷️ {t('supplier')}</span>}
@@ -191,7 +196,7 @@ export default function Customers({ fb, customers, settings, days, openCustomer 
                 {pauseLabel(c, todayISO(), t, lang) ? ` · ${pauseLabel(c, todayISO(), t, lang)}` : ''}
               </span>
             </button>
-            <button className="btn small ghost" onClick={() => openCustomer(c.id)}>
+            <button className="btn small ghost" onClick={() => (markTapped(c.id), openCustomer(c.id))}>
               ₹
             </button>
           </li>
@@ -206,7 +211,7 @@ export default function Customers({ fb, customers, settings, days, openCustomer 
         <ul className="rows">
           {inactive.filter((c) => matchesQuery(c, query)).map((c) => (
             <li key={c.id} className="row cust-row inactive">
-              <button className="cust-main" onClick={() => setEditing(c)}>
+              <button className="cust-main" onClick={() => (markTapped(c.id), setEditing(c))}>
                 <b>{c.name}</b>
                 <span className="muted small">{t('inactive')}</span>
               </button>
