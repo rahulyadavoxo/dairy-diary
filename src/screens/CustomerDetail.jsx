@@ -76,7 +76,9 @@ export default function CustomerDetail({ fb, customers, days, payments, settings
   // minus payments made after it. Bills of later months are not included.
   const monthLeftPaise = Math.max(0, (row.balancePaise || 0) - paidAfterPaise);
   const duePaise = pastMonth ? monthLeftPaise : fullPaymentPaise(payRow.balancePaise);
-  const advBasePaise = fullPaymentPaise(payRow.balancePaise); // advance only beyond the total due today
+  // User, 4 Nov 2026: on a past month the advance is what is beyond THAT month's total due
+  // (Oct due 866.25, typed 1000 -> 133.75 advance); the running month uses today's total due.
+  const advBasePaise = pastMonth ? monthLeftPaise : fullPaymentPaise(payRow.balancePaise);
   const typedNow = toPaise(amount) || 0;
   const payKind =
     typedNow > 0
