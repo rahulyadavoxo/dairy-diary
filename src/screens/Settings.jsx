@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { saveFeedback } from '../feedback.js';
 import { useLang } from '../i18n.js';
-import { saveSettings } from '../db.js';
+import { saveSettings, lockCurrentRates } from '../db.js';
 import { WA_API } from '../waCloud.js';
 import { TEMPLATE_DEFAULT, dueBillMonth, istParts } from '../autoBill.js';
 import { paiseToInput, toPaise } from '../format.js';
@@ -18,7 +18,7 @@ import { ToggleBar, DELIVERY_FORMATS, deliveryFormat, morningUntil } from './Del
 // eslint-disable-next-line no-undef
 const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'dev';
 
-export default function Settings({ fb, user, settings, displayName, setDisplayName, online, farm, farmId }) {
+export default function Settings({ fb, user, settings, displayName, setDisplayName, online, farm, farmId, customers = [], days = {} }) {
   const { t, lang, setLang } = useLang();
   const [f, setF] = useState({ milkRate: '', paneerRate: '', farmName: '', phone: '', upiId: '' });
   const [name, setName] = useState(displayName || '');
@@ -219,6 +219,8 @@ export default function Settings({ fb, user, settings, displayName, setDisplayNa
     const prOk = pr !== null && pr > 0;
     if (mrOk && mr !== settings.milkRatePaise) data.milkRatePaise = mr;
     if (prOk && pr !== settings.paneerRatePaise) data.paneerRatePaise = pr;
+    // v1.10.70: the new rate starts now; saved days without a snapshot keep the old rate
+    if ('milkRatePaise' in data || 'paneerRatePaise' in data) lockCurrentRates(fb, customers, days, settings);
     if (Object.keys(data).length) saveSettings(fb, data);
     setF((cur) => ({
       ...cur,

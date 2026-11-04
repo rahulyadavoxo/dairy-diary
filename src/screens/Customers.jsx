@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLang } from '../i18n.js';
-import { saveCustomer, saveOrder, entryChanges, applyPaneerRate } from '../db.js';
+import { saveCustomer, saveOrder, entryChanges, lockCurrentRates } from '../db.js';
 import { sortCustomers, isPaused, matchesQuery } from './Register.jsx';
 import { dmy, fmtQty, paiseToInput, rupees, toPaise, todayISO } from '../format.js';
 import { pushBackHandler } from '../backStack.js';
@@ -353,23 +353,20 @@ export function CustomerForm({ fb, initial, nextOrder, onDone, days, settings })
       prefillMode: f.prefillMode === 'lastDay' ? 'lastDay' : 'usual',
     });
     let data = toData(f);
-    let paneerSync = () => {};
     if (initial) {
       // Only what was changed in this form: another phone may have paused / deactivated / edited
       // this customer meanwhile, and re-sending the old values would undo that.
-      const newPaneer = data.paneerRateOverridePaise;
       data = entryChanges(toData(f0.current), data);
-      // Paneer special rate set (re-saved) or changed / removed: this month's days follow it too.
-      if (newPaneer || 'paneerRateOverridePaise' in data) paneerSync = () => applyPaneerRate(fb, initial.id, newPaneer || null, days, todayISO().slice(0, 7) + '-01', settings && settings.paneerRatePaise);
+      // v1.10.70: a changed special rate applies from now on only; saved days keep their rate
+      // (days without a rate snapshot are frozen at the OLD rate first, before the customer changes).
+      if ('paneerRateOverridePaise' in data || 'rateOverridePaise' in data) lockCurrentRates(fb, [initial], days, settings, initial.id);
       if (!Object.keys(data).length) {
-        paneerSync();
         saveFeedback(true);
         return onDone(initial.id);
       }
     }
     if (!initial) data.order = nextOrder;
     const savedId = saveCustomer(fb, initial ? initial.id : null, data);
-    paneerSync();
     saveFeedback(true);
     onDone(savedId);
   }

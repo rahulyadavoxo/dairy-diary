@@ -1,6 +1,6 @@
 // Firestore data layer.
 import { deleteCachedPhoto } from './billCache.js';
-import { paneerRateFor, validRate } from './billing.js';
+import { paneerRateFor, milkRateFor, validRate } from './billing.js';
 import { vibrateFail } from './feedback.js';
 import { addDays, addMonths, todayISO } from './format.js';
 import { trackWrite } from './pendingSync.js';
@@ -285,6 +285,43 @@ export function lockNullPaneerRates(fb, customers, days, settings, fromIso) {
   }
   const isos = Object.keys(perDay).sort();
   // one update per day document; a batch holds at most 500 writes
+  for (let i = 0; i < isos.length; i += 450) {
+    const batch = fsMod.writeBatch(db);
+    isos.slice(i, i + 450).forEach((iso) => batch.update(fdoc(fb, 'days', iso), perDay[iso]));
+    log(batch.commit());
+  }
+  if (isos.length) touchHistory(fb, isos[0]);
+  return n;
+}
+
+/** v1.10.70 (user, 4 Nov 2026): a new rate starts from the moment it is changed; days already
+ *  saved keep the rate they had. Days saved without a rate snapshot (null) would float with the new
+ *  rate, so BEFORE a milk / paneer rate change (customer special rate or Settings) each of them is
+ *  frozen at the rate billing uses for it right now. `onlyCustomerId` limits it to one customer.
+ *  Returns the number of entries written. */
+export function lockCurrentRates(fb, customers, days, settings, onlyCustomerId = null) {
+  const { db, fsMod } = fb;
+  const byId = new Map((customers || []).map((c) => [c.id, c]));
+  const perDay = {};
+  let n = 0;
+  for (const [iso, d] of Object.entries(days || {})) {
+    if (!d || !d.entries) continue;
+    for (const [cid, e] of Object.entries(d.entries)) {
+      if (onlyCustomerId && cid !== onlyCustomerId) continue;
+      const c = byId.get(cid);
+      if (!c || !e) continue;
+      const hasMilk = !e.skip && (Number(e.milkL) > 0 || Number(e.milkMorningL) > 0 || Number(e.milkEveningL) > 0);
+      if (hasMilk && !validRate(e.milkRatePaise)) {
+        const r = milkRateFor(c, settings, null);
+        if (validRate(r)) ((perDay[iso] = perDay[iso] || {})[`entries.${cid}.milkRatePaise`] = r), n++;
+      }
+      if (Number(e.paneerKg) > 0 && !validRate(e.paneerRatePaise)) {
+        const r = paneerRateFor(settings, null, c);
+        if (validRate(r)) ((perDay[iso] = perDay[iso] || {})[`entries.${cid}.paneerRatePaise`] = r), n++;
+      }
+    }
+  }
+  const isos = Object.keys(perDay).sort();
   for (let i = 0; i < isos.length; i += 450) {
     const batch = fsMod.writeBatch(db);
     isos.slice(i, i + 450).forEach((iso) => batch.update(fdoc(fb, 'days', iso), perDay[iso]));
