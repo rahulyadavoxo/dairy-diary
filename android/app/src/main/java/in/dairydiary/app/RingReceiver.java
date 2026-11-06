@@ -83,6 +83,16 @@ public class RingReceiver extends BroadcastReceiver {
         JSONArray filled = new JSONArray(p.getString("filled", "[]"));
         for (int i = 0; i < filled.length(); i++) if (day.equals(filled.optString(i))) return;
         int server = checkServer(p, day);
+        // v1.10.73: one Firestore 403 is not proof this phone was removed (App Check switched on,
+        // a rules publish with a mistake). Ring as if offline and keep the plan; only a second
+        // 403 in a row (on a later ring) or a dead sign-in clears the plan.
+        if (server == FORBIDDEN) {
+            int n = p.getInt("forbidden", 0) + 1;
+            p.edit().putInt("forbidden", n).apply();
+            if (n >= 2) server = NO_ACCESS;
+        } else if ((server == FILLED || server == EMPTY) && p.getInt("forbidden", 0) != 0) {
+            p.edit().putInt("forbidden", 0).apply();
+        }
         if (server == FILLED) {
             filled.put(day);
             p.edit().putString("filled", filled.toString()).apply();
@@ -93,13 +103,13 @@ public class RingReceiver extends BroadcastReceiver {
             // opened again to cancel). The next sign-in syncs a fresh plan.
             JSONArray all = new JSONArray(p.getString("rings", "[]"));
             for (int i = 0; i < all.length(); i++) RingPlugin.cancelAlarm(ctx, all.getJSONObject(i).optInt("id"));
-            p.edit().putString("rings", "[]").apply();
+            p.edit().putString("rings", "[]").putInt("forbidden", 0).apply();
             return;
         }
         show(ctx, p, id, ring);
     }
 
-    static final int FILLED = 1, EMPTY = 0, UNKNOWN = -1, NO_ACCESS = -2;
+    static final int FILLED = 1, EMPTY = 0, UNKNOWN = -1, NO_ACCESS = -2, FORBIDDEN = -3;
 
     /**
      * Asks Firestore, with one retry and everything under one 20 s deadline (DNS included): after an
@@ -142,7 +152,8 @@ public class RingReceiver extends BroadcastReceiver {
 
     /**
      * FILLED / EMPTY from Firestore; UNKNOWN when it could not be checked (no internet, server error);
-     * NO_ACCESS when this phone's sign-in is dead (token revoked / user gone) or the farm refuses it.
+     * NO_ACCESS when this phone's sign-in is dead (token revoked / user gone); FORBIDDEN when the farm
+     * refuses it (403).
      */
     static int filledOnServer(SharedPreferences p, String day) {
         String key = p.getString("apiKey", ""), project = p.getString("projectId", "");
@@ -180,7 +191,7 @@ public class RingReceiver extends BroadcastReceiver {
             g.setRequestProperty("Authorization", "Bearer " + idToken);
             int code = g.getResponseCode();
             if (code == 404) return EMPTY;
-            if (code == 403) return NO_ACCESS; // rules: this phone is no longer in the farm
+            if (code == 403) return FORBIDDEN; // rules refuse: removed from the farm, or a rules/App Check glitch
             if (code != 200) return UNKNOWN;
             JSONObject doc = new JSONObject(read(g.getInputStream()));
             JSONObject f = doc.optJSONObject("fields");

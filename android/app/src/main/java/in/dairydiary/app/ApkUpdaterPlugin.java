@@ -198,6 +198,24 @@ public class ApkUpdaterPlugin extends Plugin {
         }).start();
     }
 
+    /**
+     * v1.10.73: may this app open the installer? Only checks, never opens Settings. The update
+     * wall calls it on resume; Settings opens only when the user taps the Update button
+     * (it used to re-open on every resume: a back-button trap).
+     */
+    @PluginMethod
+    public void canInstall(PluginCall call) {
+        JSObject r = new JSObject();
+        boolean ok = true;
+        try {
+            ok = Build.VERSION.SDK_INT < 26 || getContext().getPackageManager().canRequestPackageInstalls();
+        } catch (Exception ignored) {
+            ok = true; // could not tell: let install() decide
+        }
+        r.put("ok", ok);
+        call.resolve(r);
+    }
+
     @PluginMethod
     public void install(PluginCall call) {
         File f = apkFile();

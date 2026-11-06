@@ -244,25 +244,64 @@ export function renameDevice(fb, farmId, uid, newName) {
     .catch((e) => console.error('[devices]', e));
 }
 
-/** Listen to the farm doc. cb({ farm, exists, loaded, denied, fromCache }). */
-export function listenFarm(fb, farmId, cb) {
+/** Listen to the farm doc. cb({ farm, exists, loaded, denied, fromCache }).
+ *  v1.10.73: an errored onSnapshot never restarts by itself. On a non-denied error (network,
+ *  'resource-exhausted' quota...) the listener is started again after retryMs. */
+export function listenFarm(fb, farmId, cb, retryMs = 60000) {
   const { onSnapshot } = fb.fsMod;
-  return onSnapshot(
-    farmRef(fb, farmId),
-    { includeMetadataChanges: true },
-    (s) => {
-      const fromCache = s.metadata.fromCache;
-      const exists = s.exists();
-      // A missing doc read only from cache is not proof the farm doesn't exist — wait for the server.
-      const loaded = exists || !fromCache;
-      cb({ farm: exists ? s.data({ serverTimestamps: 'estimate' }) : null, exists, loaded, denied: false, fromCache, pending: s.metadata.hasPendingWrites });
-    },
-    (e) => {
-      console.error('[farm]', e);
-      const denied = e && /permission-denied/.test(e.code || '');
-      cb({ farm: null, exists: false, loaded: true, denied, error: e });
-    },
-  );
+  let unsub = () => {};
+  let retry = null;
+  let stopped = false;
+  const start = () =>
+    onSnapshot(
+      farmRef(fb, farmId),
+      { includeMetadataChanges: true },
+      (s) => {
+        const fromCache = s.metadata.fromCache;
+        const exists = s.exists();
+        // A missing doc read only from cache is not proof the farm doesn't exist — wait for the server.
+        const loaded = exists || !fromCache;
+        cb({ farm: exists ? s.data({ serverTimestamps: 'estimate' }) : null, exists, loaded, denied: false, fromCache, pending: s.metadata.hasPendingWrites });
+      },
+      (e) => {
+        console.error('[farm]', e);
+        const denied = e && /permission-denied/.test(e.code || '');
+        cb({ farm: null, exists: false, loaded: true, denied, error: e });
+        if (!denied && !stopped && retryMs > 0) {
+          clearTimeout(retry);
+          retry = setTimeout(() => {
+            if (stopped) return;
+            unsub = start();
+          }, retryMs);
+        }
+      },
+    );
+  unsub = start();
+  return () => {
+    stopped = true;
+    clearTimeout(retry);
+    unsub();
+  };
+}
+
+/**
+ * v1.10.73: a permission-denied on the farm listener alone is not proof this phone was removed
+ * (a rules edit published with a mistake used to wipe every open helper phone). Ask the server once:
+ *  'removed' = it also denies, the farm is gone, or this uid is really not in devices;
+ *  'member'  = still a member (listener error was a glitch);
+ *  'unknown' = network or other error: do NOT wipe.
+ */
+export async function confirmRemoved(fb, farmId, uid) {
+  const get = fb.fsMod.getDocFromServer;
+  if (typeof get !== 'function') return 'removed'; // no server read available (old fakes): old behaviour
+  try {
+    const s = await get(farmRef(fb, farmId));
+    if (!s.exists()) return 'removed';
+    const d = s.data();
+    return d && d.devices && Object.prototype.hasOwnProperty.call(d.devices, uid) ? 'member' : 'removed';
+  } catch (e) {
+    return /permission-denied/.test((e && e.code) || '') ? 'removed' : 'unknown';
+  }
 }
 
 /**

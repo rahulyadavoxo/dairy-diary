@@ -72,11 +72,10 @@ export default function Settings({ fb, user, settings, displayName, setDisplayNa
       setRingMsg({ text: t('ringTimesInvalid'), err: true });
       saveFeedback(false);
     } else {
-      // only the time that changed: a phone with stale settings must not send back the other one
-      const d = {};
-      if (ring.night !== nightStr) d.ringNight = ring.night;
-      if (ring.morning !== morningStr) d.ringMorning = ring.morning;
-      saveSettings(fb, d);
+      // v1.10.73: both times are one setting: always write the pair that was checked together
+      // (writing one only could pair it with another phone's other time, morning >= night, and
+      // every phone silently fell back to 22:00/08:00).
+      saveSettings(fb, { ringNight: ring.night, ringMorning: ring.morning });
       setRingMsg({ text: t('ringTimesSaved'), err: false });
       saveFeedback(true);
     }
@@ -457,6 +456,14 @@ export function AutoBillCard({ fb, settings, isOwner = true, waApi = WA_API }) {
   const cur = settings.autoBill || {};
   const base = { enabled: !!cur.enabled, day: Number(cur.day) || 1, time: cur.time || '09:00' };
   const [f, setF] = useState(base);
+  // v1.10.73: follow the server (settings snapshot late, another phone changed auto-bill) while the
+  // form still shows the previous server values; what the user has changed is kept.
+  const prevBase = useRef(base);
+  useEffect(() => {
+    const p = prevBase.current;
+    prevBase.current = base;
+    setF((x) => (x.enabled === p.enabled && x.day === p.day && x.time === p.time ? base : x));
+  }, [base.enabled, base.day, base.time]); // eslint-disable-line react-hooks/exhaustive-deps
   const [msg, setMsg] = useState({ text: '', err: false });
   const [conn, setConn] = useState(null); // connect form open
   const [busy, setBusy] = useState(false);

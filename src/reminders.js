@@ -102,6 +102,8 @@ export function planRings({ now = new Date(), days, pendingDays, hasCustomers = 
   const y = addDays(today, -1);
   const ym = at(today, times.morning);
   if (first && y >= first && ym > now && !dayFilled(days, pendingDays, y)) out.push({ id: MORNING_BASE, kind: 'morning', day: y, at: ym });
+  // nothing ever entered (new farm with customers but no register yet): no rings, like lockedBy
+  if (!first) return out;
   for (let k = 0; k < AHEAD; k++) {
     const d = addDays(today, k);
     if (dayFilled(days, pendingDays, d)) continue;
@@ -124,6 +126,10 @@ const native = () => {
 let ready = null;
 let lastSig = '';
 let legacyCleared = false;
+// v1.10.73: syncRings calls run one after another; a call that is overtaken by a newer one
+// before it starts is dropped, so an older plan can never land after a newer one.
+let chain = Promise.resolve();
+let gen = 0;
 
 /** Native ring (RingPlugin) when the APK has it; tests / web / old builds fall back to LN. */
 async function ringNative() {
@@ -207,7 +213,13 @@ async function setup(t) {
 
 /** Bring this phone's pending rings in line with the register. Safe to call often. */
 // auth = { apiKey, projectId, farmId, refreshToken }: lets the native ring ask Firestore at ring time.
-export async function syncRings({ days, pendingDays, hasCustomers, t, dmy, now = new Date(), times = DEF_TIMES, auth = null }) {
+export function syncRings(args) {
+  const my = ++gen;
+  chain = chain.then(() => (my === gen ? syncRingsNow(args) : undefined)).catch(() => {});
+  return chain;
+}
+
+async function syncRingsNow({ days, pendingDays, hasCustomers, t, dmy, now = new Date(), times = DEF_TIMES, auth = null }) {
   if (!native()) return;
   const plan = planRings({ now, days, pendingDays, hasCustomers, times });
   const filled = filledDays({ now, days, pendingDays });
@@ -344,14 +356,30 @@ export async function askBatteryExempt() {
   return null;
 }
 
+/** A ring may have been cleared natively (RingReceiver NO_ACCESS): re-send the plan on the next sync. */
+export function _forceRingResync() {
+  lastSig = '';
+}
+
 export function _resetRingsForTest() {
+  gen = 0;
+  chain = Promise.resolve();
   ready = null;
   lastSig = '';
   legacyCleared = false;
 }
 
 /** Signed out / removed from the farm: this phone stops ringing. */
-export async function cancelAllRings() {
+export function cancelAllRings() {
+  lastSig = '';
+  ++gen; // drop any queued (not yet started) sync: it must not re-schedule after this
+  // now (a hung native call must not delay it), and again after a sync already running
+  const now = cancelAllNow();
+  chain = chain.then(() => cancelAllNow()).catch(() => {});
+  return now;
+}
+
+async function cancelAllNow() {
   lastSig = '';
   if (!native()) return;
   const nat = await ringNative();
