@@ -133,7 +133,9 @@ export default function Hisaab({ fb, customers, days, payments, settings, month,
   const isPastMonth = month < monthOf(todayISO());
   const allRows = res.rows
     .filter((r) => r.customer.active !== false || r.hasActivity || r.balancePaise !== 0)
-    .map((r) => (isPastMonth ? withLaterPayments(r, payments, month, todayISO()) : r));
+    // money #3: suppliers stay on their closing balance (no paid-later rule), so their sort order
+    // matches the amount shown on the card and the "We owe" tile.
+    .map((r) => (isPastMonth && !r.customer.isSupplier ? withLaterPayments(r, payments, month, todayISO()) : r));
 
   // Pre-generate bill photos in the background so sharing is instant later.
   // Re-run when the data arrives / changes (it was [month] only, so on app start it ran with an
