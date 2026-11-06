@@ -165,6 +165,19 @@ service cloud.firestore {
         allow read, write: if docId == 'main' && signedIn()
           && request.auth.uid == farmId && isMember(farmId);
       }
+
+      // Auto-bill run log per bill month (fix-bills #3). The server (Admin SDK) writes status/sent/
+      // failed/tries; a farm device may only add customers it sent BY HAND: the `manual` map.
+      match /waRuns/{month} {
+        allow read: if isMember(farmId);
+        allow create: if isMember(farmId) && month.matches('^[0-9]{4}-[0-9]{2}$')
+          && request.resource.data.keys().hasOnly(['manual'])
+          && request.resource.data.manual is map;
+        allow update: if isMember(farmId)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['manual'])
+          && request.resource.data.manual is map;
+        allow delete: if false;
+      }
     }
 
     // ---------------------------------------------------------------- pairing codes

@@ -1,4 +1,5 @@
 import { fmtQty, monthName, rupees, waNumber } from './format.js';
+import { billBalance } from './billing.js';
 
 /** Bilingual (Hindi + English) WhatsApp bill text for one customer's month row from computeMonth(). */
 export function billText(row, month, settings = {}) {
@@ -20,7 +21,7 @@ export function billText(row, month, settings = {}) {
   if (row.paidPaise !== 0) L.push(`जमा / Paid: ${rupees(row.paidPaise)}`);
   if ((row.paidAfterPaise || 0) > 0) L.push(`बाद में जमा / Paid later: ${rupees(row.paidAfterPaise)}`);
   L.push('');
-  const bal = row.leftPaise !== undefined ? row.leftPaise : row.balancePaise;
+  const bal = billBalance(row); // paid later beyond the due -> shown as advance
   if (bal >= 0) L.push(`*कुल बाकी / Balance due: ${rupees(bal)}*`);
   else L.push(`*एडवांस / Advance: ${rupees(-bal)}*`);
   L.push('');

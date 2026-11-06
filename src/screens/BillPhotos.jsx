@@ -33,12 +33,68 @@ export default function BillPhotos({ customers, days, payments, settings, month:
     () => res.rows.filter((r) => !r.customer.isSupplier && (r.hasActivity || r.balancePaise !== 0)),
     [res],
   );
-  const [photos, setPhotos] = useState([]); // [{id,name,url,blob}]
+  const [photos, setPhotos] = useState([]); // [{id,name,url,blob,fp}]
   const [working, setWorking] = useState(false);
   const [doneMsg, setDoneMsg] = useState('');
   const [shareErr, setShareErr] = useState('');
 
   const urls = useRef([]);
+  // fix-bills #10: each photo keeps the fingerprint of the numbers it shows. When the data changes
+  // (payment / entry from another phone, late sync, old history loading) the photo is remade before
+  // it is shown or shared - never an old amount.
+  const latest = useRef({ res, settings, month });
+  latest.current = { res, settings, month };
+  const photosRef = useRef(photos);
+  photosRef.current = photos;
+  const remaking = useRef(null);
+  const makePhoto = async (r, m, st) => {
+    const fp = billFingerprint(r, st);
+    const blob = await renderBillImage(r, m, st);
+    await putCachedPhoto(r.customerId, m, blob, fp);
+    const url = URL.createObjectURL(blob);
+    urls.current.push(url);
+    return { id: r.customerId, name: r.customer.name, url, blob, fp, month: m };
+  };
+  /** The photo as it must be now (remade when stale), or null when the customer is gone. */
+  const freshPhoto = async (p) => {
+    const { res: rs, settings: st, month: m } = latest.current;
+    const row = rs.rows.find((x) => x.customerId === p.id);
+    if (!row || p.month !== m) return null;
+    if (billFingerprint(row, st) === p.fp) return p;
+    const np = await makePhoto(row, m, st);
+    setPhotos((list) => list.map((x) => (x.id === p.id ? np : x)));
+    return np;
+  };
+  const refreshStale = async () => {
+    if (remaking.current) return remaking.current;
+    const job = (async () => {
+      await null; // let `remaking.current = job` happen first
+      try {
+        for (;;) {
+          const { res: rs, settings: st, month: m } = latest.current;
+          const stale = photosRef.current.find((p) => {
+            const row = rs.rows.find((x) => x.customerId === p.id);
+            return !row || p.month !== m || billFingerprint(row, st) !== p.fp;
+          });
+          if (!stale) break;
+          // eslint-disable-next-line no-await-in-loop
+          const np = await freshPhoto(stale);
+          if (!np) {
+            setPhotos((list) => list.filter((x) => x.id !== stale.id));
+            photosRef.current = photosRef.current.filter((x) => x.id !== stale.id);
+          } else {
+            photosRef.current = photosRef.current.map((x) => (x.id === np.id ? np : x));
+          }
+        }
+      } catch (e) {
+        console.error('[bill-photos] remake', e);
+      } finally {
+        if (remaking.current === job) remaking.current = null;
+      }
+    })();
+    remaking.current = job;
+    return job;
+  };
   const setMonth = (m) => {
     if (working) return;
     setPhotos([]);
@@ -47,6 +103,12 @@ export default function BillPhotos({ customers, days, payments, settings, month:
   };
   // Revoke every preview URL when the screen closes (memory leak on low-RAM phones).
   useEffect(() => () => urls.current.forEach((u) => URL.revokeObjectURL(u)), []);
+  // Data changed after the photos were made -> remake the photos whose numbers changed.
+  useEffect(() => {
+    if (working || photosRef.current.length === 0) return;
+    refreshStale();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [res, settings, working]);
 
   const generate = async () => {
     setWorking(true);
@@ -56,12 +118,7 @@ export default function BillPhotos({ customers, days, payments, settings, month:
       for (const r of targets) {
         try {
           // eslint-disable-next-line no-await-in-loop
-          const blob = await renderBillImage(r, month, settings);
-          // eslint-disable-next-line no-await-in-loop
-          await putCachedPhoto(r.customerId, month, blob, billFingerprint(r, settings));
-          const url = URL.createObjectURL(blob);
-          urls.current.push(url);
-          out.push({ id: r.customerId, name: r.customer.name, url, blob });
+          out.push(await makePhoto(r, month, settings));
           setPhotos([...out]);
         } catch (e) {
           // One failed render must not abort the whole batch.
@@ -80,9 +137,11 @@ export default function BillPhotos({ customers, days, payments, settings, month:
     setShareErr(e && e.code === 'NOT_INSTALLED' ? t('waNotInstalled') : t('shareFailed'));
   };
 
-  const shareOne = async (p) => {
+  const shareOne = async (p0) => {
     setShareErr('');
     try {
+      const p = await freshPhoto(p0); // remade first if a payment / entry changed it
+      if (!p) return;
       const c = customers.find((x) => x.id === p.id);
       await sendBillToWhatsApp({
         blob: p.blob,
@@ -99,7 +158,13 @@ export default function BillPhotos({ customers, days, payments, settings, month:
   const downloadAll = async (list = photos) => {
     setShareErr('');
     try {
-      await shareManyImages(list.map((p) => ({ blob: p.blob, fileName: billFileName(p.name, month, p.id) })));
+      const fresh = [];
+      for (const p of list) {
+        // eslint-disable-next-line no-await-in-loop
+        const np = await freshPhoto(p);
+        if (np) fresh.push(np);
+      }
+      await shareManyImages(fresh.map((p) => ({ blob: p.blob, fileName: billFileName(p.name, month, p.id) })));
     } catch (e) {
       // cancelled share sheet -> quiet; anything else -> visible error (it used to fail silently)
       showErr(e);
