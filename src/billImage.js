@@ -1,6 +1,7 @@
 // Render a customer's monthly bill as a PNG image (canvas 2D).
 // Design: header + month calendar (date-wise milk) + structured summary + footer.
 import { fmtQty, monthName, MONTHS, rupees, todayISO, weekdaysMonFirst } from './format.js';
+import { billBalance } from './billing.js';
 
 const W = 1080;
 const CELL_H = 104;
@@ -196,7 +197,7 @@ export function renderBillImage(row, month, settings = {}) {
     if (row.paidPaise !== 0) srow('जमा / Paid', rupees(row.paidPaise), { dim: true });
     // past month: payments made after it (old dues clear first), so the balance is what is left today
     if ((row.paidAfterPaise || 0) > 0) srow('बाद में जमा / Paid later', rupees(row.paidAfterPaise), { dim: true });
-    const balNow = row.leftPaise !== undefined ? row.leftPaise : row.balancePaise;
+    const balNow = billBalance(row); // paid later beyond the due -> shown as advance (adds up)
     line(g, 60, y - 46, W - 60, y - 46, GREEN, 4);
     y += 16;
     if (balNow >= 0) {

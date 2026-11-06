@@ -165,6 +165,17 @@ export function withLaterPayments(row, payments, month, today) {
   return { ...row, paidAfterPaise: after, leftPaise };
 }
 
+/** Balance printed on a bill (photo, text, WhatsApp template): like leftOf, but when the customer
+ *  paid MORE later than the month's closing balance, the extra is shown as an advance (negative),
+ *  so Previous + This month - Paid - Paid later adds up (fix-bills #9). leftPaise itself stays
+ *  clamped at 0 (Hisaab / Record payment logic is unchanged). */
+export function billBalance(row) {
+  if (!row) return 0;
+  if (row.leftPaise === undefined) return row.balancePaise;
+  if (row.balancePaise > 0 && (row.paidAfterPaise || 0) > row.balancePaise) return row.balancePaise - row.paidAfterPaise;
+  return row.leftPaise;
+}
+
 /** Balance still owed for a row: leftPaise on a past month, else the balance. */
 export const leftOf = (row) => (row && row.leftPaise !== undefined ? row.leftPaise : row ? row.balancePaise : 0);
 

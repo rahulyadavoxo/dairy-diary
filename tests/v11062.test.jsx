@@ -135,6 +135,8 @@ describe('auto-bill runner (GitHub cron)', () => {
     'farms/F/customers/a': { name: 'Ramesh', phone: '9876543210' },
     'farms/F/customers/b': { name: 'Suresh', phone: '9876500001' },
     'farms/F/days/2026-11-03': { entries: { a: { milkL: 2, milkRatePaise: 6000 }, b: { milkL: 1, milkRatePaise: 6000 } } },
+    // 1.10.73 (fix-bills #4): auto-bill waits for the month's last day to be filled
+    'farms/F/days/2026-11-30': { entries: { a: { skip: true } } },
   });
   const now = new Date('2026-12-01T04:00:00Z'); // 1 Dec 09:30 IST
   it('sends each customer once, marks the month done, never resends', async () => {

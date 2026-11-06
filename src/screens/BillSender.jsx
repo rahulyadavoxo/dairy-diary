@@ -10,7 +10,7 @@ import { renderBillImage, billFileName, billFingerprint } from '../billImage.js'
 import { validWaNumber, sendBillToWhatsApp, isShareCancel } from '../waShare.js';
 import WaDirectHelp from '../components/WaDirectHelp.jsx';
 import { getCachedPhoto, putCachedPhoto } from '../billCache.js';
-import { saveSettings } from '../db.js';
+import { saveSettings, markHandSent } from '../db.js';
 import { addMonths, addDays, monthOf, todayISO, monthName, rupees, dmy } from '../format.js';
 import { dayFilled } from '../reminders.js';
 
@@ -25,9 +25,23 @@ const AFTER = 'after:';
 const END = AFTER;
 export const CHAIN_SECONDS = 3;
 
-export function shouldPromptBills(settings) {
-  return todayISO().slice(8, 10) === '01' && settings.billsSentForMonth !== monthOf(todayISO());
+export function shouldPromptBills(settings, today = todayISO()) {
+  if (today.slice(8, 10) !== '01' || settings.billsSentForMonth === monthOf(today)) return false;
+  // fix-bills #2: auto-bill on (and connected) -> the server sends last month; the hand banner
+  // would send the same bills twice. It comes back only when the server's run for last month
+  // stopped with an error (bad token, everyone failed) and is not done.
+  const ab = settings.autoBill || {};
+  if (ab.enabled && ab.connected) {
+    const lr = ab.lastRun || {};
+    return lr.month === addMonths(monthOf(today), -1) && !!lr.error && !lr.done;
+  }
+  return true;
 }
+
+/** fix-bills #3: hand sends of a FINISHED month are recorded for the auto-bill server while
+ *  auto-bill is on, so it skips those customers. */
+export const recordsHandSend = (settings, isPastRun) =>
+  !!isPastRun && !!(settings && settings.autoBill && settings.autoBill.enabled);
 
 /** Who gets a WhatsApp bill (money #3, Nov 2026): anyone with a phone who has something this
  *  month OR still owes / has an advance - inactive ("band") customers included. */
@@ -392,6 +406,8 @@ export default function BillSender({ fb, customers, days, payments, settings, mo
         phone: pickManually ? null : n,
       });
       setOpened(true);
+      // Auto-bill on: tell the server this customer's bill went by hand (no second bill).
+      if (recordsHandSend(settings, sessionPast && isPastMonth) && fb) markHandSent(fb, billMonth, row.customerId);
       if (!pickManually) {
         away.current = true;
         setChain(true);

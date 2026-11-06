@@ -225,6 +225,15 @@ export function saveSettings(fb, data) {
   return log(fsMod.setDoc(fdoc(fb, 'settings', 'main'), data, { merge: true }));
 }
 
+/** fix-bills #3: a customer whose bill for `billMonth` was sent BY HAND while auto-bill is on.
+ *  Written into the same run log the auto-bill server reads (farms/{id}/waRuns/{month}.manual),
+ *  so the server never sends that customer the same month again. firestore.rules lets a farm
+ *  device write only the `manual` field there. */
+export function markHandSent(fb, billMonth, customerId) {
+  const { fsMod } = fb;
+  return log(fsMod.setDoc(fdoc(fb, 'waRuns', billMonth), { manual: { [customerId]: Date.now() } }, { merge: true }));
+}
+
 export function saveCustomer(fb, id, data) {
   const { fsMod } = fb;
   const { doc, setDoc } = fsMod;

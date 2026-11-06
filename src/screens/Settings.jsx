@@ -487,9 +487,14 @@ export function AutoBillCard({ fb, settings, isOwner = true, waApi = WA_API }) {
     // Only these three: connected/display/lastRun belong to the server (merge keeps them).
     // Turned on after this month's send day has passed: last month is NOT sent late all at once.
     const ab = { enabled: f.enabled, day, time };
-    if (f.enabled && !cur.enabled) {
-      const due = dueBillMonth(ab, new Date(), cur.doneMonth || null);
-      if (due && istParts(new Date()).day > day) ab.doneMonth = due;
+    // fix-bills #8: also when auto-bill is ALREADY on and the day/time moves earlier than today:
+    // skip last month only if the OLD setting would not have sent it yet (else the run is due anyway).
+    if (f.enabled && (!cur.enabled || day !== base.day || time !== base.time)) {
+      const now = new Date();
+      const doneM = cur.doneMonth || null;
+      const due = dueBillMonth(ab, now, doneM);
+      const oldDue = cur.enabled ? dueBillMonth({ enabled: true, day: base.day, time: base.time }, now, doneM) : null;
+      if (due && !oldDue && istParts(now).day > day) ab.doneMonth = due;
     }
     saveSettings(fb, { autoBill: ab });
     setF({ enabled: f.enabled, day, time });
@@ -581,6 +586,7 @@ export function AutoBillCard({ fb, settings, isOwner = true, waApi = WA_API }) {
               {t('autoBillLast')}: {lr.month} — ✓ {lr.sent || 0}
               {lr.failed ? ` · ✗ ${lr.failed}` : ''}
               {lr.error ? ` · ${lr.error}` : ''}
+              {lr.waiting ? ` · ⏳ ${t('autoBillWaiting')}` : ''}
             </p>
           )}
           {isOwner && <div className="form-inline">
