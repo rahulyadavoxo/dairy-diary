@@ -3,7 +3,7 @@
 // customer, the transcribed register data is auto-matched (exact → alias →
 // fuzzy). Tap a name → see all days (Oct 1-13) in one place → edit → save.
 // Nothing is uploaded until the user taps "Save".
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import { saveFeedback } from '../feedback.js';
 import { useLang } from '../i18n.js';
 import { saveEntries, deleteEntry } from '../db.js';
@@ -70,40 +70,69 @@ function allRegNames() {
 function CustomerDays({ fb, customer, regName, days, settings, displayName, onDone, onSaved }) {
   const { t, lang } = useLang();
   const dates = useMemo(() => getReviewDates(), []);
-  const [vals, setVals] = useState(() => {
+  // Pre-fill: what the app already has wins (a day corrected in the app must not get the paper
+  // number back on "Save all days"); the register value is only the start for empty days.
+  const freshVal = (d, dys) => {
+    const en = dys[d] && dys[d].entries && dys[d].entries[customer.id];
+    // Any real entry wins, including Absent / 0 L (an empty box is not written by Save all; the
+    // register value is still shown next to the date to type in on purpose).
+    if (en && !emptyHalf(en)) {
+      const have = appMilk(en);
+      return have > 0 ? String(have) : '';
+    }
+    const parsed = parseImportValue(regName ? (OCT_IMPORT[d] || {})[regName] : undefined);
+    return parsed ? String(parsed.milkL) : '';
+  };
+  const initVals = () => {
     const init = {};
-    dates.forEach((d) => {
-      // Pre-fill: what the app already has wins (a day corrected in the app must not get the paper
-      // number back on "Save all days"); the register value is only the start for empty days.
-      const en = days[d] && days[d].entries && days[d].entries[customer.id];
-      // Any real entry wins, including Absent / 0 L (an empty box is not written by Save all; the
-      // register value is still shown next to the date to type in on purpose).
-      if (en && !emptyHalf(en)) {
-        const have = appMilk(en);
-        init[d] = have > 0 ? String(have) : '';
-        return;
-      }
-      const parsed = parseImportValue(regName ? (OCT_IMPORT[d] || {})[regName] : undefined);
-      init[d] = parsed ? String(parsed.milkL) : '';
-    });
+    dates.forEach((d) => (init[d] = freshVal(d, days)));
     return init;
-  });
+  };
+  const [vals, setVals] = useState(initVals);
+  // What each box was filled with (not typed by the user). Only boxes the user changed are written
+  // over a day the app already has: another phone may have corrected a day after this opened.
+  const start = useRef(null);
+  if (start.current === null) start.current = { ...vals };
   const [flash, setFlash] = useState('');
+  const [deletedDays, setDeletedDays] = useState(new Set()); // locally deleted, listener may lag
+  const [clearedDays, setClearedDays] = useState(new Set()); // milk cleared, paneer / note kept
+  // Days arrived or changed (other phone, history still loading at open): untouched boxes follow.
+  useEffect(() => {
+    setVals((p) => {
+      let n = null;
+      for (const d of dates) {
+        if (deletedDays.has(d) || clearedDays.has(d) || p[d] !== start.current[d]) continue;
+        const v = freshVal(d, days);
+        if (v === p[d]) continue;
+        start.current[d] = v;
+        (n = n || { ...p })[d] = v;
+      }
+      return n || p;
+    });
+  }, [days]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const setVal = (d, v) => setVals((p) => ({ ...p, [d]: v }));
 
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(null); // iso being deleted
-  const [deletedDays, setDeletedDays] = useState(new Set()); // locally deleted, listener may lag
 
   const removeDay = async (d) => {
     if (deleting) return;
     if (!window.confirm(t('confirmDeleteDay').replace('{d}', dmy(d, lang)))) return;
     setDeleting(d);
     try {
-      deleteEntry(fb, d, customer.id, displayName); // not awaited: would hang forever offline
+      // This screen is about milk only: a day that also has paneer or a note keeps them (✕ used to
+      // delete the whole entry, so that day's paneer vanished from the bill).
+      const prev = days[d] && days[d].entries && days[d].entries[customer.id];
+      if (prev && (Number(prev.paneerKg) > 0 || prev.note)) {
+        // not awaited: would hang forever offline
+        saveEntries(fb, d, { [customer.id]: { milkL: 0, milkMorningL: 0, milkEveningL: 0, milkRatePaise: null } }, displayName);
+        setClearedDays((s) => new Set(s).add(d));
+      } else {
+        deleteEntry(fb, d, customer.id, displayName); // not awaited: would hang forever offline
+        setDeletedDays((s) => new Set(s).add(d));
+      }
       setVals((p) => ({ ...p, [d]: '' }));
-      setDeletedDays((s) => new Set(s).add(d));
       setFlash(t('deleted'));
       if (onSaved) onSaved();
     } catch (e) {
@@ -127,7 +156,14 @@ function CustomerDays({ fb, customer, regName, days, settings, displayName, onDo
       // "Saving..." forever while offline. Writes are queued locally and sync later.
       for (const d of datesToSave) {
         const n = Math.round(Number(vals[d]) * 1000) / 1000;
-        const prev = (days[d] && days[d].entries && days[d].entries[customer.id]) || null;
+        let prev = (days[d] && days[d].entries && days[d].entries[customer.id]) || null;
+        // Deleted here: the listener may still show the old entry; write a full new one (no bases).
+        if (deletedDays.has(d)) prev = null;
+        else if (prev && clearedDays.has(d)) prev = { ...prev, milkL: 0, milkMorningL: 0, milkEveningL: 0, milkRatePaise: null };
+        // Box not changed here and the app has this day: keep the app's value (a newer value from
+        // another phone must not get this screen's older / paper number back).
+        const touched = vals[d] !== start.current[d] || deletedDays.has(d) || clearedDays.has(d);
+        if (!touched && prev && !emptyHalf(prev)) continue;
         // Unchanged day already in the app: don't rewrite it.
         if (prev && !prev.skip && appMilk(prev) === n) continue;
         // Keep the register's morning+evening split when it matches the typed total.
@@ -171,7 +207,7 @@ function CustomerDays({ fb, customer, regName, days, settings, displayName, onDo
   };
 
   const savedDays = dates.filter((d) => {
-    if (deletedDays.has(d)) return false;
+    if (deletedDays.has(d) || clearedDays.has(d)) return false;
     const en = days[d] && days[d].entries && days[d].entries[customer.id];
     return appMilk(en) > 0;
   });

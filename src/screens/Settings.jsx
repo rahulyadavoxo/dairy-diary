@@ -18,7 +18,7 @@ import { ToggleBar, DELIVERY_FORMATS, deliveryFormat, morningUntil } from './Del
 // eslint-disable-next-line no-undef
 const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'dev';
 
-export default function Settings({ fb, user, settings, displayName, setDisplayName, online, farm, farmId, customers = [], days = {} }) {
+export default function Settings({ fb, user, settings, displayName, setDisplayName, online, farm, farmId, customers = [], days = {}, histOk = true }) {
   const { t, lang, setLang } = useLang();
   const [f, setF] = useState({ milkRate: '', paneerRate: '', farmName: '', phone: '', upiId: '' });
   const [name, setName] = useState(displayName || '');
@@ -191,11 +191,25 @@ export default function Settings({ fb, user, settings, displayName, setDisplayNa
       (mr0 !== null && mr0 > 0 && mr0 !== settings.milkRatePaise) ||
       (pr0 !== null && pr0 > 0 && pr0 !== settings.paneerRatePaise) ||
       f.upiId.trim() !== (settings.upiId || '');
+    // A rate change waits for old history (asked before the PIN, so the PIN is not typed for nothing).
+    if (rateBlocked(mr0, pr0)) return;
     if (sensitive && !(f.upiId.trim() && !validUpiId(f.upiId.trim()))) return gate.ask(t('pinForSettings'), doSave);
     doSave();
   };
 
+  // v1.10.70 lock only freezes days on this phone: while old history is still loading (histOk false)
+  // older days without a rate snapshot would re-price at the new rate, so the rate save waits.
+  const rateBlocked = (mr, pr) => {
+    const changes = (mr !== null && mr > 0 && mr !== settings.milkRatePaise) || (pr !== null && pr > 0 && pr !== settings.paneerRatePaise);
+    if (!changes || histOk !== false) return false;
+    setMsg(t('rateWaitHistory'));
+    setTimeout(() => setMsg(''), 4000);
+    saveFeedback(false);
+    return true;
+  };
+
   const doSave = () => {
+    if (rateBlocked(toPaise(f.milkRate), toPaise(f.paneerRate))) return;
     // A blank (or invalid) rate box keeps the old rate instead of silently saving ₹0.
     const upiRaw = f.upiId.trim();
     if (upiRaw && !validUpiId(upiRaw)) {

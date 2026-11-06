@@ -1,7 +1,8 @@
 // fix2-money: NEW-3 (paneer lock guard), NEW-4 (CSV payments skip deleted customers), NEW-5 (BillPhotos warning)
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
-import { maybeLockPaneer, PANEER_LOCK_KEY } from '../src/paneerLock.js';
+import { maybeLockPaneer, paneerLockKey, resetPaneerLockForTests } from '../src/paneerLock.js';
+const PANEER_LOCK_KEY = paneerLockKey({ farmId: 'f' }); // v1.10.73: per farm
 import { listenAll } from '../src/db.js';
 import { computeMonth } from '../src/billing.js';
 import { monthCsv } from '../src/exportExcel.js';
@@ -32,7 +33,10 @@ describe('NEW-3: one-time paneer lock waits for server data and old history', ()
   const customers = [{ id: 'a', name: 'A' }];
   const days = { '2026-10-02': { entries: { a: { paneerKg: 1, paneerRatePaise: null } } } };
   const ready = { loaded: { days: true, customers: true, settings: true }, daysLive: true, customersLive: true, settingsLive: true, histOk: true };
-  beforeEach(() => localStorage.clear());
+  beforeEach(() => {
+    localStorage.clear();
+    resetPaneerLockForTests();
+  });
 
   it('waits (not marked done) while old history is missing or any list is only a cache copy', () => {
     const settings = { paneerRatePaise: 40000 };
@@ -51,11 +55,12 @@ describe('NEW-3: one-time paneer lock waits for server data and old history', ()
     }
   });
 
-  it('runs once when everything is server-confirmed, then is done', () => {
+  it('runs once when everything is server-confirmed, then is done', async () => {
     const settings = { paneerRatePaise: 40000 };
     const fb = batchFb();
     const r = maybeLockPaneer({ fb, ...ready, settings, customers, days });
-    expect(r).toEqual({ state: 'ran', n: 1 });
+    expect(r).toMatchObject({ state: 'ran', n: 1 });
+    expect(await r.done).toBe(true);
     expect(fb.ups).toEqual([['farms/f/days/2026-10-02', { 'entries.a.paneerRatePaise': 40000 }]]);
     expect(localStorage.getItem(PANEER_LOCK_KEY)).toBeTruthy();
     const fb2 = batchFb();

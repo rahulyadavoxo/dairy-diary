@@ -267,7 +267,7 @@ export function applyPaneerRate(fb, customerId, ratePaise, days, fromIso, defaul
  *  bill. Freeze each of them, from `fromIso` on, at exactly the rate billing uses for it right now
  *  (billing.paneerRateFor), so no amount changes today and none changes later. Unknown (deleted)
  *  customers are skipped (billing ignores them). Returns the number of entries written. */
-export function lockNullPaneerRates(fb, customers, days, settings, fromIso) {
+export function lockNullPaneerRates(fb, customers, days, settings, fromIso, commits = null) {
   const { db, fsMod } = fb;
   const byId = new Map((customers || []).map((c) => [c.id, c]));
   const perDay = {};
@@ -288,7 +288,9 @@ export function lockNullPaneerRates(fb, customers, days, settings, fromIso) {
   for (let i = 0; i < isos.length; i += 450) {
     const batch = fsMod.writeBatch(db);
     isos.slice(i, i + 450).forEach((iso) => batch.update(fdoc(fb, 'days', iso), perDay[iso]));
-    log(batch.commit());
+    const p = batch.commit();
+    if (commits) commits.push(p); // raw promise: the caller waits for the server to confirm
+    log(p);
   }
   if (isos.length) touchHistory(fb, isos[0]);
   return n;

@@ -25,7 +25,8 @@ export function parseImportList(text) {
     const isBad = (raw, n) => raw !== undefined && raw !== '' && !(Number.isFinite(n) && n >= 0);
     const row = {
       name,
-      morningL: Number.isFinite(m) && m >= 0 ? Math.round(m * 1000) / 1000 : 0.5,
+      // a typed evening with no morning ("Sita,,1") means evening only: morning 0
+      morningL: Number.isFinite(m) && m >= 0 ? Math.round(m * 1000) / 1000 : Number.isFinite(e) ? 0 : 0.5,
       // only a bare name gets 0.5 + 0.5; a typed morning with no evening means evening 0
       eveningL: Number.isFinite(e) && e >= 0 ? Math.round(e * 1000) / 1000 : Number.isFinite(m) ? 0 : 0.5,
     };

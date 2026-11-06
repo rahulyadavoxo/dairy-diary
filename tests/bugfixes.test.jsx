@@ -33,8 +33,10 @@ describe('small helpers', () => {
   it('usualMorning: null field falls back to legacy usualL', () => {
     expect(usualMorning({ usualMorningL: null, usualL: 3 })).toBe(1.5);
   });
-  it('parseImportList: empty quantity field uses the 0.5 default', () => {
-    expect(parseImportList('Ram, , 1')[0]).toEqual({ name: 'Ram', morningL: 0.5, eveningL: 1 });
+  it('parseImportList: empty quantity field is not read as 0 L by Number(\'\')', () => {
+    expect(parseImportList('Ram, , ')[0]).toEqual({ name: 'Ram', morningL: 0.5, eveningL: 0.5 });
+    // v1.10.73: a typed evening with a blank morning = evening only (was 0.5 + 1)
+    expect(parseImportList('Ram, , 1')[0]).toEqual({ name: 'Ram', morningL: 0, eveningL: 1 });
   });
   it('deviceStatus: a network error is not "noFarm"', () => {
     expect(deviceStatus({ loaded: true, exists: false, denied: false, error: { code: 'unavailable' } }, 'u')).toBe('error');
