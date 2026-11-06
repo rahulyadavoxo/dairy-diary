@@ -3,8 +3,8 @@
 // the suppliers below it, then every payment of the month. Amounts are plain rupee numbers
 // (no ₹ sign) so Excel can add them up. UTF-8 with BOM so Hindi names show correctly.
 import { Capacitor } from '@capacitor/core';
-import { computeMonth } from './billing.js';
-import { monthDates, monthName } from './format.js';
+import { computeMonth, leftOf, withLaterPayments } from './billing.js';
+import { monthDates, monthName, monthOf, todayISO } from './format.js';
 import { blobToBase64, WhatsAppShare as FileShare } from './waShare.js';
 
 const H = {
@@ -13,12 +13,14 @@ const H = {
     billRs: 'इस महीने का बिल ₹', prevRs: 'पिछला बाकी ₹', paidRs: 'मिला ₹', balRs: 'कुल बाकी ₹',
     total: 'कुल', customers: 'ग्राहक', suppliers: 'सप्लायर (जिनसे दूध लेते हैं)', payments: 'भुगतान', supPaid: 'सप्लायर को दिया',
     date: 'तारीख', amount: 'रकम ₹', mode: 'तरीका', note: 'नोट', absent: 'नहीं',
+    paidLaterRs: 'बाद में मिला ₹', leftRs: 'आज तक बाकी ₹',
   },
   en: {
     name: 'Name', phone: 'Phone', milkL: 'Total milk (L)', paneerG: 'Paneer (g)', milkRs: 'Milk ₹', paneerRs: 'Paneer ₹',
     billRs: 'Bill this month ₹', prevRs: 'Previous due ₹', paidRs: 'Paid ₹', balRs: 'Balance ₹',
     total: 'Total', customers: 'Customers', suppliers: 'Suppliers (we buy milk from them)', payments: 'Payments', supPaid: 'paid to suppliers',
     date: 'Date', amount: 'Amount ₹', mode: 'Mode', note: 'Note', absent: 'No',
+    paidLaterRs: 'Paid later ₹', leftRs: 'Left today ₹',
   },
 };
 
@@ -36,16 +38,24 @@ export function monthCsv({ customers = [], days = {}, payments = [], settings = 
   const h = H[lang] || H.en;
   const dates = monthDates(month);
   const res = computeMonth({ customers, days, payments, settings, month });
+  // money #4: a past month also shows payments made after it and what is still left today, like
+  // Hisaab (its Pending = total of "Left today"). "Balance" stays the closing balance so the sheet
+  // still adds up. Suppliers have no paid-later rule.
+  const today = todayISO();
+  const past = month < monthOf(today);
   const rows = res.rows
     .filter((r) => r.customer.active !== false || r.hasActivity || r.balancePaise !== 0)
+    .map((r) => (past && !r.customer.isSupplier ? withLaterPayments(r, payments, month, today) : r))
     .sort((a, b) => (a.customer.order ?? 1e9) - (b.customer.order ?? 1e9) || String(a.customer.name).localeCompare(String(b.customer.name)));
 
   const head = ['#', h.name, h.phone, ...dates.map((d) => String(Number(d.slice(8)))), h.milkL, h.paneerG, h.milkRs, h.paneerRs, h.billRs, h.prevRs, h.paidRs, h.balRs];
   const out = [line([settings.farmName || 'Dairy Diary', monthName(month, lang)]), ''];
 
-  const block = (title, list) => {
+  const block = (title, list, later = false) => {
     out.push(line([title]));
-    out.push(line(head));
+    out.push(line(later ? [...head, h.paidLaterRs, h.leftRs] : head));
+    let sumAfter = 0;
+    let sumLeft = 0;
     const sum = { milkMl: 0, paneerG: 0, milkPaise: 0, paneerPaise: 0, billedPaise: 0, previousDuePaise: 0, paidPaise: 0, balancePaise: 0 };
     const perDay = dates.map(() => 0);
     list.forEach((r, i) => {
@@ -59,13 +69,23 @@ export function monthCsv({ customers = [], days = {}, payments = [], settings = 
         return v || '0';
       });
       for (const k of Object.keys(sum)) sum[k] += r[k] || 0;
-      out.push(line([i + 1, r.customer.name, r.customer.phone || '', ...cells, litres(r.milkMl) || '0', r.paneerG || 0, rs(r.milkPaise), rs(r.paneerPaise), rs(r.billedPaise), rs(r.previousDuePaise), rs(r.paidPaise), rs(r.balancePaise)]));
+      const base = [i + 1, r.customer.name, r.customer.phone || '', ...cells, litres(r.milkMl) || '0', r.paneerG || 0, rs(r.milkPaise), rs(r.paneerPaise), rs(r.billedPaise), rs(r.previousDuePaise), rs(r.paidPaise), rs(r.balancePaise)];
+      if (later) {
+        const after = r.paidAfterPaise || 0;
+        const left = Math.max(0, leftOf(r));
+        sumAfter += after;
+        sumLeft += left;
+        base.push(rs(after), rs(left));
+      }
+      out.push(line(base));
     });
-    out.push(line(['', h.total, '', ...perDay.map((ml) => litres(ml)), litres(sum.milkMl) || '0', sum.paneerG, rs(sum.milkPaise), rs(sum.paneerPaise), rs(sum.billedPaise), rs(sum.previousDuePaise), rs(sum.paidPaise), rs(sum.balancePaise)]));
+    const tot = ['', h.total, '', ...perDay.map((ml) => litres(ml)), litres(sum.milkMl) || '0', sum.paneerG, rs(sum.milkPaise), rs(sum.paneerPaise), rs(sum.billedPaise), rs(sum.previousDuePaise), rs(sum.paidPaise), rs(sum.balancePaise)];
+    if (later) tot.push(rs(sumAfter), rs(sumLeft));
+    out.push(line(tot));
     out.push('');
   };
 
-  block(h.customers, rows.filter((r) => !r.customer.isSupplier));
+  block(h.customers, rows.filter((r) => !r.customer.isSupplier), past);
   const sup = rows.filter((r) => r.customer.isSupplier);
   if (sup.length) block(h.suppliers, sup);
 

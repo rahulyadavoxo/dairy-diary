@@ -132,7 +132,15 @@ describe('1.10.42 Excel export', () => {
       '2026-10-02': { entries: { a: { skip: true } } },
     };
     const payments = [{ id: 'p', customerId: 'a', date: '2026-10-05', amountPaise: 10000, mode: 'cash' }];
-    const csv = monthCsv({ customers, days, payments, settings: { milkRatePaise: 6000, farmName: 'Ram Dairy' }, month: '2026-10', lang: 'en' });
+    // October is the running month here (a past month adds "Paid later" / "Left today" columns, money #4)
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 9, 20, 10, 0));
+    let csv;
+    try {
+      csv = monthCsv({ customers, days, payments, settings: { milkRatePaise: 6000, farmName: 'Ram Dairy' }, month: '2026-10', lang: 'en' });
+    } finally {
+      vi.useRealTimers();
+    }
     const lines = csv.split('\r\n');
     const asha = lines.find((l) => l.startsWith('1,"Asha, ""A"""'));
     expect(asha).toBeTruthy();

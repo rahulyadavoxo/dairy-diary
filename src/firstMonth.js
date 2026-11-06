@@ -8,8 +8,13 @@ export function firstDeliveryMonth(days) {
   for (const iso of Object.keys(days || {})) {
     if (first && iso >= first) continue;
     const entries = (days[iso] && days[iso].entries) || {};
+    // money #5: paneer is billed even on an absent (skip) day, and milk may be stored only as the
+    // morning / evening split (entryCharge prefers it over milkL).
     const delivered = Object.values(entries).some(
-      (en) => en && !en.skip && (Number(en.milkL) > 0 || Number(en.paneerKg) > 0),
+      (en) =>
+        en &&
+        (Number(en.paneerKg) > 0 ||
+          (!en.skip && (Number(en.milkL) > 0 || Number(en.milkMorningL) > 0 || Number(en.milkEveningL) > 0))),
     );
     if (delivered) first = iso;
   }
