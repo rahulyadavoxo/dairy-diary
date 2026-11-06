@@ -211,13 +211,13 @@ describe('#2 Settings writes only what changed', () => {
     fireEvent.click(screen.getByTestId('settings-save'));
     expect(settingsWrites(fb)).toEqual([{ path: 'farms/f/settings/main', data: { phone: '98765' } }]);
   });
-  it('ring times: only the changed one is written', () => {
+  it('ring times: the checked pair is written together (v1.10.73)', () => {
     const fb = mkFb();
     const { container } = renderSettings(fb, { ...stale, ringNight: '22:00', ringMorning: '08:00' });
     const [night] = container.querySelectorAll('.ring-card input[type="time"]');
     fireEvent.change(night, { target: { value: '21:30' } });
     fireEvent.click(screen.getByTestId('ring-save'));
-    expect(settingsWrites(fb)).toEqual([{ path: 'farms/f/settings/main', data: { ringNight: '21:30' } }]);
+    expect(settingsWrites(fb)).toEqual([{ path: 'farms/f/settings/main', data: { ringNight: '21:30', ringMorning: '08:00' } }]);
   });
 });
 

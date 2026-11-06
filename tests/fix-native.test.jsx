@@ -252,7 +252,9 @@ describe('#6-#9, #12 native ring source', () => {
   });
   it('#8 no access stops ringing', () => {
     expect(rx).toContain('NO_ACCESS');
-    expect(rx).toContain('if (code == 403) return NO_ACCESS;');
+    // v1.10.73: a 403 is FORBIDDEN; the plan is cleared only after two 403s in a row
+    expect(rx).toContain('if (code == 403) return FORBIDDEN;');
+    expect(rx).toContain('if (n >= 2) server = NO_ACCESS;');
     expect(rx).toContain('INVALID_REFRESH_TOKEN');
   });
   it('#9 exact restore alarm, sync restores the volume', () => {

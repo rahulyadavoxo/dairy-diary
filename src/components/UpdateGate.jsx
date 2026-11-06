@@ -8,7 +8,7 @@ import { Capacitor } from '@capacitor/core';
 import { useLang } from '../i18n.js';
 import { setBackOwner } from '../backStack.js';
 import { App as CapApp } from '@capacitor/app';
-import { checkForUpdate, installedVersion, downloadUpdate, installUpdate, waitForSync, CHECK_EVERY_MS, POLL_WHILE_OPEN_MS } from '../appUpdate.js';
+import { checkForUpdate, installedVersion, downloadUpdate, installUpdate, canInstallUpdate, waitForSync, CHECK_EVERY_MS, POLL_WHILE_OPEN_MS } from '../appUpdate.js';
 
 // A release this phone can never install (the native side refuses the file for good: versionCode
 // not raised, other signing key, other app, not an APK). Blocking the app for it would lock the
@@ -40,7 +40,10 @@ const skip = (v) => {
   }
 };
 
-const real = { check: checkForUpdate, current: installedVersion, download: downloadUpdate, install: installUpdate, sync: waitForSync };
+const real = { check: checkForUpdate, current: installedVersion, download: downloadUpdate, install: installUpdate, canInstall: canInstallUpdate, sync: waitForSync };
+// v1.10.73: "Use the app now" after this many installer runs that came back without an update
+// (Android's "App not installed": storage full, signature mismatch it can't report back).
+const INSTALLS_FOR_LATER = 2;
 
 export default function UpdateGate({ children, api = real, native = Capacitor.isNativePlatform(), pollMs = POLL_WHILE_OPEN_MS }) {
   const { t } = useLang();
@@ -108,10 +111,19 @@ export default function UpdateGate({ children, api = real, native = Capacitor.is
     return true;
   };
 
+  // installer runs / returns without the permission, per version (escape hatches below)
+  const [tries, setTries] = useState({ v: null, installs: 0, permBacks: 0 });
+  const bump = (key) =>
+    setTries((x) => {
+      const v = updRef.current ? updRef.current.version : null;
+      const base = x.v === v ? x : { v, installs: 0, permBacks: 0 };
+      return { ...base, [key]: base[key] + 1 };
+    });
   const install = async () => {
     try {
       setStatus('installing');
       const r = await api.install();
+      if (!r.needsPermission && r.started !== false) bump('installs');
       setStatus(r.needsPermission ? 'perm' : 'installing');
     } catch (e) {
       console.error(e);
@@ -149,8 +161,19 @@ export default function UpdateGate({ children, api = real, native = Capacitor.is
       .then(({ App }) =>
         App.addListener('appStateChange', ({ isActive }) => {
           if (!isActive) return;
-          // back from Android's "allow installs" settings -> open the installer again
-          if (statusRef.current === 'perm') install();
+          // back from Android's "allow installs" settings: only CHECK. Open the installer when it is
+          // allowed now; otherwise stay on the wall with the hint (Settings opens again only when
+          // the user taps Update; re-opening it on every resume trapped the Back button).
+          if (statusRef.current === 'perm') {
+            const can = api.canInstall ? api.canInstall() : Promise.resolve(true);
+            Promise.resolve(can)
+              .then((ok) => {
+                if (statusRef.current !== 'perm') return;
+                if (ok) install();
+                else bump('permBacks');
+              })
+              .catch(() => {});
+          }
           else if (queued.current) run(true).catch(() => {}); // update held from the poll: lock now
           else run(false).catch(() => {});
         }),
@@ -195,6 +218,9 @@ export default function UpdateGate({ children, api = real, native = Capacitor.is
   // The app stays MOUNTED under the wall (only hidden), so a register being filled when the
   // 10-minute check finds an update keeps what was typed (it was unmounted and lost before).
   const busy = status === 'downloading';
+  const triesNow = upd && tries.v === upd.version ? tries : { installs: 0, permBacks: 0 };
+  const installStuck = status === 'installing' && triesNow.installs >= INSTALLS_FOR_LATER;
+  const permStuck = status === 'perm' && triesNow.permBacks >= 1;
   const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
   const wall = upd && (
     <div className="center-screen update-gate" data-testid="update-gate">
@@ -210,7 +236,7 @@ export default function UpdateGate({ children, api = real, native = Capacitor.is
         </div>
       )}
       {busy && <p className="small" data-testid="update-pct">{pct < 0 ? t('updConnecting') : t('updDownloading') + ' ' + pct + '%'}</p>}
-      {status === 'installing' && <p className="small">{t('updInstallHint')}</p>}
+      {status === 'installing' && <p className="small">{t(installStuck ? 'updInstallFailedHint' : 'updInstallHint')}</p>}
       {status === 'perm' && <p className="small">{t('updPermHint')}</p>}
       {status === 'error' && <p className="error small">{t('updFailed')}</p>}
       <button type="button" className="btn primary big" onClick={start} disabled={busy} data-testid="update-btn">
@@ -219,7 +245,7 @@ export default function UpdateGate({ children, api = real, native = Capacitor.is
       {/* No (usable) internet on the round: offline, or 2 failed tries (weak signal / wifi without
           internet still counts as online). Let the app be used; the wall comes back by itself on
           the next check (poll / internet back / app resume), so the update is still forced. */}
-      {status === 'error' && (offline || fails >= FAILS_FOR_LATER) && (
+      {((status === 'error' && (offline || fails >= FAILS_FOR_LATER)) || installStuck || permStuck) && (
         <button
           type="button"
           className="btn big"

@@ -9,6 +9,17 @@ const SyncKeeper = registerPlugin('SyncKeeper');
 let n = 0;
 let last = false;
 
+let retryTimer = null;
+let retries = 0; // a few retries only: an old APK that always refuses must not loop forever
+function retrySoon() {
+  if (retryTimer || retries >= 5) return;
+  retries++;
+  retryTimer = setTimeout(() => {
+    retryTimer = null;
+    report();
+  }, 2000);
+}
+
 function report() {
   const p = n > 0;
   if (p === last) return;
@@ -16,7 +27,16 @@ function report() {
   // Never throw from here: a missing/mocked plugin must not break a write.
   try {
     if (Capacitor.isNativePlatform() && typeof SyncKeeper.setPending === 'function') {
-      Promise.resolve(SyncKeeper.setPending({ pending: p })).catch(() => {});
+      // v1.10.73: the native call failed (bridge not ready yet): forget what we reported, so the
+      // next change (or a retry 2 s later) sends it again instead of native staying wrong for good.
+      Promise.resolve(SyncKeeper.setPending({ pending: p })).then(() => {
+        retries = 0;
+      }, () => {
+        if (last === p) {
+          last = !p;
+          retrySoon();
+        }
+      });
     }
   } catch {
     /* ignore */
@@ -49,4 +69,7 @@ export function initPendingSync(fb) {
 export function _resetPendingSync() {
   n = 0;
   last = false;
+  retries = 0;
+  clearTimeout(retryTimer);
+  retryTimer = null;
 }

@@ -23,12 +23,12 @@ import Removed from './screens/Removed.jsx';
 import { useScrollKeep } from './scrollKeep.js';
 import Splash from './components/Splash.jsx';
 import UpdateGate from './components/UpdateGate.jsx';
-import { listenFarm, deviceStatus, loadFarmId, wipeLocalData } from './devices.js';
+import { listenFarm, deviceStatus, loadFarmId, wipeLocalData, confirmRemoved } from './devices.js';
 import { App as CapApp } from '@capacitor/app';
-import { handleBack } from './backStack.js';
+import { handleBack, pushBackHandler } from './backStack.js';
 import { migrateLegacyPin, legacyPinCleared } from './pinLock.js';
 import { IMPORT_DATES } from './octoberImport.js';
-import { syncRings, ringTimes } from './reminders.js';
+import { syncRings, ringTimes, cancelAllRings, _forceRingResync } from './reminders.js';
 
 const REMOVED_KEY = 'dd_removed';
 const flagGet = () => {
@@ -66,12 +66,48 @@ export default function App() {
   useEffect(() => {
     document.documentElement.lang = lang;
   }, [lang]);
+  useAppBackButton();
 
   return (
     <LangContext.Provider value={ctx}>
       <UpdateGate>{isFirebaseConfigured() ? <Authed /> : <NotConfigured />}</UpdateGate>
     </LangContext.Provider>
   );
+}
+
+// v1.10.73: ONE Android back-button listener for the whole app (it used to live in Main only, so
+// Back on Welcome/Login/Join/Setup closed the app). Order: the update wall / overlays (backStack),
+// then Main's own screens, else background (unsynced entries) or exit.
+let mainBack = null; // set by Main: returns true when it handled Back
+export function appBack() {
+  if (handleBack()) return 'handled';
+  if (mainBack && mainBack()) return 'handled';
+  // Entries still waiting for the server: go to the background instead of closing, so the
+  // upload finishes by itself when the internet comes back (v1.10.49).
+  if (pendingCount() > 0) {
+    CapApp.minimizeApp();
+    return 'minimize';
+  }
+  CapApp.exitApp();
+  return 'exit';
+}
+function useAppBackButton() {
+  useEffect(() => {
+    let handle;
+    let cancelled = false;
+    Promise.resolve(CapApp.addListener('backButton', () => appBack()))
+      .then((h) => {
+        handle = h;
+        // unmounted before addListener resolved: remove now, or two listeners pile up and one
+        // back press closes two screens / exits the app
+        if (cancelled && h && h.remove) h.remove();
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+      if (handle && handle.remove) handle.remove();
+    };
+  }, []);
 }
 
 function Authed() {
@@ -122,7 +158,19 @@ export function Gate({ fb, user }) {
   const [mode, setMode] = useState('welcome');
   const [joinedFarm, setJoinedFarm] = useState(null);
 
-  if (removed || flagGet()) {
+  const isRemoved = removed || flagGet();
+  const anonFarmId = user && user.isAnonymous ? joinedFarm || loadFarmId(user.uid) : null;
+  const onJoin = (!user && mode === 'join') || (user && user.isAnonymous && !anonFarmId);
+  const onLogin = !user && mode === 'login';
+  // v1.10.73: hardware Back on Login / Join goes back to Welcome (it used to close the app).
+  useEffect(() => {
+    if (isRemoved || (!onJoin && !onLogin)) return undefined;
+    const back = user
+      ? () => fb.authMod.signOut(fb.auth).catch(() => {}).finally(() => setMode('welcome'))
+      : () => setMode('welcome');
+    return pushBackHandler(back);
+  }, [isRemoved, onJoin, onLogin, !!user]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (isRemoved) {
     return (
       <Removed
         onRejoin={() => {
@@ -134,10 +182,9 @@ export function Gate({ fb, user }) {
       />
     );
   }
-  const anonFarmId = user && user.isAnonymous ? joinedFarm || loadFarmId(user.uid) : null;
   // Join screen is returned from the same position whether or not the anonymous sign-in
   // has happened yet, so its state survives the auth change mid-join.
-  if ((!user && mode === 'join') || (user && user.isAnonymous && !anonFarmId)) {
+  if (onJoin) {
     // An anonymous phone whose join failed used to be stuck here with no way back to the owner
     // login. It has not joined any farm yet, so signing out loses nothing.
     const back = user
@@ -155,29 +202,77 @@ function FarmGate({ fb, user, farmId, onRemoved }) {
   const { t } = useLang();
   const [state, setState] = useState({ loaded: false });
   const [slow, setSlow] = useState(false);
-  useEffect(() => listenFarm(fb, farmId, setState), [fb, farmId]);
+  const [listenTry, setListenTry] = useState(0); // bump = start the farm listener again
+  useEffect(() => listenFarm(fb, farmId, setState), [fb, farmId, listenTry]);
   useEffect(() => {
     const id = setTimeout(() => setSlow(true), 4000);
     return () => clearTimeout(id);
   }, []);
   const status = deviceStatus(state, user.uid);
+  // v1.10.73: the last farm this phone was authorised for. A listener error (network, quota
+  // 'resource-exhausted', a denied snapshot still being checked) keeps the app usable on it.
+  const lastOk = useRef(null);
+  if (status === 'authorized') lastOk.current = state.farm;
   // Wait for the server to confirm a removal (not just this phone's own queued 'leave' write).
-  const lockOut = status === 'removed' && user.isAnonymous && !state.pending;
-
-  useEffect(() => {
-    if (!lockOut) return;
+  const removedAnon = status === 'removed' && user.isAnonymous && !state.pending;
+  // A server snapshot without this uid = really removed. A permission-denied error alone is
+  // checked with the server first (a bad rules publish used to wipe every helper phone).
+  const lockOut = removedAnon && !state.denied;
+  const deniedAnon = removedAnon && !!state.denied;
+  const wiping = useRef(false);
+  const wipe = () => {
+    if (wiping.current) return;
+    wiping.current = true;
     // Removed from the farm (or access denied): wipe the local cache + identity, then lock.
     flagSet(true);
     wipeLocalData(fb).finally(onRemoved);
+  };
+
+  useEffect(() => {
+    if (lockOut) wipe();
   }, [lockOut]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!deniedAnon) return undefined;
+    let stop = false;
+    let timer = null;
+    confirmRemoved(fb, farmId, user.uid).then((v) => {
+      if (stop) return;
+      if (v === 'removed') return wipe();
+      // still a member / could not check: keep everything, start the listener again later
+      timer = setTimeout(() => setListenTry((n) => n + 1), v === 'member' ? 30000 : 60000);
+    });
+    return () => {
+      stop = true;
+      clearTimeout(timer);
+    };
+  }, [deniedAnon ? state : null]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // v1.10.73: Back on SetupFarm (owner signed in, no farm yet) goes to Welcome: nothing to lose.
+  const onSetup = status === 'noFarm' && !user.isAnonymous;
+  useEffect(
+    () =>
+      onSetup
+        ? pushBackHandler(() => {
+            cancelAllRings();
+            fb.authMod.signOut(fb.auth).catch(() => {});
+          })
+        : undefined,
+    [onSetup], // eslint-disable-line react-hooks/exhaustive-deps
+  );
 
   const fbFarm = useMemo(() => ({ ...fb, farmId }), [fb, farmId]);
 
+  if (status === 'authorized') return <Main fb={fbFarm} user={user} farm={state.farm} farmId={farmId} />;
+  // denied, being checked with the server: keep the app on the last good farm (no wipe yet)
+  if (deniedAnon && lastOk.current && !wiping.current) return <Main fb={fbFarm} user={user} farm={lastOk.current} farmId={farmId} />;
   // lockOut: wiping. Pending: our own 'leave' is still on its way to the server, just wait; never
   // offer Sign out to an anonymous phone (it would strand the queued 'leave' and skip the wipe).
   if (status === 'removed' && user.isAnonymous) return <Splash text={t('loading')} />;
-  if (status === 'authorized') return <Main fb={fbFarm} user={user} farm={state.farm} farmId={farmId} />;
   if (status === 'error') {
+    // v1.10.73: the listener retries by itself (listenFarm). Data is in the offline cache: stay in
+    // the app on the last authorised farm instead of the "waiting for server" wall.
+    if (lastOk.current) return <Main fb={fbFarm} user={user} farm={lastOk.current} farmId={farmId} />;
     // A network/unknown error on the farm listener is NOT "farm does not exist": never offer
     // SetupFarm (which would try to create the farm again) — let the user retry.
     return (
@@ -197,7 +292,13 @@ function FarmGate({ fb, user, farmId, onRemoved }) {
       <div className="center-screen" data-testid="farm-error">
         <p className="error">{t('farmCheckFailed')}</p>
         {state.error && <p className="muted tiny">{String(state.error.code || state.error.message || state.error)}</p>}
-        <button className="btn big" onClick={() => fb.authMod.signOut(fb.auth)}>
+        <button
+          className="btn big"
+          onClick={() => {
+            cancelAllRings(); // signOut keeps the native ring's token: stop this phone ringing
+            fb.authMod.signOut(fb.auth);
+          }}
+        >
           {t('signOut')}
         </button>
       </div>
@@ -313,13 +414,35 @@ function Main({ fb, user, farm, farmId }) {
   // 22:00 / 08:00 register rings on this phone (see reminders.js). Only once both lists loaded,
   // so an empty first render never cancels or schedules the wrong rings.
   const hasCustomers = customers.some((c) => c.active !== false);
+  // v1.10.73: the native receiver clears the plan on a 403 / token error (RingReceiver NO_ACCESS).
+  // Re-send it every time the app comes back to the front, not only after a restart.
+  const [ringResume, setRingResume] = useState(0);
+  useEffect(() => {
+    let handle;
+    let cancelled = false;
+    Promise.resolve(
+      CapApp.addListener('resume', () => {
+        _forceRingResync();
+        setRingResume((n) => n + 1);
+      }),
+    )
+      .then((h) => {
+        handle = h;
+        if (cancelled && h && h.remove) h.remove();
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+      if (handle && handle.remove) handle.remove();
+    };
+  }, []);
   useEffect(() => {
     if (!loaded.days || !loaded.customers) return;
     const o = (fb.app && fb.app.options) || {};
     const u = fb.auth && fb.auth.currentUser;
     const auth = { apiKey: o.apiKey, projectId: o.projectId, farmId: fb.farmId, refreshToken: u && u.refreshToken };
     syncRings({ days, pendingDays, hasCustomers, t, dmy: (iso) => dmy(iso, lang), times: ringTimes(settings), auth });
-  }, [loaded, days, pendingDays, hasCustomers, lang, settings.ringNight, settings.ringMorning]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [loaded, days, pendingDays, hasCustomers, lang, settings.ringNight, settings.ringMorning, ringResume]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const on = () => setOnline(true);
@@ -332,33 +455,23 @@ function Main({ fb, user, farm, farmId }) {
     };
   }, []);
 
-  // Android hardware back button: close topmost overlay first (via backStack),
-  // then app-level screens, else exit.
+  // Android hardware back button (one listener in App, see appBack): overlays first (backStack),
+  // then these app-level screens; false = not handled here (App minimises / exits).
   const navRef = useRef({});
   navRef.current = { tab, detail, delivery, importReview };
   useEffect(() => {
-    let handle;
-    let cancelled = false;
-    CapApp.addListener('backButton', () => {
-      if (handleBack()) return; // a nested overlay handled it
+    const mine = () => {
       const { tab: tb, detail: dt, delivery: dl, importReview: ir } = navRef.current;
       if (dl) setDelivery(false);
       else if (ir) setImportReview(false);
       else if (dt) setDetail(null);
       else if (tb !== 'register') setTab('register');
-      // Entries still waiting for the server: go to the background instead of closing, so the
-      // upload finishes by itself when the internet comes back (v1.10.49).
-      else if (pendingCount() > 0) CapApp.minimizeApp();
-      else CapApp.exitApp();
-    }).then((h) => {
-      handle = h;
-      // unmounted before addListener resolved: remove now, or two listeners pile up and one
-      // back press closes two screens / exits the app
-      if (cancelled && h && h.remove) h.remove();
-    });
+      else return false;
+      return true;
+    };
+    mainBack = mine;
     return () => {
-      cancelled = true;
-      if (handle && handle.remove) handle.remove();
+      if (mainBack === mine) mainBack = null;
     };
   }, []);
 

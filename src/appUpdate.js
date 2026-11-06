@@ -147,6 +147,16 @@ export async function downloadUpdate(url, onPercent) {
   }
 }
 
+/** v1.10.73: may the installer be opened now ("Install unknown apps" allowed)? true when unknown. */
+export async function canInstallUpdate() {
+  try {
+    const r = await ApkUpdater.canInstall();
+    return !(r && r.ok === false);
+  } catch {
+    return true;
+  }
+}
+
 export async function installUpdate() {
   const r = await ApkUpdater.install();
   return { started: !!(r && r.started), needsPermission: !!(r && r.needsPermission) };
