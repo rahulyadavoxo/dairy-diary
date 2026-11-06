@@ -31,6 +31,11 @@ export function resetLastEditedForTests() {
 
 const EMPTY = { name: '', phone: '', area: '', usualMorningL: 0.5, usualEveningL: 0.5, customRate: false, rateOverride: '', customPaneerRate: false, paneerRateOverride: '', openingDue: '', openingAdv: false, pauseFrom: '', pauseTo: '', active: true, isSupplier: false, waAutoBill: true, prefillMode: 'usual' };
 
+/** An existing pause that started before today and has not ended yet. */
+function pauseRunning(c, today) {
+  return !!c && !!c.pauseFrom && c.pauseFrom < today && (!c.pauseTo || c.pauseTo >= today);
+}
+
 const round3 = (n) => Math.max(0, Math.round(Number(n || 0) * 1000) / 1000);
 
 export { usualMorning, usualEvening }; // moved to entry.js (also used by the day editor)
@@ -49,7 +54,7 @@ export function resetCustomersView() {
   view.query = '';
 }
 
-export default function Customers({ fb, customers, settings, days, openCustomer }) {
+export default function Customers({ fb, customers, settings, days, openCustomer, histOk = true }) {
   const { t, lang } = useLang();
   const [editing, setEditing] = useState(null); // null | 'new' | customer
   const [importing, setImporting] = useState(false);
@@ -107,6 +112,8 @@ export default function Customers({ fb, customers, settings, days, openCustomer 
         nextOrder={Math.max(0, ...[...active, ...inactive].map((x) => Number(x.order) || 0)) + 10}
         settings={settings}
         days={days}
+        customers={customers}
+        histOk={histOk}
         onDone={(savedId) => {
           if (savedId) {
             storeLastEdited(savedId);
@@ -226,7 +233,7 @@ export default function Customers({ fb, customers, settings, days, openCustomer 
   );
 }
 
-export function CustomerForm({ fb, initial, nextOrder, onDone, days, settings }) {
+export function CustomerForm({ fb, initial, nextOrder, onDone, days, settings, customers = [], histOk = true }) {
   const { t } = useLang();
   // Show / hide only (no setting changes): the milk / paneer special-rate switches (user, 16 Oct 2026).
   // "Set milk format" shows the As usual / Same as last day switches (user, 16 Oct 2026).
@@ -328,7 +335,9 @@ export function CustomerForm({ fb, initial, nextOrder, onDone, days, settings })
     if (f.pauseFrom && f.pauseTo && f.pauseFrom > f.pauseTo) return fail(`${t('pauseFrom')} > ${t('pauseTo')}`);
     // A pause starts today or later (user, 16 Oct 2026). A pause already running keeps its old start.
     const today0 = todayISO();
-    if (f.pauseFrom && f.pauseFrom < today0 && f.pauseFrom !== ((initial && initial.pauseFrom) || '')) return fail(t('pausePast'));
+    // Only a pause that is STILL running keeps its old start. An old, finished pause (1-5 Oct) with
+    // just a new Until would re-open from 1 Oct and mark every day since as paused.
+    if (f.pauseFrom && f.pauseFrom < today0 && !(pauseRunning(initial, today0) && f.pauseFrom === initial.pauseFrom)) return fail(t('pausePast'));
     if (f.pauseTo && f.pauseTo < today0 && f.pauseTo !== ((initial && initial.pauseTo) || '')) return fail(t('pausePast'));
     const badQty = (v) => v !== '' && v != null && (!Number.isFinite(Number(v)) || Number(v) < 0);
     if (badQty(f.usualMorningL) || badQty(f.usualEveningL)) return fail(t('qtyInvalid'));
@@ -338,6 +347,11 @@ export function CustomerForm({ fb, initial, nextOrder, onDone, days, settings })
     if (f.customPaneerRate && !(pRate > 0)) return fail(t('paneerRateRequired'));
     const due = toPaise(f.openingDue);
     if (f.openingDue !== '' && due === null) return fail(t('amountInvalid'));
+    // A typed minus was dropped by Math.abs (-500 with Due = +500 due). Due / Advance gives the sign.
+    if (due !== null && due < 0) return fail(t('amountInvalid'));
+    // Add customer: warn about a name that already exists (still allowed, e.g. two "Ramesh").
+    const nameKey = (x) => String(x || '').trim().replace(/\s+/g, ' ').toLowerCase();
+    if (!initial && customers.some((c) => nameKey(c.name) === nameKey(f.name)) && !window.confirm(t('dupCustomer'))) return;
     // Parse the money fields from the form passed in (not the current one): toData(f0.current)
     // used to get the NEW due / rates, so a changed due or rate never counted as a change.
     const toData = (f) => ({
@@ -362,9 +376,19 @@ export function CustomerForm({ fb, initial, nextOrder, onDone, days, settings })
       // Only what was changed in this form: another phone may have paused / deactivated / edited
       // this customer meanwhile, and re-sending the old values would undo that.
       data = entryChanges(toData(f0.current), data);
+      const rateChanged = 'paneerRateOverridePaise' in data || 'rateOverridePaise' in data;
+      // The lock below only freezes days that are on this phone: until old history has loaded
+      // (histOk false), older days without a rate snapshot would re-price at the new rate.
+      if (rateChanged && histOk === false) return fail(t('rateWaitHistory'));
       // v1.10.70: a changed special rate applies from now on only; saved days keep their rate
       // (days without a rate snapshot are frozen at the OLD rate first, before the customer changes).
-      if ('paneerRateOverridePaise' in data || 'rateOverridePaise' in data) lockCurrentRates(fb, [initial], days, settings, initial.id);
+      // The customer as it is NOW (another phone may have changed the rate since the form opened).
+      if (rateChanged) {
+        const live = customers.find((c) => c.id === initial.id) || initial;
+        lockCurrentRates(fb, [live], days, settings, initial.id);
+      }
+      // Re-activated from the form: to the end of the route, same as the Activate button / Import.
+      if (initial.active === false && data.active === true) data.order = nextOrder;
       if (!Object.keys(data).length) {
         saveFeedback(true);
         return onDone(initial.id);
@@ -542,7 +566,7 @@ export function CustomerForm({ fb, initial, nextOrder, onDone, days, settings })
           <input
             type="date"
             value={f.pauseFrom}
-            min={initial && initial.pauseFrom && initial.pauseFrom < todayISO() ? initial.pauseFrom : todayISO()}
+            min={pauseRunning(initial, todayISO()) ? initial.pauseFrom : todayISO()}
             onChange={set('pauseFrom')}
             data-testid="pause-from"
           />
