@@ -11,7 +11,7 @@ import { playSound } from '../feedback.js';
 import { normaliseEntry, takesTwice, emptyHalf, prefillLastDay, withLastDay } from '../entry.js';
 import { sortCustomers, isPaused } from './Register.jsx';
 import { usualMorning, usualEvening } from './Customers.jsx';
-import { todayISO, fmtQty } from '../format.js';
+import { todayISO, fmtQty, istParts } from '../format.js';
 import { toMilli } from '../billing.js';
 import { pushBackHandler } from '../backStack.js';
 
@@ -37,11 +37,12 @@ export function deliveredFor(en, session) {
 export function dayComplete(en, c) {
   if (!en || en.skip) return false;
   // only the morning saved so far: comes back for the evening (not for a once-a-day customer)
-  if (en.half && takesTwice(c)) return false;
+  if (en.half && (takesTwice(c) || emptyHalf(en))) return false;
   const m = Number(en.milkMorningL) || 0;
   const e = Number(en.milkEveningL) || 0;
-  if (m <= 0 && e <= 0) return (Number(en.milkL) || 0) > 0;
-  // Both rounds recorded (an evening of 0 L means "no evening milk today").
+  // paneer only, no milk yet: still on the milk round (v1.10.21)
+  if (m <= 0 && e <= 0 && !((Number(en.milkL) || 0) > 0) && (Number(en.paneerKg) || 0) > 0) return false;
+  // morning+evening, total-only or a recorded 0 L day (an evening of 0 L = "no evening milk today")
   return true;
 }
 
@@ -79,8 +80,10 @@ export const morningUntil = (settings) => {
   return /^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(v || '') ? v : MORNING_UNTIL;
 };
 export const roundFor = (now = new Date(), until = MORNING_UNTIL) => {
+  // IST, not the phone's own time zone
+  const p = istParts(now);
   const [h, mi] = until.split(':').map(Number);
-  return now.getHours() * 60 + now.getMinutes() < h * 60 + mi ? 'morning' : 'day';
+  return Number(p.hour) * 60 + Number(p.minute) < h * 60 + mi ? 'morning' : 'day';
 };
 
 const usualFor = (c, session) =>
@@ -413,7 +416,7 @@ export default function Delivery(props) {
   const format = deliveryFormat(props.settings);
   const until = morningUntil(props.settings);
   const [round, setRound] = useState(() => roundFor(new Date(), until));
-  const [, setDay] = useState(todayISO);
+  const [, setDay] = useState(() => todayISO());
   // the morning time passes while the screen is open -> switch to the whole-day card;
   // midnight passes -> a fresh round for the new date (re-render picks up todayISO()).
   useEffect(() => {
@@ -431,10 +434,17 @@ export default function Delivery(props) {
   // A new day = a fresh round: doneNow / skipped / history / allUsual belong to one date, and every
   // write of the round uses the date its state belongs to.
   const date = todayISO();
-  return <DeliveryRound key={date + format + session} {...props} date={date} session={session} format={format} until={until} t={t} />;
+  // midnight check at tap time: a write that would land on yesterday re-renders on the new date instead
+  const dayChanged = () => {
+    const now = todayISO();
+    if (now === date) return false;
+    setDay(now);
+    return true;
+  };
+  return <DeliveryRound key={date + format + session} {...props} date={date} session={session} format={format} until={until} t={t} dayChanged={dayChanged} />;
 }
 
-function DeliveryRound({ fb, customers, days, settings, displayName, onBack, date, session, format = 'both', until = MORNING_UNTIL, t }) {
+function DeliveryRound({ fb, customers, days, settings, displayName, onBack, date, session, format = 'both', until = MORNING_UNTIL, t, dayChanged = () => false }) {
   const split = format === 'split';
   const roundOnly = split && session === 'morning'; // morning-only round (before the morning time)
   /** Split, after the morning time: a morning already recorded today is shown locked. */
@@ -461,7 +471,7 @@ function DeliveryRound({ fb, customers, days, settings, displayName, onBack, dat
       saveSkips(date, session, n);
       return n;
     });
-  const [doneNow, setDoneNow] = useState({}); // delivered on this screen (before the listener catches up)
+  const [doneNow, setDoneNow] = useState({}); // id -> { base: saved entry at tap } delivered here, until the listener catches up
   const [history, setHistory] = useState([]); // [{id, m, e, p}] delivered, in order
   const [review, setReview] = useState(null); // {id, m, e, p, pos} | null — re-editing history[pos]
   const lastTap = useRef(0);
@@ -487,7 +497,10 @@ function DeliveryRound({ fb, customers, days, settings, displayName, onBack, dat
   // split morning round writes one with no milk = Absent in the morning), so another phone hides it too.
   const morningRoundDone = (en) => deliveredFor(en, 'morning') || (!!en && !en.skip && en.half === 'morning');
   const roundDone = (en, c) => (roundOnly ? morningRoundDone(en) : dayComplete(en, twiceC(c)));
-  const isDelivered = (c) => !!doneNow[c.id] || roundDone(saved[c.id], c) || !!(saved[c.id] && saved[c.id].skip);
+  // The saved entry decides once it is there (follows the other phone, a morning-only save,
+  // Clear entry); doneNow only bridges the moment before the listener catches up.
+  const caughtUp = (c) => !doneNow[c.id] || (saved[c.id] || null) !== doneNow[c.id].base;
+  const isDelivered = (c) => (!caughtUp(c) ? true : saved[c.id] ? roundDone(saved[c.id], c) || !!saved[c.id].skip : false);
   const remaining = list.filter((c) => !isDelivered(c) && (!skipped[c.id] || (!roundOnly && emptyHalf(saved[c.id]))));
   const done = list.length - remaining.length;
   const current = review ? byId[review.id] : remaining[0];
@@ -509,6 +522,7 @@ function DeliveryRound({ fb, customers, days, settings, displayName, onBack, dat
   }, [done]);
 
   const deliver = (c, raw) => {
+    if (dayChanged()) return;
     // Merge with what is already saved for today so delivering one session never wipes the
     // other session's milk (e.g. evening delivery must keep the morning quantity) or the note.
     const prev = saved[c.id] || {};
@@ -544,7 +558,7 @@ function DeliveryRound({ fb, customers, days, settings, displayName, onBack, dat
       if (!deliveredFor(entry, session)) setSkipped((s) => ({ ...s, [c.id]: true }));
       if (review) setHistory((h) => h.map((x, i) => (i === review.pos ? item : x)));
       else {
-        setDoneNow((d) => ({ ...d, [c.id]: true }));
+        setDoneNow((d) => ({ ...d, [c.id]: { base: saved[c.id] || null } }));
         setHistory((h) => [...h, item]);
       }
     }
@@ -553,6 +567,7 @@ function DeliveryRound({ fb, customers, days, settings, displayName, onBack, dat
 
   // Absent: didn't take milk today (the register's "didn't take" for the whole day).
   const markAbsent = (c) => {
+    if (dayChanged()) return;
     if (roundOnly && twice(c)) {
       // only the morning: a whole-day skip would also block the evening
       deliver(c, { milkMorningL: 0, paneerKg: 0 });
@@ -561,9 +576,13 @@ function DeliveryRound({ fb, customers, days, settings, displayName, onBack, dat
     // A once-a-day customer has no other round: Absent in the morning round = Absent for the day
     // (a 0 L non-skip entry made the card come back, prefilled, after the morning time).
     // A saved morning stays on Absent in every format (it erased delivered milk in 'both'/'total').
-    if ((split || (saved[c.id] && saved[c.id].half === 'morning')) && morningDone(saved[c.id]) && !review) {
+    // Also after Back (review): a morning saved before this card stays (✏️ to set it to 0).
+    const prevEn = saved[c.id];
+    const keepMorning = (split || (prevEn && prevEn.half === 'morning')) && morningDone(prevEn) &&
+      (!review || (split && !roundOnly && Number(prevEn.milkMorningL) > 0));
+    if (keepMorning) {
       // after the morning time: the morning already delivered stays, evening = 0
-      deliver(c, { milkMorningL: Number(saved[c.id].milkMorningL) || 0, milkEveningL: 0, paneerKg: Number(saved[c.id].paneerKg) || 0, half: null });
+      deliver(c, { milkMorningL: Number(prevEn.milkMorningL) || 0, milkEveningL: 0, paneerKg: Number(prevEn.paneerKg) || 0, half: null });
       return;
     }
     const prev = saved[c.id] || {};
@@ -572,7 +591,7 @@ function DeliveryRound({ fb, customers, days, settings, displayName, onBack, dat
     const item = { id: c.id, m: 0, e: 0, p: 0, total: 0, absent: true };
     if (review) setHistory((h) => h.map((x, i) => (i === review.pos ? item : x)));
     else {
-      setDoneNow((d) => ({ ...d, [c.id]: true }));
+      setDoneNow((d) => ({ ...d, [c.id]: { base: saved[c.id] || null } }));
       setHistory((h) => [...h, item]);
     }
     setReview(null);
@@ -591,6 +610,7 @@ function DeliveryRound({ fb, customers, days, settings, displayName, onBack, dat
   };
 
   const deliverAllUsual = () => {
+    if (dayChanged()) return;
     const rows = {};
     const now = {};
     const snap = {};
@@ -608,7 +628,7 @@ function DeliveryRound({ fb, customers, days, settings, displayName, onBack, dat
       if (split && session === 'total') raw = { milkMorningL: morningDone(prev) ? pm : usualMorning(c), milkEveningL: pe > 0 && prev.half !== 'morning' ? pe : usualEvening(c), half: null };
       rows[c.id] = normaliseEntry(c, { ...raw, milkRatePaise: prev.milkRatePaise, paneerRatePaise: prev.paneerRatePaise, paneerKg: prev.paneerKg || 0, skip: false, note: prev.note || '' }, settings);
       snap[c.id] = { prev: saved[c.id] || null, wrote: rows[c.id] };
-      now[c.id] = true;
+      now[c.id] = { base: saved[c.id] || null };
     });
     if (Object.keys(rows).length) {
       saveEntries(fb, date, rows, displayName, saved);
@@ -698,7 +718,7 @@ function DeliveryRound({ fb, customers, days, settings, displayName, onBack, dat
       ) : (
         current && (
           <DeliveryCard
-            key={current.id + (review ? '-review-' + review.pos : '')}
+            key={current.id + (review ? '-review-' + review.pos : '') + ':' + (saved[current.id]?.updatedAt || 0)}
             c={current}
             initM={
               review

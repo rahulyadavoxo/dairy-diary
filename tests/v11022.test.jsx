@@ -4,21 +4,21 @@ import { entryCharge } from '../src/billing.js';
 
 describe('1.10.22 two phones / offline phone never overwrite each other', () => {
   it('only fields the user changed are sent; empty values count as the same', () => {
-    expect(entryChanges({ milkMorningL: 1, milkEveningL: 0, note: '' }, { milkMorningL: 1, milkEveningL: 1, note: '' })).toEqual({ milkEveningL: 1 });
-    expect(entryChanges(undefined, { milkMorningL: 1, milkEveningL: 0, skip: false, note: '', milkRatePaise: null })).toEqual({ milkMorningL: 1 });
-    expect(entryChanges(undefined, { milkL: 0, milkMorningL: 0, skip: false })).toEqual({ milkL: 0 });
+    // 1.10.73: milk fields are one unit (any change writes all of them); a new entry is written whole
+    expect(entryChanges({ milkMorningL: 1, milkEveningL: 0, note: '' }, { milkMorningL: 1, milkEveningL: 1, note: '' })).toEqual({ milkMorningL: 1, milkEveningL: 1 });
+    expect(entryChanges({ milkMorningL: 1, note: '' }, { milkMorningL: 1, note: 'x' })).toEqual({ note: 'x' });
+    expect(entryChanges(undefined, { milkMorningL: 1, milkEveningL: 0, skip: false, note: '', milkRatePaise: null })).toEqual({ milkMorningL: 1, milkEveningL: 0, skip: false, note: '', milkRatePaise: null });
+    expect(entryChanges(undefined, { milkL: 0, milkMorningL: 0, skip: false })).toEqual({ milkL: 0, milkMorningL: 0, skip: false });
     expect(entryChanges({ milkL: 2 }, { milkL: 2 })).toEqual({});
     expect(entryChanges({ active: true }, { active: false })).toEqual({ active: false });
   });
-  it('offline morning write + other phone evening write => both kept, bill uses morning + evening', () => {
-    // phone A offline at 07:00 sends only what it changed
-    const a = entryChanges(undefined, { milkMorningL: 1, milkEveningL: 0, milkL: 1, milkRatePaise: 6000 });
-    // phone B at 19:00 (online) sets evening on top of what it saw (nothing yet)
-    const b = entryChanges(undefined, { milkMorningL: 0, milkEveningL: 1, milkL: 1, milkRatePaise: 6000 });
-    const server = { ...b, ...a }; // A's queued write lands last
-    expect(server.milkMorningL).toBe(1);
-    expect(server.milkEveningL).toBe(1);
-    expect(entryCharge(server, { id: 'c' }, {}).milkMl).toBe(2000);
+  it('two phones creating the same day: the last writer wins the whole milk, never a mix (1.10.73)', () => {
+    // phone A offline at 07:00 creates the day; phone B creates it too before A's write arrived
+    const a = entryChanges(undefined, { milkMorningL: 1, milkEveningL: 0, milkL: 1, half: 'morning', milkRatePaise: 6000 });
+    const b = entryChanges(undefined, { milkMorningL: 0, milkEveningL: 0, milkL: 3, half: null, milkRatePaise: 6000 });
+    const server = { ...a, ...b }; // B's Total lands last
+    expect(server).toMatchObject({ milkMorningL: 0, milkEveningL: 0, milkL: 3, half: null });
+    expect(entryCharge(server, { id: 'c' }, {}).milkMl).toBe(3000);
   });
   it('a total-only entry still bills its total', () => {
     expect(entryCharge({ milkL: 3, milkMorningL: 0, milkEveningL: 0, milkRatePaise: 6000 }, { id: 'c' }, {}).milkMl).toBe(3000);

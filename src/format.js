@@ -42,8 +42,19 @@ export function isoDate(d = new Date()) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-export function todayISO() {
-  return isoDate(new Date());
+/** Date / time parts in IST (Asia/Kolkata), whatever time zone the phone is set to. */
+export function istParts(d = new Date()) {
+  return Object.fromEntries(
+    new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+      .formatToParts(d)
+      .map((p) => [p.type, p.value]),
+  );
+}
+
+/** Today's date in IST: a phone set to UTC / a wrong zone still writes to the right day. */
+export function todayISO(d = new Date()) {
+  const p = istParts(d);
+  return `${p.year}-${p.month}-${p.day}`;
 }
 
 export function monthOf(iso) {

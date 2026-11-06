@@ -351,11 +351,16 @@ const sameVal = (a, b) => Object.is(a, b) || (emptyVal(a) && emptyVal(b));
 
 /** Only the fields of `next` that differ from `base` (the entry the editor started from).
  *  undefined / null / 0 / '' / false count as the same "empty" value. */
+const MILK_FIELDS = ['milkL', 'milkMorningL', 'milkEveningL', 'half', 'skip'];
+
 export function entryChanges(base, next) {
+  // New entry on this phone: write every field, zeros and nulls included, so a merge with an
+  // entry the other phone already created can't leave a mix of both (lost litres, stale half).
+  if (!base) return { ...(next || {}) };
   const out = {};
-  for (const k of Object.keys(next || {})) if (!sameVal((base || {})[k], next[k])) out[k] = next[k];
-  // A brand-new entry always carries milkL, so a 0 L day is stored as milkL: 0 (user, 16 Oct 2026).
-  if (!base && next && 'milkL' in next) out.milkL = next.milkL;
+  for (const k of Object.keys(next || {})) if (!sameVal(base[k], next[k])) out[k] = next[k];
+  // The milk fields are one unit: if any changed, write all of them (consistent day total).
+  if (MILK_FIELDS.some((k) => k in out)) MILK_FIELDS.forEach((k) => { if (k in next) out[k] = next[k]; });
   return out;
 }
 

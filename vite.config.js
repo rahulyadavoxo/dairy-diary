@@ -11,6 +11,8 @@ export default defineConfig({
   build: { outDir: 'dist', chunkSizeWarningLimit: 2000 },
   test: {
     environment: 'jsdom',
+    // the app works in IST (todayISO / morning round); tests build local Dates, so run them in IST
+    env: { TZ: 'Asia/Kolkata' },
     include: ['tests/**/*.test.{js,jsx}'],
   },
 });

@@ -9,7 +9,7 @@ import { useLang } from '../i18n.js';
 import { saveEntries, deleteEntry } from '../db.js';
 import { toMilli } from '../billing.js';
 import { normaliseEntry, usualMorning, usualEvening } from '../entry.js';
-import { addDays, dmy, fmtQty, timeHM, todayISO } from '../format.js';
+import { addDays, dmy, fmtQty, istParts, timeHM, todayISO } from '../format.js';
 import PaneerGrams from '../components/PaneerGrams.jsx';
 import { pushBackHandler } from '../backStack.js';
 
@@ -48,7 +48,7 @@ export function defaultSession() {
   } catch {
     /* ignore */
   }
-  return new Date().getHours() < 13 ? 'morning' : 'evening';
+  return Number(istParts().hour) < 13 ? 'morning' : 'evening';
 }
 
 
@@ -101,8 +101,13 @@ export default function DayEditor({ fb, customers, days, pendingDays = {}, setti
 
   // Saving here records the whole day, so a morning-only Delivery save becomes complete.
   // ...except today's 'evening left' day stays open when the evening is still empty.
-  const normalise = (c, r, st) =>
-    normaliseEntry(c, { ...r, half: r.half === 'morning' && date === todayISO() && !(Number(r.milkEveningL) > 0) ? 'morning' : null }, st);
+  // Only a real morning-only row keeps the flag: a typed Total or a Skip closes the day.
+  const normalise = (c, r, st) => {
+    const morningOnly = r.half === 'morning' && date === todayISO() && !r.skip &&
+      Number(r.milkMorningL) > 0 && !(Number(r.milkEveningL) > 0) &&
+      Math.abs((Number(r.milkL) || 0) - Number(r.milkMorningL)) < 0.0005; // not a typed Total
+    return normaliseEntry(c, { ...r, half: morningOnly ? 'morning' : null }, st);
+  };
 
   ctx.current = { date, displayName, byId, settings, saved };
 
