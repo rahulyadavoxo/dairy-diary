@@ -1,3 +1,5 @@
+// tests compute delivery rounds in IST; workers inherit this
+process.env.TZ = process.env.TZ || 'Asia/Kolkata'
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { readFileSync } from 'node:fs';
