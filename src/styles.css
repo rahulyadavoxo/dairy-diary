@@ -149,9 +149,9 @@ label.check input { width: 24px; min-height: 24px; }
 .cust-main { font: inherit; flex: 1; text-align: left; background: none; border: none; display: flex; flex-direction: column; gap: 0.15rem; min-height: 64px; color: var(--text); }
 
 .totals { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; margin: 0.5rem 0; }
-.total { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 0.6rem; text-align: center; }
+.total { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 0.6rem 0.3rem; text-align: center; min-width: 0; overflow: hidden; }
 .total span { display: block; font-size: 0.8rem; color: var(--muted); }
-.total b { font-size: 1.05rem; }
+.total b { display: block; white-space: nowrap; font-size: clamp(0.72rem, 3.3vw, 1.05rem); }
 .total.good b { color: var(--green); }
 .total.bad b { color: var(--red); }
 .hisaab-row { font: inherit; width: 100%; text-align: left; color: var(--text); }

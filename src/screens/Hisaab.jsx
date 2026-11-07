@@ -195,19 +195,21 @@ export default function Hisaab({ fb, customers, days, payments, settings, month,
           <button type="button" className={'btn small icon-btn' + (isLastDay ? ' on' : '')} onClick={() => setPhotos(true)}>
             <BillIcon /> {t('billPhotosShort')}
           </button>
-          {showTotals && (
-            <button
-              type="button"
-              className="btn small icon-only"
-              data-testid="export-excel"
-              onClick={exportExcel}
-              disabled={exporting}
-              aria-label={t('exportExcel')}
-              title={t('exportExcel')}
-            >
-              📊
-            </button>
-          )}
+          {/* always in the row (hidden, not removed) so the buttons keep the same size with or without PIN */}
+          <button
+            type="button"
+            className="btn small icon-only"
+            data-testid="export-excel"
+            onClick={exportExcel}
+            disabled={exporting || !showTotals}
+            aria-hidden={!showTotals}
+            tabIndex={showTotals ? 0 : -1}
+            style={showTotals ? undefined : { visibility: 'hidden' }}
+            aria-label={t('exportExcel')}
+            title={t('exportExcel')}
+          >
+            📊
+          </button>
           <button type="button" className="btn small ghost" onClick={toggleTotals}>
             {showTotals ? '👁️' : pinLocked ? '🔒' : '👁️‍🗨️'} {showTotals ? t('hide') : t('show')}
           </button>
