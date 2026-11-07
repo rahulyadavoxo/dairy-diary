@@ -1,10 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 describe('1.10.74 Hisaab tool row keeps its size with or without PIN', () => {
-  it('excel button is hidden (not removed) while amounts are hidden', () => {
+  it('excel button always shown (no gap); while hidden it asks PIN first', () => {
     const src = readFileSync('src/screens/Hisaab.jsx', 'utf8');
     expect(src).not.toMatch(/\{showTotals && \(\s*<button[^>]*\s*type="button"\s*className="btn small icon-only"\s*data-testid="export-excel"/);
-    expect(src).toMatch(/visibility: 'hidden'/);
+    expect(src).toMatch(/onClick=\{showTotals \? exportExcel : toggleTotals\}/);
+    expect(src).not.toMatch(/visibility: 'hidden'/);
   });
   it('total tiles shrink long amounts instead of cutting them', () => {
     const css = readFileSync('src/styles.css', 'utf8');
