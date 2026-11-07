@@ -18,8 +18,15 @@ describe('1.10.19 update is caught while the app is open (no restart needed)', (
     await waitFor(() => expect(api.check.mock.calls.length).toBeGreaterThan(1));
     // held while the app is in use (1.10.60); the next resume brings the Update screen
     expect(screen.queryByTestId('update-gate')).toBeNull();
-    await act(async () => document.dispatchEvent(new Event('visibilitychange')));
-    await waitFor(() => expect(screen.getByTestId('update-gate')).toBeTruthy(), { timeout: 4000 });
+    // the resume listener is attached after a dynamic import; on a slow CI box it may not be there
+    // yet, so keep "resuming" until the wall shows
+    await waitFor(
+      async () => {
+        await act(async () => document.dispatchEvent(new Event('visibilitychange')));
+        expect(screen.getByTestId('update-gate')).toBeTruthy();
+      },
+      { timeout: 4000, interval: 100 },
+    );
   });
   it('internet coming back triggers a check at once', async () => {
     const api = { current: vi.fn(async () => '1.10.19'), check: vi.fn(async () => null), sync: vi.fn(), download: vi.fn(), install: vi.fn() };
